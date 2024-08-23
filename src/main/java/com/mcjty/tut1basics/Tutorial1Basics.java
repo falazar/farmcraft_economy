@@ -121,7 +121,8 @@ public class Tutorial1Basics {
         private static Map<String, List<String>> cropBiomes = new HashMap<>();
 
         @SubscribeEvent
-        // When trying to plant crops, check our biome rules to allow.
+        // Main Method here:
+        // When trying to plant crops, check our biome rules to see what crops are allowed there.
         public void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
             // TODO FIX ME!
@@ -138,6 +139,14 @@ public class Tutorial1Basics {
 //            }
 
             // TODO test if in creative mode, skip all rules!
+            if (event.getEntity() instanceof Player) {
+                Player player = (Player) event.getEntity();
+                if (player.isCreative()) {
+                    LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
+                    return;
+                }
+            }
+
 
             LOGGER.info("###################################### ");
 //            LOGGER.info("DEBUG: Right click on client side. ");
@@ -149,12 +158,10 @@ public class Tutorial1Basics {
             LOGGER.info("DEBUG: this item getDescriptionId is " + stack.getDescriptionId());
 
 
-
             // Test Other things now, like, get current biome.
             Biome biome = event.getLevel().getBiome(event.getPos()).value();  // requires Holder odd
             String biomeName = nameOfBiome(event.getLevel(), biome).toString();
             LOGGER.info("DEBUG: this biome is " + nameOfBiome(event.getLevel(), biome));
-
 
 
             // STEP 1: Test if target block is farmland, if not leave.
@@ -185,12 +192,14 @@ public class Tutorial1Basics {
 //            LOGGER.info("DEBUG: cropsAllowed = " + cropsAllowed);
 
             String seedDescription = stack.getDescriptionId();
-            String seedDescriptionTwo = seedDescription;  // Add second variation seeditem vs regular veggie, both can plant.
+            // Add second variation seeditem vs regular veggie, both can plant.
+            String seedDescriptionTwo = seedDescription;
             String seedItem = seedDescription;
             if (seedDescription.contains("seeditem")) {
                 seedDescriptionTwo = replace(seedDescriptionTwo, "seeditem", "item");
             } else if (seedDescription.contains("pamhc2crops")) {
                 // If not a seeditem one, add seeditem onto it, and test again.
+                // Adding this cause you can plant with crop item and seed item both.
                 seedDescriptionTwo = seedDescriptionTwo.substring(0, seedDescriptionTwo.length() - 4) + "seeditem";
                 seedItem = seedDescriptionTwo;
             }
@@ -198,6 +207,7 @@ public class Tutorial1Basics {
 //            LOGGER.info("DEBUG: seedDescriptionTwo = " + seedDescriptionTwo);
 
             // Check for seeditem, and item plain, as both can be planted.
+            // TODO Make method.
             if (!cropsAllowed.contains(seedDescription) && !cropsAllowed.contains(seedDescriptionTwo)) {
                 String biomeNameShow = biomeName.split(":")[1];
                 String cropItemShow = getCropShowName(seedDescription);
@@ -211,13 +221,15 @@ public class Tutorial1Basics {
                     PlayerChatMessage chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "You cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
                     player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
 
-                    chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "Crops you can plant: " + cropsAllowedShow.toString());
+                    // Send full crop list for this biome.
+                    chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§aCrops you can plant: §2" + cropsAllowedShow.toString());
                     player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
 
-                    LOGGER.info("DEBUG seedItem = "+seedItem);
+                    LOGGER.info("DEBUG seedItem = " + seedItem);
                     List<String> biomesAllowed = cropBiomes.get(seedItem);
                     if (biomesAllowed != null) {
-                        chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "Biomes you can plant " + cropItemShow + ": " + cropBiomes.get(seedItem).toString());
+                        // Send full list of biomes you can plant it in.
+                        chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§nBiomes you can plant " + cropItemShow + ": §p" + cropBiomes.get(seedItem).toString());
                         player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
                     }
                 }
@@ -367,7 +379,7 @@ public class Tutorial1Basics {
                 biomeNames.add(biomeLocation.toString());
             }
 //            LOGGER.info("biomeNames list =" + biomeNames.toString());
-            
+
             return biomeNames;
         }
 
@@ -382,11 +394,10 @@ public class Tutorial1Basics {
                 LOGGER.info("DEBUG3: biomeName is " + biomeName);
                 LOGGER.info("DEBUG3: Seed value is " + seed);
             }
-            
+
             // TODO move to its own file this.
 
             // TODO rename tutorial to mine.
-
 
 
 //            Collections.shuffle(cropNames, new Random(seed));
