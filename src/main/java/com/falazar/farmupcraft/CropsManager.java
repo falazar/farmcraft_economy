@@ -74,7 +74,7 @@ public class CropsManager {
         // STEP 3: Test if holding a vanilla or harvestcraft item, if not leave.
         LOGGER.info("###################################### ");
         ItemStack stack = event.getItemStack();
-        LOGGER.info("DEBUG: item held getDescriptionId is " + stack.getDescriptionId());
+//        LOGGER.info("DEBUG: item held getDescriptionId is " + stack.getDescriptionId());
         if (!stack.getDescriptionId().contains("pamhc2crops") && !isVanillaCrop(stack)) {
             // Is not a crop type... leave..
 //                LOGGER.info("DEBUG: not a crop, leaving rules now.");
@@ -318,10 +318,9 @@ public class CropsManager {
     // TODO change to an onLoading event instead.
     // TODO make desert/wastelands have only 10 items.
     public static void setupBiomeCrops(PlayerInteractEvent event) {
-        // TODO: Cache all this one time or load from memory.
         // Check cache now so isnt done twice.
         if (!biomeCrops.isEmpty()) {
-            LOGGER.info("DEBUG: Already have biomeCrops cache, not redoing it now. ");
+//            LOGGER.info("DEBUG: Already have biomeCrops cache, not redoing it now. ");
             return;
         }
 
