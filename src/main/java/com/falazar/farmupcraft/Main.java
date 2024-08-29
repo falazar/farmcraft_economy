@@ -25,7 +25,6 @@ import net.minecraftforge.registries.RegistryObject;
 
 import org.slf4j.Logger;
 
-//import java.awt.*;
 
 
 // The value here should match an entry in the META-INF/mods.toml file

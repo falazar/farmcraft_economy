@@ -1,11 +1,14 @@
 package com.falazar.farmupcraft;
 
 import com.mojang.datafixers.util.Pair;
+import mezz.jei.api.constants.RecipeTypes;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.data.recipes.CraftingRecipeBuilder;
 import net.minecraft.network.chat.ChatType;
 import net.minecraft.network.chat.OutgoingChatMessage;
 import net.minecraft.network.chat.PlayerChatMessage;
@@ -13,30 +16,47 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
+import net.minecraft.world.Container;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.CraftingContainer;
+import net.minecraft.world.inventory.RecipeHolder;
+import net.minecraft.world.inventory.TransientCraftingContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.crafting.*;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CraftingTableBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.apache.commons.lang3.StringUtils.replace;
 
@@ -53,12 +73,16 @@ public class CropsManager {
     public void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
         // Step 1: If in creative mode, skip all rules and allow planting all.
+        Player player = null;
         if (event.getEntity() instanceof Player) {
-            Player player = (Player) event.getEntity();
+            player = (Player) event.getEntity();
             if (player.isCreative()) {
                 LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
                 return;
             }
+        } else {
+            LOGGER.info("DEBUG: Not a player, leaving now.");
+            return;
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
@@ -85,6 +109,16 @@ public class CropsManager {
         if (stack.getDescriptionId().contains("wheat")) {
             LOGGER.info("DEBUG: is a wheat seeds crop, running DEBUG METHOD.");
             findNearestVillage(event);
+
+            // Only run on server side.
+            if (event.getSide().isServer()) {
+                ServerLevel serverLevel = player.getServer().getLevel(player.getCommandSenderWorld().dimension());
+                long worldSeed = player.getServer().getLevel(player.getCommandSenderWorld().dimension()).getSeed();
+//                ServerLevel serverLevel = event.getLevel());
+//                ServerLevel serverLevel = server.getLevel(level.dimension());
+
+                getAllFoods(serverLevel, worldSeed);
+            }
         }
 
         // Setup all of our biomes and crops rules allowed, saves to cache.
@@ -110,6 +144,36 @@ public class CropsManager {
 //            BlockEvent.BreakEvent
 //            BreakEvent(World world, BlockPos pos, BlockState state, PlayerEntity player)
     }
+
+
+    // NOTE: Is about 3 hours now with 400 growth.
+    // Now based on actual growth stat instead?  onGrow event
+    // Slow down crop growth, tooooo fast!!!
+    // TODO make a config var for base?
+    // NOTICE: Event methods cannot be static.
+    @SubscribeEvent
+    public void slowCropsEvent(BlockEvent.CropGrowEvent.Pre event) {
+        BlockPos blockPos = event.getPos();
+        BlockState blockState = event.getLevel().getBlockState(blockPos);
+        Block block = blockState.getBlock();
+
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+
+        // TODO testing with this. slow min.
+        int baseSuccessRate = 10;
+
+        // TODO add all modifiers here.
+
+        if (randomNum >= baseSuccessRate) {
+            event.setResult(Event.Result.DENY);
+            return;
+        }
+        // Else allow to grow as normal.
+
+//        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
+    }
+
 
     // DEBUG: Testing, Looking for village.
     public static void findNearestVillage(PlayerInteractEvent.RightClickBlock event) {
@@ -220,6 +284,7 @@ public class CropsManager {
 
         LOGGER.info("DEBUG: DONE TEST AREA ");
 
+        // TODO if new village pick a random name, and save it to a file.
 
         // Results:
         // [18:57:31] [Server thread/INFO] [co.mc.tu.Tutorial1Basics/]: DEBUG: blockPos = MutableBlockPos{x=292, y=70, z=73}
@@ -448,7 +513,6 @@ public class CropsManager {
         List<String> cropNameCopy = new ArrayList<>(cropNames);  // Create a copy of the original list
         Collections.shuffle(cropNameCopy, new Random(seed));  // Shuffle the copy
 
-
         // Grab the first 15 cropNames and sort them.
         List<String> selectedCrops = cropNameCopy.subList(0, Math.min(cropNameCopy.size(), 15));
         Collections.sort(selectedCrops);
@@ -534,7 +598,7 @@ public class CropsManager {
 
         // 500 will starve in about 40 minutes.
         // Testing at 250, twice as fast.
-        if (random.nextInt(250) == 1) {
+        if (random.nextInt(500) == 1) {
             Difficulty difficulty = player.getCommandSenderWorld().getDifficulty(); // todo test
             // TODO: skip if easy mode? less for normal more for hard?
 //            LOGGER.info("DEBUG: difficulty = " + difficulty.toString());
@@ -549,4 +613,133 @@ public class CropsManager {
 
     }
 
+
+    // TODO cooking stuffs testing next.
+    // Get a list of all cooked items for market!
+    // Generic method to get a list of items...
+    // notice was static
+    public List<String> getAllFoods(ServerLevel serverLevel, long worldSeed) {
+        // Get the list of all items
+        Iterable<Item> allItems = ForgeRegistries.ITEMS;
+
+        // Filter information about items from the target mod
+        List<String> itemNames = new ArrayList<>();
+        for (Item item : allItems) {
+            // TODO add in basic foods and tree foods.
+
+            // Check if the item belongs to the target mod
+            String itemName = item.getDescriptionId();
+            // Example: 'pamhc2foodcore:baconcheeseburgeritem'
+            // rolleritem bad ones, filter out.
+            // Look for edible as well.
+            if ((itemName.contains("pamhc2foodcore") || itemName.contains("pamhc2foodextended"))
+                    && itemName.contains("item")
+                    && item.isEdible()) {
+//                LOGGER.info("DEBUG: name = " + itemName);
+                itemNames.add(itemName);
+            }
+        }
+
+        // Print not showing right.
+        int count = itemNames.size();
+        LOGGER.info("DEBUG: itemNames1 = " + count + " " + itemNames.toString());
+
+        // Get a random list of 15 foods for market.
+        // TODO currently we are calling this on both server and client....
+        // How do we call on server side and then push to client?
+        // TODO lessen the amount of tree fruits by about half....
+
+        List<String> itemNamesCopy = new ArrayList<>(itemNames);  // Create a copy of the original list
+        Collections.shuffle(itemNamesCopy, new Random(worldSeed));  // Shuffle the copy
+
+        // Grab the first 15 items and sort them.
+        List<String> selectedItems = itemNamesCopy.subList(0, Math.min(itemNamesCopy.size(), 20));
+        Collections.sort(selectedItems);
+        LOGGER.info("DEBUG: marketItems = " + selectedItems.size() + " " + selectedItems.toString());
+
+        // TODO SAVE AND LOAD TO DB FILE!
+
+        // TODO May need to grab 20 first, then filter out the tree fruits, up to 5.
+
+        // Need to check actual recipe here now though, filter out some tree fruits.
+        for (String itemName : selectedItems) {
+            // TODO: Get the recipe for each item and check if it is a tree fruit or things we dont want.
+
+            // Shift name format to resource location.
+//            String itemResourceName = selectedItems.get(0).replace("item.", "").replace(".", ":");
+            String itemResourceName = itemName.replace("item.", "").replace(".", ":");
+
+            // TODO Get ingredients to double check some things.
+            final List<ItemStack> inputs = getIngredients(serverLevel, itemResourceName);
+
+            // TODO do things
+
+            // TODO: oh, what about tags?  how to check for them?
+
+            // Check for any tree fruit
+            // test just remove it.
+            for (ItemStack stack : inputs) {
+//                LOGGER.info("DEBUG3: stack name== " + stack.getDescriptionId());
+                if (stack.getDescriptionId().contains("pamhc2trees")) {
+                    LOGGER.info("DEBUG3: tree fruit found, removing from list.");
+                    selectedItems.remove(itemName);
+                    break;
+                }
+            }
+
+            // NOTICE: item.pamhc2foodextended.schnitzelitem
+            // has tofacon as main ingredient, could also be bacon, need to get all recipes probably. or tags?
+
+        }
+
+        // Trim it down to 15 now.
+        selectedItems = selectedItems.subList(0, Math.min(selectedItems.size(), 15));
+        LOGGER.info("DEBUG4: final marketItems = " + selectedItems.size() + " " + selectedItems.toString());
+
+        return selectedItems;
+    }
+
+
+    public List<ItemStack> getIngredients(ServerLevel serverLevel, String itemResourceName) {
+        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemResourceName));
+        LOGGER.info("###################");
+        LOGGER.info("DEBUG: item name = " + item.getDescriptionId());
+
+        // todo make a method. a couple.
+
+        // todo test a not shapeless recipe?  same? just ordered?  no? hmmm
+
+        // Now get recipe...
+        Recipe recipe = serverLevel.getRecipeManager()
+                .getAllRecipesFor(RecipeType.CRAFTING)
+                .stream()
+                .filter(recipe1 -> recipe1.getResultItem(serverLevel.registryAccess()).getItem() == item)
+                .findFirst()
+                .orElse(null);
+
+        // And Loop over all ingredients now.
+        if (recipe != null) {
+//            LOGGER.info("DEBUG: recipe = " + recipe);  // shapeless or shaped recipe.
+
+            final List<ItemStack> inputs = recipe.getIngredients().stream()
+                    .map(ingredient -> ((Ingredient) ingredient).getItems()[0])
+                    .toList();
+
+            LOGGER.info("DEBUG1: inputs = " + inputs);
+
+            // Log out each one now.
+            for (ItemStack stack : inputs) {
+                LOGGER.info("DEBUG2: stack name== " + stack.getDescriptionId());
+            }
+
+            return inputs;
+        }
+
+        // recipe not found.
+        return null;
+    }
+
+
 }
+
+
