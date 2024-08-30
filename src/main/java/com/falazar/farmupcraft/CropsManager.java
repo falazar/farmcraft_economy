@@ -662,35 +662,31 @@ public class CropsManager {
         // TODO May need to grab 20 first, then filter out the tree fruits, up to 5.
 
         // Need to check actual recipe here now though, filter out some tree fruits.
-        for (String itemName : selectedItems) {
-            // TODO: Get the recipe for each item and check if it is a tree fruit or things we dont want.
-
+        // todo make method.
+        Iterator<String> iterator = selectedItems.iterator();
+        while (iterator.hasNext()) {
+            String itemName = iterator.next();
             // Shift name format to resource location.
-//            String itemResourceName = selectedItems.get(0).replace("item.", "").replace(".", ":");
             String itemResourceName = itemName.replace("item.", "").replace(".", ":");
 
-            // TODO Get ingredients to double check some things.
+            // Get ingredients to double-check some things.
             final List<ItemStack> inputs = getIngredients(serverLevel, itemResourceName);
 
-            // TODO do things
-
-            // TODO: oh, what about tags?  how to check for them?
-
             // Check for any tree fruit
-            // test just remove it.
             for (ItemStack stack : inputs) {
-//                LOGGER.info("DEBUG3: stack name== " + stack.getDescriptionId());
                 if (stack.getDescriptionId().contains("pamhc2trees")) {
                     LOGGER.info("DEBUG3: tree fruit found, removing from list.");
-                    selectedItems.remove(itemName);
+                    // todo might filter apple and vanilla tooo, cinnamon, pepper?
+                    iterator.remove();
                     break;
                 }
             }
-
-            // NOTICE: item.pamhc2foodextended.schnitzelitem
-            // has tofacon as main ingredient, could also be bacon, need to get all recipes probably. or tags?
-
         }
+
+        // NOTICE: item.pamhc2foodextended.schnitzelitem
+        // has tofacon as main ingredient, could also be bacon, need to get all recipes probably. or tags?
+        // egg tart also fails on avocadoa substitute, we need to look at tags.
+        // .pamhc2foodextended.eggtartitem
 
         // Trim it down to 15 now.
         selectedItems = selectedItems.subList(0, Math.min(selectedItems.size(), 15));
