@@ -3,5 +3,5 @@
     "tag": "farmupcraft:vanilla_crops"
   },
   "growth_succes_rate": 10.0,
-  "populate_blocks": false
+  "populate_blocks": true
 }

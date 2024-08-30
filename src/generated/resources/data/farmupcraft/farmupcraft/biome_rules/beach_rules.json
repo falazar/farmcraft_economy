@@ -1,0 +1,23 @@
+{
+  "biome": "minecraft:is_beach",
+  "crop_rules": {
+    "allowed_crops": [
+      "minecraft:carrot",
+      "minecraft:potato",
+      "pamhc2crops:arrowrootseeditem",
+      "pamhc2crops:calabashseeditem",
+      "pamhc2crops:cottonseeditem",
+      "pamhc2crops:eggplantseeditem",
+      "pamhc2crops:garlicseeditem",
+      "pamhc2crops:grapeseeditem",
+      "pamhc2crops:guaranaseeditem",
+      "pamhc2crops:lentilseeditem",
+      "pamhc2crops:lotusseeditem",
+      "pamhc2crops:mulberryseeditem",
+      "pamhc2crops:nopalesseeditem",
+      "pamhc2crops:pineappleseeditem",
+      "pamhc2crops:ryeseeditem"
+    ],
+    "random_crop_count": 10
+  }
+}

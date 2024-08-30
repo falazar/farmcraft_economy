@@ -1,0 +1,7 @@
+{
+  "biome": "forge:is_desert",
+  "crop_rules": {
+    "allowed_crops": [],
+    "random_crop_count": 0
+  }
+}

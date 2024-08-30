@@ -1,0 +1,23 @@
+{
+  "biome": "minecraft:is_forest",
+  "crop_rules": {
+    "allowed_crops": [
+      "minecraft:carrot",
+      "pamhc2crops:barleyseeditem",
+      "pamhc2crops:bellpepperseeditem",
+      "pamhc2crops:broccoliseeditem",
+      "pamhc2crops:cauliflowerseeditem",
+      "pamhc2crops:chiaseeditem",
+      "pamhc2crops:cloudberryseeditem",
+      "pamhc2crops:eggplantseeditem",
+      "pamhc2crops:huckleberryseeditem",
+      "pamhc2crops:kaleseeditem",
+      "pamhc2crops:kenafseeditem",
+      "pamhc2crops:lentilseeditem",
+      "pamhc2crops:nopalesseeditem",
+      "pamhc2crops:onionseeditem",
+      "pamhc2crops:radishseeditem"
+    ],
+    "random_crop_count": 15
+  }
+}

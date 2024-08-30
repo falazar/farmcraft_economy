@@ -1,9 +1,8 @@
 package com.falazar.farmupcraft;
 
-import com.falazar.farmupcraft.data.CropBlockData;
-import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
-import com.falazar.farmupcraft.data.CropItemData;
-import com.falazar.farmupcraft.data.CropItemDataJsonManager;
+import com.falazar.farmupcraft.data.*;
+import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
+import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.client.Minecraft;
@@ -17,11 +16,14 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -37,6 +39,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraftforge.common.Tags;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
@@ -106,29 +109,20 @@ public class CropsManager {
 
         // STEP 4: Get current biome the block is in.
         Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
-        if (CropItemDataJsonManager.getCropItemDataEntries() == null || !CropItemDataJsonManager.getCropItemDataEntries().containsKey(stack.getItem()))
-            return;
-        CropItemData data = CropItemDataJsonManager.getCropItemDataEntries().get(stack.getItem());
 
+        //The biome has rules defined for what can happen in it or not!
+        BiomeRulesManager manager = BiomeRulesManager.get(event.getLevel());
+        if (manager == null || !manager.hasRules()) return;
 
-        //String biomeName = nameOfBiome(event.getLevel(), biome).toString();
-        //LOGGER.info("DEBUG: this biome is " + nameOfBiome(event.getLevel(), biome));
+        BiomeRulesInstance instance = manager.getBiomeRules(biome);
+        if (instance == null) return;
 
-
-        // STEP 5: Implement biome rules now, if fail, cancel plant and leave.
-        // Is this an allowed plant for this biome?
-
-        //you can define stuff in the Crop Item Data! :)
-        if (!isCropAllowed(data, stack, biome, event)) {
+        //check if the crop is allowed in the biome
+        if (!isCropAllowed(instance, stack, biome, event)) {
             // Cancel event and return now.
             event.setCanceled(true);
             return;
         }
-
-
-        // TODO figure out how to use.
-//            BlockEvent.BreakEvent
-//            BreakEvent(World world, BlockPos pos, BlockState state, PlayerEntity player)
     }
 
 
@@ -145,7 +139,7 @@ public class CropsManager {
         // If not a crop block, leave.
         if (CropBlockDataJsonManager.getCropBlockDataEntries() == null
                 || !CropBlockDataJsonManager.getCropBlockDataEntries().containsKey(block)) {
-            LOGGER.info("DEBUG: NON CROP BLOCK slowCropsEvent:  allowed, this target block is " + block.getName().toString());
+            //LOGGER.info("DEBUG: NON CROP BLOCK slowCropsEvent:  allowed, this target block is " + block.getName().toString());
             return;
         }
 
@@ -213,7 +207,6 @@ public class CropsManager {
             LOGGER.info("Error: server is null. ");
             return;
         }
-
 
 
         // Get the block position
@@ -307,9 +300,9 @@ public class CropsManager {
 
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
-    public static boolean isCropAllowed(CropItemData data, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
+    public static boolean isCropAllowed(BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // TODO invert this.
-        if (!data.containsBiome(biome)) {
+        if (!instance.biomeHasCrops(stack)) {
 
             // Get the name of the crop item
             String cropItemShow = stack.getHoverName().getString();
@@ -318,30 +311,30 @@ public class CropsManager {
             String biomeNameShow = biome.unwrapKey().map(key -> key.location().toString()).orElse("Unknown");
 
             Player player = event.getEntity();
-            if(!event.getLevel().isClientSide) {
+            if (!event.getLevel().isClientSide) {
                 // Display message that this crop cannot be planted in this biome
                 MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
                 player.displayClientMessage(component, false);
 
-                //// List the crops allowed in the current biome
-                //String cropsAllowedShow = data.getAllowedCropsInBiome(biome).stream()
-                //        .map(item -> item.getHoverName().getString())
-                //        .reduce((s1, s2) -> s1 + ", " + s2)
-                //        .orElse("None");
+                // List the crops allowed in the current biome
+                String cropsAllowedShow = instance.getRandomCrops().stream()
+                        .map(item -> Component.translatable(item.getDescriptionId()).toString())
+                        .reduce((s1, s2) -> s1 + ", " + s2)
+                        .orElse("None");
 //
-                //component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow);
-                //player.displayClientMessage(component, false);
+                component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow);
+                player.displayClientMessage(component, false);
 
                 // List the biomes where this crop can be planted
-                if (!data.getAllowedBiomesList().isEmpty()) {
-                    String biomesListShow = data.getAllowedBiomesList().stream()
-                            .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
-                            .reduce((s1, s2) -> s1 + ", " + s2)
-                            .orElse("None");
-
-                    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
-                    player.displayClientMessage(component, false);
-                }
+                //if (!instance.getAllowedBiomesList().isEmpty()) {
+                //    String biomesListShow = data.getAllowedBiomesList().stream()
+                //            .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
+                //            .reduce((s1, s2) -> s1 + ", " + s2)
+                //            .orElse("None");
+//
+                //    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
+                //    player.displayClientMessage(component, false);
+                //}
             }
             return false;
         }
@@ -694,7 +687,7 @@ public class CropsManager {
         // todo test a not shapeless recipe?  same? just ordered?  no? hmmm
 
         // Now get recipe...
-        Recipe recipe = serverLevel.getRecipeManager()
+        Recipe<CraftingContainer> recipe = serverLevel.getRecipeManager()
                 .getAllRecipesFor(RecipeType.CRAFTING)
                 .stream()
                 .filter(recipe1 -> recipe1.getResultItem(serverLevel.registryAccess()).getItem() == item)
@@ -738,25 +731,15 @@ public class CropsManager {
 
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        Item item = blockState.getBlock().asItem();
-        ItemStack itemStack = new ItemStack(item);
-         LOGGER.info("DEBUG1: "+itemStack.getDescriptionId()+" all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
-// [13:44:48] [Server thread/INFO] [co.fa.fa.CropsManager/]: DEBUG1: all tags = [TagKey[minecraft:item / forge:ore_bearing_ground/stone], TagKey[minecraft:item / forge:stone]]
+        MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
+        LOGGER.info("DEBUG1: " + component.toString() + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
 
-        // https://mcreator.net/wiki/minecraft-block-tags-list
-        // base_stone_overworld = stone, granite, diorite, andesite, tuff, deepslate
-        // dirt = dirt, grass_block, podzol, coarse_dirt, mycelium, rooted_dirt, moss_block, mud, muddy_mangrove_roots
-        // TODO whats forge:dirt then???
+
         // todo make mini method. do all for above and here. multiple tags passed in.
-        if (!(itemStack.getTags().anyMatch(itemTagKey -> itemTagKey.toString().contains("forge:stone")
-                || itemTagKey.toString().contains("dirt")
-                || itemTagKey.toString().contains("forge:cobblestone")
-                || itemTagKey.toString().contains("deepslate")
-                || itemTagKey.toString().contains("sandstone")
-                || itemTagKey.toString().contains("base_stone_nether")))) { // todo test
-            // Not a block we care about.
-            LOGGER.info("DEBUG2: Not a block we care about, leaving now.");
-            return;
+        if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD)) {
+
+            //should be like this, if its not a base stone overworld block do something here
+
         }
 
         LOGGER.info("DEBUG2: Testing2 here we found base stone/dirt");

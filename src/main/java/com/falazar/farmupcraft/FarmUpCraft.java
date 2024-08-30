@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.command.ManagersCommand;
 import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
@@ -35,6 +36,7 @@ public class FarmUpCraft {
 
     public void commands(RegisterCommandsEvent e) {
         ShowBiomesCommand.register(e.getDispatcher());
+        ManagersCommand.register(e.getDispatcher());
     }
 }
 
