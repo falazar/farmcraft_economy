@@ -16,6 +16,7 @@ public class FUCTags {
     public static final TagKey<Block> BARRIER = registerBlockTag("barrier");
     public static final TagKey<Block> FARMLAND = registerBlockTag("farmland");
     public static final TagKey<Block> VANILLA_CROPS_BLOCKS = registerBlockTag("vanilla_crops");
+    public static final TagKey<Block> MODDED_CROPS_BLOCKS = registerBlockTag("modded_crops");
 
 
     private static TagKey<Item> registerItemTag(String name) {

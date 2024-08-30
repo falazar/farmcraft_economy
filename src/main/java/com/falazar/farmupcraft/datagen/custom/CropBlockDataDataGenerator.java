@@ -16,5 +16,7 @@ public class CropBlockDataDataGenerator extends CropBlockDataProvider {
     @Override
     protected void buildCropData(Consumer<CropBlockDataConsumer> pWriter) {
         pWriter.accept(new CropBlockDataConsumer(prefix("test_crops"), new CropBlockData(FUCTags.VANILLA_CROPS_BLOCKS, 10D,false)));
+        pWriter.accept(new CropBlockDataConsumer(prefix("test_crops_modded"), new CropBlockData(FUCTags.MODDED_CROPS_BLOCKS, 10D,false)));
+
     }
 }
