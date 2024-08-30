@@ -304,6 +304,7 @@ public class CropsManager {
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
     public static boolean isCropAllowed(CropItemData data, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
+        // TODO invert this.
         if (!data.containsBiome(biome)) {
 
             // Get the name of the crop item
