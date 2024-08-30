@@ -62,6 +62,10 @@ public class CropItemData {
         return allowedBiomesList.contains(biome);
     }
 
+    public List<Holder<Biome>> getAllowedBiomesList() {
+        return allowedBiomesList;
+    }
+
     public void setAllowedBiomesList(List<Holder<Biome>> allowedBiomesList) {
         this.allowedBiomesList = allowedBiomesList;
     }

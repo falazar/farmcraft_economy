@@ -20,5 +20,7 @@ public class CropItemDataDataGenerator extends CropItemDataProvider {
     @Override
     protected void buildCropData(Consumer<CropItemDataConsumer> pWriter) {
         pWriter.accept(new CropItemDataConsumer(prefix("test_crops"), new CropItemData(FUCTags.VANILLA_CROPS, Tags.Biomes.IS_DESERT, true)));
+        pWriter.accept(new CropItemDataConsumer(prefix("test_modded_crops"), new CropItemData(FUCTags.MODDED_CROPS, Tags.Biomes.IS_DESERT, true)));
+
     }
 }

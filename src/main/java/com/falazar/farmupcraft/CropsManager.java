@@ -47,6 +47,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.StringUtils.replace;
 
@@ -65,7 +66,7 @@ public class CropsManager {
 
         // Step 1: If in creative mode, skip all rules and allow planting all.
         Player player = (Player) event.getEntity();
-        if(player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
+        if (player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
         if (player.isCreative()) {
             LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
             return;
@@ -117,7 +118,7 @@ public class CropsManager {
         // Is this an allowed plant for this biome?
 
         //you can define stuff in the Crop Item Data! :)
-        if (!data.containsBiome(biome)) {
+        if (!isCropAllowed(data, stack, biome, event)) {
             // Cancel event and return now.
             event.setCanceled(true);
             return;
@@ -296,65 +297,42 @@ public class CropsManager {
     }
 
 
-    // Given a crop stack item, and biomename, check if it is allowed to be planted here.
-    public static boolean isCropAllowed(ItemStack stack, String biomeName, PlayerInteractEvent event) {
-        List<String> cropsAllowed = getCropsForBiome(biomeName);
-//            LOGGER.info("DEBUG: biomeName = " + biomeName);
-//            LOGGER.info("DEBUG: cropsAllowed = " + cropsAllowed);
+    // Given a crop stack item, and biome, check if it is allowed to be planted here.
+    public static boolean isCropAllowed(CropItemData data, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
+        if (!data.containsBiome(biome)) {
 
-        String seedDescription = stack.getDescriptionId();
-        // Add second variation seeditem vs regular veggie, both can plant.
-        String seedDescriptionTwo = seedDescription;
-        String seedItem = seedDescription;
-        if (seedDescription.contains("seeditem")) {
-            seedDescriptionTwo = replace(seedDescriptionTwo, "seeditem", "item");
-        } else if (seedDescription.contains("pamhc2crops")) {
-            // If not a seeditem one, add seeditem onto it, and test again.
-            // Adding this cause you can plant with crop item and seed item both.
-            seedDescriptionTwo = seedDescriptionTwo.substring(0, seedDescriptionTwo.length() - 4) + "seeditem";
-            seedItem = seedDescriptionTwo;
-        }
-//            LOGGER.info("DEBUG: seedDescriptionTwo = " + seedDescriptionTwo);
+            // Get the name of the crop item
+            String cropItemShow = stack.getHoverName().getString();
 
-        // Check for 'seeditem', and item plain, as both can be planted.
-        if (!cropsAllowed.contains(seedDescription) && !cropsAllowed.contains(seedDescriptionTwo)) {
-            String biomeNameShow = biomeName.split(":")[1];
+            // Get the biome name
+            String biomeNameShow = biome.unwrapKey().map(key -> key.location().toString()).orElse("Unknown");
 
-            //use translatable to get correct name instead
-            String cropItemShow = Component.translatable(seedDescription).toString();
-            List<String> cropsAllowedShow = getCropShowNames(cropsAllowed);
-//                LOGGER.info("DEBUG: For this biome: " + biomeNameShow + " you cannot plant " + cropItemShow);
-//                LOGGER.info("DEBUG: Crops you can plant in " + biomeNameShow + ": " + cropsAllowedShow.toString());
+            Player player = event.getEntity();
 
-            // Send a message to the player.
-            if (event.getLevel().isClientSide()) {
-                Player player = event.getEntity();
-                // TODO change to reddish for warnings.
-                //PlayerChatMessage chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
-                //player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+            // Display message that this crop cannot be planted in this biome
+            MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
+            player.displayClientMessage(component, false);
 
-                MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
+            //// List the crops allowed in the current biome
+            //String cropsAllowedShow = data.getAllowedCropsInBiome(biome).stream()
+            //        .map(item -> item.getHoverName().getString())
+            //        .reduce((s1, s2) -> s1 + ", " + s2)
+            //        .orElse("None");
+//
+            //component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow);
+            //player.displayClientMessage(component, false);
+
+            // List the biomes where this crop can be planted
+            if (!data.getAllowedBiomesList().isEmpty()) {
+                String biomesListShow = data.getAllowedBiomesList().stream()
+                        .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
+                        .reduce((s1, s2) -> s1 + ", " + s2)
+                        .orElse("None");
+
+                component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
                 player.displayClientMessage(component, false);
-
-                // Send full crop list for this biome.
-                //chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow.toString());
-                //player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
-
-                component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow.toString());
-                player.displayClientMessage(component, false);
-
-                LOGGER.info("DEBUG: seedItem = " + seedItem);
-                List<String> biomesAllowed = cropBiomes.get(seedItem);
-                if (biomesAllowed != null) {
-                    // Send full list of biomes you can plant it in.
-                    //chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§bBiomes you can plant " + cropItemShow + ": §3" + cropBiomes.get(seedItem).toString());
-                    //player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
-
-
-                    component = Component.literal("§bBiomes you can plant " + cropItemShow + ": §3" + cropBiomes.get(seedItem).toString());
-                    player.displayClientMessage(component, false);
-                }
             }
+
             return false;
         }
 

@@ -1,0 +1,7 @@
+{
+  "allowed_biomes": "forge:is_desert",
+  "crop": {
+    "tag": "farmupcraft:modded_crops"
+  },
+  "populate_items": true
+}
