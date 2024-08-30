@@ -605,10 +605,10 @@ public class CropsManager {
             // "HARD"
 
             player.getFoodData().addExhaustion(0.5f);
-            LOGGER.info("DEBUG: Adding exhaustion: foodlevel:" +
-                    player.getFoodData().getFoodLevel()
-                    + " saturation level: " + player.getFoodData().getSaturationLevel()
-                    + " exhaustion level: " + player.getFoodData().getExhaustionLevel());
+//            LOGGER.info("DEBUG: Adding exhaustion: foodlevel:" +
+//                    player.getFoodData().getFoodLevel()
+//                    + " saturation level: " + player.getFoodData().getSaturationLevel()
+//                    + " exhaustion level: " + player.getFoodData().getExhaustionLevel());
         }
 
     }
@@ -739,8 +739,9 @@ public class CropsManager {
     // On breaking stone, sometimes it will fail and you will not get back any items.
     // You can increase the rate with skills and special items...
     // cobblestone and deepslate drop rate here.
+    // NOTICE: Event methods cannot be static.
     @SubscribeEvent
-    public static void onBreakStone(BlockEvent.BreakEvent event) {
+    public void onBreakStone(BlockEvent.BreakEvent event) {
 //        Player player = event.getPlayer();
 //        Player player = Player.getByName(player.getScoreboardName());
 //        if (player == null) {
