@@ -1,6 +1,7 @@
 {
   "biome": "forge:is_desert",
   "crop_rules": {
+    "type": "farmupcraft:item_list_crop_rule",
     "allowed_crops": [],
     "random_crop_count": 0
   }

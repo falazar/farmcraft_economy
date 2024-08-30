@@ -1,0 +1,9 @@
+{
+  "values": [
+    "#farmupcraft:vanilla_crops",
+    {
+      "id": "#farmupcraft:modded_crops",
+      "required": false
+    }
+  ]
+}

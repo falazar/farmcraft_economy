@@ -72,7 +72,6 @@ public class CropBlockDataJsonManager extends SimpleJsonResourceReloadListener {
                     }
                 });
             }
-
         }
     }
 

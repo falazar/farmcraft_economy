@@ -2,6 +2,9 @@ package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.command.ManagersCommand;
 import com.falazar.farmupcraft.command.ShowBiomesCommand;
+import com.falazar.farmupcraft.data.rules.crop.CropRules;
+import com.falazar.farmupcraft.registry.FUCRegistries;
+import com.falazar.farmupcraft.setup.Registration;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
@@ -9,6 +12,7 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.registries.DataPackRegistryEvent;
 import org.slf4j.Logger;
 
 import java.util.Locale;
@@ -26,7 +30,10 @@ public class FarmUpCraft {
     public FarmUpCraft() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         MinecraftForge.EVENT_BUS.addListener(this::commands);
-
+        Registration.init();
+        modEventBus.addListener((DataPackRegistryEvent.NewRegistry event) -> {
+            event.dataPackRegistry(FUCRegistries.Keys.CROP_RULES, CropRules.DIRECT_CODEC, CropRules.DIRECT_CODEC);
+        });
     }
 
     public static ResourceLocation prefix(String name) {

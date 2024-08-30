@@ -64,7 +64,6 @@ public class ForgeEvents {
         CropBlockDataJsonManager.clearEntries();
         CropItemDataJsonManager.clearEntries();
         BiomeRulesDataJsonManager.clearEntries();
-
     }
 
     /**

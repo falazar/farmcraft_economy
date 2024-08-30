@@ -13,6 +13,7 @@ import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
 import net.minecraft.tags.TagKey;
 import net.minecraft.util.profiling.ProfilerFiller;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import org.apache.logging.log4j.LogManager;
@@ -70,18 +71,27 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
         if (biomeRules.isEmpty()) return;
         BiomeRulesManager manager = BiomeRulesManager.get(level);
         if(manager.hasRules()) return;
+
         for (BiomeRulesData data : getBiomeRules().values()) {
             TagKey<Biome> biomes = data.getBiome();
             if(biomes != null) {
                 level.registryAccess().registry(Registries.BIOME).ifPresent(reg -> {
                     Iterable<Holder<Biome>> holders = reg.getTagOrEmpty(biomes);
-                    List<Holder<Biome>> biomesList = new ArrayList<>();
                     for (Holder<Biome> biomeHolder : holders) {
                         if(!manager.containsBiome(biomeHolder)) {
-                            manager.setBiomeRules(biomeHolder, new BiomeRulesInstance(data, level.getSeed()));
+                            manager.setBiomeRules(biomeHolder, new BiomeRulesInstance(data));
                         }
                     }
                 });
+            }
+        }
+
+
+        if(manager.hasItems()) return;
+        for(Holder<Biome> biomes : manager.getBiomeKeys()){
+            BiomeRulesInstance instance = manager.getBiomeRules(biomes);
+            for(Item item : instance.getCrops(level)) {
+                manager.setItemBiomeList(item, biomes);
             }
         }
     }

@@ -118,7 +118,7 @@ public class CropsManager {
         if (instance == null) return;
 
         //check if the crop is allowed in the biome
-        if (!isCropAllowed(instance, stack, biome, event)) {
+        if (!isCropAllowed(manager ,instance, stack, biome, event)) {
             // Cancel event and return now.
             event.setCanceled(true);
             return;
@@ -300,7 +300,7 @@ public class CropsManager {
 
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
-    public static boolean isCropAllowed(BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
+    public static boolean isCropAllowed(BiomeRulesManager manager,BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // TODO invert this.
         if (!instance.biomeHasCrops(stack)) {
 
@@ -317,7 +317,7 @@ public class CropsManager {
                 player.displayClientMessage(component, false);
 
                 // List the crops allowed in the current biome
-                String cropsAllowedShow = instance.getRandomCrops().stream()
+                String cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
                         .map(item -> Component.translatable(item.getDescriptionId()).toString())
                         .reduce((s1, s2) -> s1 + ", " + s2)
                         .orElse("None");
@@ -326,15 +326,16 @@ public class CropsManager {
                 player.displayClientMessage(component, false);
 
                 // List the biomes where this crop can be planted
-                //if (!instance.getAllowedBiomesList().isEmpty()) {
-                //    String biomesListShow = data.getAllowedBiomesList().stream()
-                //            .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
-                //            .reduce((s1, s2) -> s1 + ", " + s2)
-                //            .orElse("None");
+
+                if (manager.hasItems()) {
+                    String biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
+                            .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
+                            .reduce((s1, s2) -> s1 + ", " + s2)
+                            .orElse("None");
 //
-                //    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
-                //    player.displayClientMessage(component, false);
-                //}
+                    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
+                    player.displayClientMessage(component, false);
+                }
             }
             return false;
         }
@@ -732,7 +733,8 @@ public class CropsManager {
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
         MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
-        LOGGER.info("DEBUG1: " + component.toString() + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
+        String s = component.toString();
+        LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
 
 
         // todo make mini method. do all for above and here. multiple tags passed in.

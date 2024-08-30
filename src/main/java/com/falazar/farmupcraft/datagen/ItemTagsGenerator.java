@@ -38,7 +38,7 @@ public class ItemTagsGenerator extends ItemTagsProvider {
         this.tag(FUCTags.VANILLA_CROPS).add(Items.POTATO).add(Items.WHEAT_SEEDS).add(Items.CARROT).add(Items.BEETROOT_SEEDS);
 
         for(Item object : ForgeRegistries.ITEMS.getValues()) {
-            if(object.getDescriptionId().contains("pamhc2crops")) {
+            if(object.getDescriptionId().contains("pamhc2crops") && object.getDescriptionId().contains("seed")) {
                 ResourceLocation location = ForgeRegistries.ITEMS.getKey(object);
                 this.tag(FUCTags.MODDED_CROPS).addOptional(location);
             }
@@ -48,6 +48,8 @@ public class ItemTagsGenerator extends ItemTagsProvider {
                 this.tag(FUCTags.MARKET_FOODS).addOptional(location);
             }
         }
+
+        this.tag(FUCTags.VANILLA_AND_MODDED_CROPS).addTag(FUCTags.VANILLA_CROPS).addOptionalTag(FUCTags.MODDED_CROPS.location());
     }
 
     @Override

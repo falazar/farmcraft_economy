@@ -1,23 +1,8 @@
 {
   "biome": "forge:is_plains",
   "crop_rules": {
-    "allowed_crops": [
-      "pamhc2crops:amaranthseeditem",
-      "pamhc2crops:artichokeseeditem",
-      "pamhc2crops:brusselsproutseeditem",
-      "pamhc2crops:chiaseeditem",
-      "pamhc2crops:kaleseeditem",
-      "pamhc2crops:leekseeditem",
-      "pamhc2crops:lettuceseeditem",
-      "pamhc2crops:mulberryseeditem",
-      "pamhc2crops:nettlesseeditem",
-      "pamhc2crops:onionseeditem",
-      "pamhc2crops:peasseeditem",
-      "pamhc2crops:raspberryseeditem",
-      "pamhc2crops:ryeseeditem",
-      "pamhc2crops:spiceleafseeditem",
-      "pamhc2crops:taroseeditem"
-    ],
-    "random_crop_count": 15
+    "type": "farmupcraft:tag_based_random_crop_rule",
+    "random_crop_count": 15,
+    "tag": "farmupcraft:vanilla_and_modded_crops"
   }
 }

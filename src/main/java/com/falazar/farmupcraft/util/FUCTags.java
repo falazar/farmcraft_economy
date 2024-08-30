@@ -13,6 +13,7 @@ public class FUCTags {
     public static final TagKey<Item> VANILLA_CROPS = registerItemTag("vanilla_crops");
     public static final TagKey<Item> MODDED_CROPS = registerItemTag("modded_crops");
     public static final TagKey<Item> MARKET_FOODS = registerItemTag("market_foods");
+    public static final TagKey<Item> VANILLA_AND_MODDED_CROPS = registerItemTag("vanilla_and_modded_crops");
 
     public static final TagKey<Block> BARRIER = registerBlockTag("barrier");
     public static final TagKey<Block> FARMLAND = registerBlockTag("farmland");

@@ -15,17 +15,14 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
-import net.minecraftforge.registries.ForgeRegistries;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 /**
  * Manages biome-specific rules for the mod.
@@ -42,6 +39,10 @@ public class BiomeRulesManager extends SavedData {
 
     private static ServerLevel level;
     private static final Map<Holder<Biome>, BiomeRulesInstance> biomeRules = new ConcurrentHashMap<>();
+
+
+    //todo add this here for now maybe need a better place?
+    private static final Map<Item, List<Holder<Biome>>> itemToBiomeList = new ConcurrentHashMap<>();
 
     //public static SavedData.Factory<BiomeRulesManager> factory() {
     //    return new SavedData.Factory<>(WorldEventManager::new, WorldEventManager::new);
@@ -119,8 +120,35 @@ public class BiomeRulesManager extends SavedData {
         }
 
         compoundTag.put("biome_rules", listTag);
+
+        // Save the itemToBiomeList
+        ListTag itemToBiomeListTag = new ListTag();
+
+        for (Map.Entry<Item, List<Holder<Biome>>> entry : itemToBiomeList.entrySet()) {
+            CompoundTag itemTag = new CompoundTag();
+
+            // Save the item
+            itemTag.putString("item", BuiltInRegistries.ITEM.getKey(entry.getKey()).toString());
+
+            // Save the list of biomes
+            ListTag biomesTag = new ListTag();
+            for (Holder<Biome> biome : entry.getValue()) {
+                CompoundTag biomeTag = new CompoundTag();
+                biomeTag.putString("biome", biome.unwrapKey().orElseThrow().location().toString());
+                biomesTag.add(biomeTag);
+            }
+
+            itemTag.put("biomes", biomesTag);
+            itemToBiomeListTag.add(itemTag);
+        }
+
+        compoundTag.put("item_to_biome_list", itemToBiomeListTag);
+
+
+
         return compoundTag;
     }
+
 
     /**
      * Loads biome rules from the given NBT data.
@@ -157,6 +185,49 @@ public class BiomeRulesManager extends SavedData {
             rulesInstance.resultOrPartial(err -> LOGGER.error("Failed to load rules for {} due to {}", biomeHolder, err))
                     .ifPresent(rulesInstancer    -> biomeRules.put(biomeHolder, rulesInstancer));
         }
+
+
+
+
+        // Load the itemToBiomeList
+        ListTag itemToBiomeListTag = nbt.getList("item_to_biome_list", Tag.TAG_COMPOUND);
+        itemToBiomeList.clear();
+
+        for (Tag tag : itemToBiomeListTag) {
+            CompoundTag itemTag = (CompoundTag) tag;
+
+            // Load the item
+            String itemKey = itemTag.getString("item");
+            Item item = BuiltInRegistries.ITEM.get(new ResourceLocation(itemKey));
+
+            if (item == null) {
+                LOGGER.error("Failed to load item '{}', item not found.", itemKey);
+                continue; // Skip processing for this item
+            }
+
+            // Load the list of biomes
+            ListTag biomesTag = itemTag.getList("biomes", Tag.TAG_COMPOUND);
+            List<Holder<Biome>> biomesList = new ArrayList<>();
+
+            for (Tag biomeTag : biomesTag) {
+                String biomeKey = ((CompoundTag) biomeTag).getString("biome");
+
+                ResourceKey<Biome> biomeRK = ResourceKey.create(Registries.BIOME, new ResourceLocation(biomeKey));
+
+                Optional<Holder<Biome>> biomeHolderOptional = level.registryAccess().registry(Registries.BIOME)
+                        .flatMap(biomes -> biomes.getHolder(biomeRK));
+
+                if (biomeHolderOptional.isEmpty()) {
+                    LOGGER.error("Failed to load biome '{}', biome not found.", biomeKey);
+                    continue; // Skip processing for this biome
+                }
+
+                biomesList.add(biomeHolderOptional.get());
+            }
+
+            itemToBiomeList.put(item, biomesList);
+        }
+
     }
 
     /**
@@ -180,8 +251,9 @@ public class BiomeRulesManager extends SavedData {
     /**
      * Clears all biome rules.
      */
-    public void clearRules() {
+    public void clear() {
         biomeRules.clear();
+        itemToBiomeList.clear();
     }
 
     /**
@@ -227,5 +299,28 @@ public class BiomeRulesManager extends SavedData {
     public void setBiomeRules(Holder<Biome> biome, BiomeRulesInstance rulesInstance) {
         biomeRules.put(biome, rulesInstance);
         setDirty(); // Mark the data as dirty to be saved
+    }
+
+    public Collection<BiomeRulesInstance> getBiomeRules() {
+        return biomeRules.values();
+    }
+
+    public Set<Holder<Biome>> getBiomeKeys() {
+        return biomeRules.keySet();
+    }
+
+    public List<Holder<Biome>> getBiomesForItem(Item item) {
+        return itemToBiomeList.computeIfAbsent(item, e -> new ArrayList<>());
+    }
+
+    public void setItemBiomeList(Item item, Holder<Biome> biomeHolder) {
+        List<Holder<Biome>> biomeList = itemToBiomeList.computeIfAbsent(item, e -> new ArrayList<>());
+        biomeList.add(biomeHolder);
+        itemToBiomeList.put(item, biomeList);
+        setDirty();
+    }
+
+    public boolean hasItems() {
+        return !itemToBiomeList.isEmpty();
     }
 }

@@ -37,7 +37,7 @@ public class ManagersCommand {
         switch (managerType) {
             case BIOME_RULES:
                 BiomeRulesManager biomeRulesManager = BiomeRulesManager.get(serverLevel);
-                biomeRulesManager.clearRules();  // Add a clear method in BiomeRulesManager
+                biomeRulesManager.clear();  // Add a clear method in BiomeRulesManager
                 break;
             // Add cases for other managers here
             case NONE:

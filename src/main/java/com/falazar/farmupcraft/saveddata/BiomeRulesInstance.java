@@ -4,11 +4,16 @@ import com.falazar.farmupcraft.data.BiomeRulesData;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
 import net.minecraft.world.level.saveddata.SavedData;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -32,7 +37,7 @@ public class BiomeRulesInstance {
     );
 
     private final BiomeRulesData rulesData;
-    private final List<Item> randomCrops;
+    private List<Item> randomCrops;
     private boolean shouldSave = true;
 
     /**
@@ -40,7 +45,7 @@ public class BiomeRulesInstance {
      * <p>
      * This instance is used as a placeholder or default value when no specific rules are defined.
      */
-    public static final BiomeRulesInstance EMPTY = new BiomeRulesInstance(BiomeRulesData.EMPTY, 0);
+    public static final BiomeRulesInstance EMPTY = new BiomeRulesInstance(BiomeRulesData.EMPTY);
 
     /**
      * Constructs a new {@link BiomeRulesInstance} with the specified rules data and random crop seed.
@@ -48,11 +53,9 @@ public class BiomeRulesInstance {
      * The random crops list is generated based on the provided seed.
      *
      * @param rulesData The {@link BiomeRulesData} that defines the rules for the biome.
-     * @param seed      A seed used to generate a list of random crops for the biome.
      */
-    public BiomeRulesInstance(BiomeRulesData rulesData, long seed) {
-        this.rulesData = rulesData;
-        this.randomCrops = rulesData.getCropRules().getRandomCrops(seed);
+    public BiomeRulesInstance(BiomeRulesData rulesData) {
+        this(rulesData, Collections.emptyList());
     }
 
     /**
@@ -80,7 +83,16 @@ public class BiomeRulesInstance {
      *
      * @return A list of {@link Item} objects that are considered as random crops for this biome.
      */
-    public List<Item> getRandomCrops() {
+    private List<Item> getRandomCrops() {
+        return randomCrops;
+    }
+
+
+
+    public List<Item> getCrops(ServerLevel level) {
+        if(this.randomCrops.isEmpty()) {
+            this.randomCrops =  new ArrayList<>(this.rulesData.getCropRules().getCropItems(level));
+        }
         return randomCrops;
     }
 
