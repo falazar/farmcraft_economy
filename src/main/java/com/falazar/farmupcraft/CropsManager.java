@@ -144,6 +144,7 @@ public class CropsManager {
         // If not a crop block, leave.
         if (CropBlockDataJsonManager.getCropBlockDataEntries() == null
                 || !CropBlockDataJsonManager.getCropBlockDataEntries().containsKey(block)) {
+            LOGGER.info("DEBUG: NON CROP BLOCK slowCropsEvent:  allowed, this target block is " + block.getName().toString());
             return;
         }
 
@@ -166,7 +167,7 @@ public class CropsManager {
         }
         // Else allow to grow as normal.
 
-//        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
+        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
     }
 
 
