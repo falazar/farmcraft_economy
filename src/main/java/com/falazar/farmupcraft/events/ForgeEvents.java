@@ -3,6 +3,7 @@ package com.falazar.farmupcraft.events;
 import com.falazar.farmupcraft.FarmUpCraft;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.data.CropItemDataJsonManager;
+import com.falazar.farmupcraft.data.MarketDataJsonManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
@@ -35,5 +36,6 @@ public class ForgeEvents {
     public static void onRegisterReloadListeners(AddReloadListenerEvent event) {
         event.addListener(new CropBlockDataJsonManager());
         event.addListener(new CropItemDataJsonManager());
+        event.addListener(new MarketDataJsonManager());
     }
 }

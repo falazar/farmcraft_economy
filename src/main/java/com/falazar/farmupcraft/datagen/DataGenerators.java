@@ -3,6 +3,7 @@ package com.falazar.farmupcraft.datagen;
 import com.falazar.farmupcraft.FarmUpCraft;
 import com.falazar.farmupcraft.datagen.custom.CropBlockDataDataGenerator;
 import com.falazar.farmupcraft.datagen.custom.CropItemDataDataGenerator;
+import com.falazar.farmupcraft.datagen.custom.MarketDataDataGenerator;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
@@ -27,6 +28,7 @@ public class DataGenerators {
         generator.addProvider(event.includeServer(), new ItemTagsGenerator(packOutput, lookupProvider, blockTagGenerator.contentsGetter(), existingFileHelper));
         generator.addProvider(event.includeServer(), new CropBlockDataDataGenerator(packOutput, FarmUpCraft.MODID));
         generator.addProvider(event.includeServer(), new CropItemDataDataGenerator(packOutput, FarmUpCraft.MODID));
+        generator.addProvider(event.includeServer(), new MarketDataDataGenerator(packOutput, FarmUpCraft.MODID));
 
 
     }
