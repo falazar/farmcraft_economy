@@ -145,6 +145,7 @@ public class CropsManager {
         // If not a crop block, leave.
         if (CropBlockDataJsonManager.getCropBlockDataEntries() == null
                 || !CropBlockDataJsonManager.getCropBlockDataEntries().containsKey(block)) {
+            LOGGER.info("DEBUG: NON CROP BLOCK slowCropsEvent:  allowed, this target block is " + block.getName().toString());
             return;
         }
 
@@ -167,7 +168,7 @@ public class CropsManager {
         }
         // Else allow to grow as normal.
 
-//        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
+        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
     }
 
 
@@ -307,6 +308,7 @@ public class CropsManager {
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
     public static boolean isCropAllowed(CropItemData data, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
+        // TODO invert this.
         if (!data.containsBiome(biome)) {
 
             // Get the name of the crop item
