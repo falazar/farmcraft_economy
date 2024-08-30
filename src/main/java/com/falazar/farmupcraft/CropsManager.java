@@ -135,15 +135,19 @@ public class CropsManager {
     // Now based on actual growth stat instead?  onGrow event
     // Slow down crop growth, tooooo fast!!!
     // TODO make a config var for base?
-    // NOTICE: Event methods cannot be static.
     @SubscribeEvent
     public static void slowCropsEvent(BlockEvent.CropGrowEvent.Pre event) {
         BlockPos blockPos = event.getPos();
         BlockState blockState = event.getLevel().getBlockState(blockPos);
         Block block = blockState.getBlock();
-        if (CropBlockDataJsonManager.getCropBlockDataEntries() == null || !CropBlockDataJsonManager.getCropBlockDataEntries().containsKey(block))
+
+        // If not a crop block, leave.
+        if (CropBlockDataJsonManager.getCropBlockDataEntries() == null
+                || !CropBlockDataJsonManager.getCropBlockDataEntries().containsKey(block)) {
             return;
-        //get the crop data to do stuff with it!
+        }
+
+        // Get the crop data to do stuff with it!
         CropBlockData data = CropBlockDataJsonManager.getCropBlockDataEntries().get(block);
 
 
@@ -151,7 +155,7 @@ public class CropsManager {
         int randomNum = rand.nextInt(100); // 100% 0-99
 
         // TODO testing with this. slow min.
-        //the rate is now defined in the crop data!
+        // The rate is now defined in the crop data!
         int baseSuccessRate = (int) data.getGrowthSuccesRate();
 
         // TODO add all modifiers here.
@@ -719,7 +723,7 @@ public class CropsManager {
     // cobblestone and deepslate drop rate here.
     // NOTICE: Event methods cannot be static.
     @SubscribeEvent
-    public void onBreakStone(BlockEvent.BreakEvent event) {
+    public static void onBreakStone(BlockEvent.BreakEvent event) {
 //        Player player = event.getPlayer();
 //        Player player = Player.getByName(player.getScoreboardName());
 //        if (player == null) {
@@ -732,7 +736,8 @@ public class CropsManager {
         ItemStack itemStack = new ItemStack(item);
 
         // TODO TEST LINE
-        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
+//        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString())); pipe only doesnt show.
+//        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
         // Now instead lets have it trigger a destroy block and maybe not give rewards.
 //        if (itemStack.getTags().contains(new ResourceLocation("minecraft", "base_stone_overworld"))
 //                || blockState.getBlock().getTags().contains(new ResourceLocation("forge", "dirt"))) {
