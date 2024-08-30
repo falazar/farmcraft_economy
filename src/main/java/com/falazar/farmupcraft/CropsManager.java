@@ -47,6 +47,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static org.apache.commons.lang3.StringUtils.replace;
 
@@ -741,7 +742,7 @@ public class CropsManager {
     // cobblestone and deepslate drop rate here.
     // NOTICE: Event methods cannot be static.
     @SubscribeEvent
-    public void onBreakStone(BlockEvent.BreakEvent event) {
+    public static void onBreakStone(BlockEvent.BreakEvent event) {
 //        Player player = event.getPlayer();
 //        Player player = Player.getByName(player.getScoreboardName());
 //        if (player == null) {
@@ -754,7 +755,8 @@ public class CropsManager {
         ItemStack itemStack = new ItemStack(item);
 
         // TODO TEST LINE
-        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
+        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()));
+//        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
         // Now instead lets have it trigger a destroy block and maybe not give rewards.
 //        if (itemStack.getTags().contains(new ResourceLocation("minecraft", "base_stone_overworld"))
 //                || blockState.getBlock().getTags().contains(new ResourceLocation("forge", "dirt"))) {
