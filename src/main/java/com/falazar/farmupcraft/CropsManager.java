@@ -6,6 +6,7 @@ import com.falazar.farmupcraft.data.CropItemData;
 import com.falazar.farmupcraft.data.CropItemDataJsonManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.FUCTags;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -206,10 +207,13 @@ public class CropsManager {
 
         // Get Server
         MinecraftServer server = player.getServer();
+
         if (server == null) {
             LOGGER.info("Error: server is null. ");
             return;
         }
+
+
 
         // Get the block position
         BlockPos blockPos = event.getPos();
@@ -312,31 +316,31 @@ public class CropsManager {
             String biomeNameShow = biome.unwrapKey().map(key -> key.location().toString()).orElse("Unknown");
 
             Player player = event.getEntity();
-
-            // Display message that this crop cannot be planted in this biome
-            MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
-            player.displayClientMessage(component, false);
-
-            //// List the crops allowed in the current biome
-            //String cropsAllowedShow = data.getAllowedCropsInBiome(biome).stream()
-            //        .map(item -> item.getHoverName().getString())
-            //        .reduce((s1, s2) -> s1 + ", " + s2)
-            //        .orElse("None");
-//
-            //component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow);
-            //player.displayClientMessage(component, false);
-
-            // List the biomes where this crop can be planted
-            if (!data.getAllowedBiomesList().isEmpty()) {
-                String biomesListShow = data.getAllowedBiomesList().stream()
-                        .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
-                        .reduce((s1, s2) -> s1 + ", " + s2)
-                        .orElse("None");
-
-                component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
+            if(!event.getLevel().isClientSide) {
+                // Display message that this crop cannot be planted in this biome
+                MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
                 player.displayClientMessage(component, false);
-            }
 
+                //// List the crops allowed in the current biome
+                //String cropsAllowedShow = data.getAllowedCropsInBiome(biome).stream()
+                //        .map(item -> item.getHoverName().getString())
+                //        .reduce((s1, s2) -> s1 + ", " + s2)
+                //        .orElse("None");
+//
+                //component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow);
+                //player.displayClientMessage(component, false);
+
+                // List the biomes where this crop can be planted
+                if (!data.getAllowedBiomesList().isEmpty()) {
+                    String biomesListShow = data.getAllowedBiomesList().stream()
+                            .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
+                            .reduce((s1, s2) -> s1 + ", " + s2)
+                            .orElse("None");
+
+                    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
+                    player.displayClientMessage(component, false);
+                }
+            }
             return false;
         }
 
