@@ -117,7 +117,7 @@ public class CropsManager {
         // Is this an allowed plant for this biome?
 
         //you can define stuff in the Crop Item Data! :)
-        if (data.containsBiome(biome)) {
+        if (!data.containsBiome(biome)) {
             // Cancel event and return now.
             event.setCanceled(true);
             return;
