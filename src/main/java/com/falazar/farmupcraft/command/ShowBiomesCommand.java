@@ -29,16 +29,26 @@ public class ShowBiomesCommand {
 
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
-        LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("show").requires(s -> s.hasPermission(2));
+        // Define the base command "show"
+        LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("show")
+                .requires(s -> s.hasPermission(0));  // Adjust permission as needed
 
-        LiteralArgumentBuilder<CommandSourceStack> biomesBuilder = Commands.literal("biomes").then(Commands.argument("pos", Vec3Argument.vec3()).then( Commands.argument("radius", IntegerArgumentType.integer()))).executes(c -> {
-            return showBiomes(c, Vec3Argument.getVec3(c, "pos"), IntegerArgumentType.getInteger(c,"radius"));
-        });
+        // Define the "biomes" sub-command with "pos" and "radius" arguments
+        LiteralArgumentBuilder<CommandSourceStack> biomesBuilder = Commands.literal("biomes")
+                .then(Commands.argument("pos", Vec3Argument.vec3())
+                        .then(Commands.argument("radius", IntegerArgumentType.integer())
+                                .executes(c -> showBiomes(c, Vec3Argument.getVec3(c, "pos"), IntegerArgumentType.getInteger(c, "radius")))
+                        )
+                )
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
 
-
+        // Add the "biomes" sub-command to the "show" command
         builder.then(biomesBuilder);
+
+        // Register the main "show" command with the dispatcher
         pDispatcher.register(builder);
     }
+
 
     public static int showBiomes(CommandContext<CommandSourceStack> c, Vec3 pos, int radius) {
         try {
@@ -61,8 +71,8 @@ public class ShowBiomesCommand {
                         // Check all block positions in the chunk within the radius
                         for (int x = 0; x < 16; x++) {
                             for (int z = 0; z < 16; z++) {
-                                BlockPos blockPos = chunkPos.getBlockAt(x, z, level.getMinBuildHeight());
-                                double distance = blockPos.distToCenterSqr(pos.x, pos.y, pos.z);
+                                BlockPos blockPos = chunk.getPos().getBlockAt(x, 0, z);
+                                double distance = blockPos.distToCenterSqr(pos.x, 0, pos.z);
 
                                 // Only consider blocks within the radius
                                 if (distance <= radius * radius) {
