@@ -1,0 +1,892 @@
+{
+  "values": [
+    {
+      "id": "pamhc2crops:amaranthitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:barleyitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:beanitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:chickpeaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cornitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:lentilitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:milletitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:oatsitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:quinoaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:riceitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:ryeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:soybeanitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sorghumitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cottonitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:flaxitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kenafitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:juteitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sisalitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:yuccaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:artichokeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:asparagusitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bellpepperitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:broccoliitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:brusselsproutitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cabbageitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:caulifloweritem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:celeryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:chilipepperitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cucumberitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:eggplantitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kaleitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:lettuceitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:okraitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:peasitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:spinachitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tomatilloitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tomatoitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:wintersquashitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:zucchiniitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:chiaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:nopalesitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bokchoyitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:calabashitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:arrowrootitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cassavaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:garlicitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:jicamaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:leekitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kohlrabiitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:onionitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:parsnipitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:peanutitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:radishitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:rhubarbitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:rutabagaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:scallionitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sweetpotatoitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:taroitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:turnipitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:waterchestnutitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:lotusitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:blackberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:blueberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cactusfruititem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:candleberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cantaloupeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cranberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:elderberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:grapeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:greengrapeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:huckleberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:juniperberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kiwiitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:mulberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:pineappleitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:raspberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:strawberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cloudberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:wolfberryitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:guaranaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:alfalfaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:aloeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:barrelcactusitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:canolaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cattailitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:papyrusitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sunchokeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:coffeebeanitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tealeafitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:nettlesitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:agaveitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:whitemushroomitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:truffleitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:gingeritem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sesameseedsitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:spiceleafitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:mustardseedsitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedarrowrootitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedcassavaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedgarlicitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedjicamaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedleekitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedkohlrabiitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedonionitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedparsnipitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedpeanutitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedradishitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedrhubarbitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedrutabagaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedscallionitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedsweetpotatoitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedtaroitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedturnipitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedwaterchestnutitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bakedsunchokeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:roastedmushroomitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:hotteaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:hotcoffeeitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:hotnettleteaitem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:agaveseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:amaranthseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:arrowrootseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:artichokeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:asparagusseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:barleyseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:beanseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bellpepperseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:blackberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:blueberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:broccoliseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:brusselsproutseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cabbageseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cactusfruitseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:candleberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cantaloupeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cassavaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cauliflowerseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:celeryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:chickpeaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:chilipepperseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:coffeebeanseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cornseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cottonseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cranberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cucumberseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:eggplantseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:elderberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:flaxseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:garlicseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:gingerseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:grapeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:greengrapeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:huckleberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:jicamaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:juniperberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:juteseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kaleseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kenafseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kiwiseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:kohlrabiseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:leekseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:lentilseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:lettuceseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:milletseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:mulberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:mustardseedsseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:oatsseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:okraseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:onionseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:parsnipseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:peanutseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:peasseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:pineappleseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:quinoaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:radishseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:raspberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:rhubarbseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:riceseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:rutabagaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:ryeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:scallionseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sesameseedsseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sisalseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:soybeanseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:spiceleafseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:spinachseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:strawberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sweetpotatoseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:taroseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tealeafseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tomatilloseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tomatoseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:turnipseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:waterchestnutseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:whitemushroomseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:wintersquashseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:zucchiniseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:alfalfaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:aloeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:barrelcactusseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:canolaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cattailseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:chiaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:cloudberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:lotusseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:nettlesseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:nopalesseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sorghumseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:truffleseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:wolfberryseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:yuccaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:bokchoyseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:calabashseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:guaranaseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:papyrusseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:sunchokeseeditem",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:aridgarden",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:frostgarden",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:shadedgarden",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:soggygarden",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:tropicalgarden",
+      "required": false
+    },
+    {
+      "id": "pamhc2crops:windygarden",
+      "required": false
+    }
+  ]
+}
