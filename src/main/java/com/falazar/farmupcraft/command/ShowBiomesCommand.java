@@ -31,9 +31,12 @@ public class ShowBiomesCommand {
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("show").requires(s -> s.hasPermission(2));
 
-        LiteralArgumentBuilder<CommandSourceStack> createBuilder = Commands.literal("biomes").then(Commands.argument("pos", Vec3Argument.vec3()).then( Commands.argument("radius", IntegerArgumentType.integer()))).executes(c -> {
+        LiteralArgumentBuilder<CommandSourceStack> biomesBuilder = Commands.literal("biomes").then(Commands.argument("pos", Vec3Argument.vec3()).then( Commands.argument("radius", IntegerArgumentType.integer()))).executes(c -> {
             return showBiomes(c, Vec3Argument.getVec3(c, "pos"), IntegerArgumentType.getInteger(c,"radius"));
         });
+
+
+        builder.then(biomesBuilder);
         pDispatcher.register(builder);
     }
 
