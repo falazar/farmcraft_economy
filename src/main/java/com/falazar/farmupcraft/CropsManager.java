@@ -723,7 +723,7 @@ public class CropsManager {
         return null;
     }
 
-    // TODO: move to mining manager class.
+    // TODO: move to stone? manager class.
     // On breaking stone, sometimes it will fail and you will not get back any items.
     // You can increase the rate with skills and special items...
     // cobblestone and deepslate drop rate here.
@@ -740,29 +740,26 @@ public class CropsManager {
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
         Item item = blockState.getBlock().asItem();
         ItemStack itemStack = new ItemStack(item);
+         LOGGER.info("DEBUG1: "+itemStack.getDescriptionId()+" all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
+// [13:44:48] [Server thread/INFO] [co.fa.fa.CropsManager/]: DEBUG1: all tags = [TagKey[minecraft:item / forge:ore_bearing_ground/stone], TagKey[minecraft:item / forge:stone]]
 
-        // TODO TEST LINE
-//        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString())); pipe only doesnt show.
-//        LOGGER.info("DEBUG1: all tags = " + itemStack.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
-        // Now instead lets have it trigger a destroy block and maybe not give rewards.
-//        if (itemStack.getTags().contains(new ResourceLocation("minecraft", "base_stone_overworld"))
-//                || blockState.getBlock().getTags().contains(new ResourceLocation("forge", "dirt"))) {
         // https://mcreator.net/wiki/minecraft-block-tags-list
         // base_stone_overworld = stone, granite, diorite, andesite, tuff, deepslate
         // dirt = dirt, grass_block, podzol, coarse_dirt, mycelium, rooted_dirt, moss_block, mud, muddy_mangrove_roots
         // TODO whats forge:dirt then???
         // todo make mini method. do all for above and here. multiple tags passed in.
-        if (!(itemStack.getTags().anyMatch(itemTagKey -> itemTagKey.toString().contains("base_stone_overworld")
+        if (!(itemStack.getTags().anyMatch(itemTagKey -> itemTagKey.toString().contains("forge:stone")
                 || itemTagKey.toString().contains("dirt")
-                || itemTagKey.toString().contains("base_stone_nether")))) {
+                || itemTagKey.toString().contains("forge:cobblestone")
+                || itemTagKey.toString().contains("deepslate")
+                || itemTagKey.toString().contains("sandstone")
+                || itemTagKey.toString().contains("base_stone_nether")))) { // todo test
             // Not a block we care about.
+            LOGGER.info("DEBUG2: Not a block we care about, leaving now.");
             return;
         }
 
-
-//                || itemStack.getTags().anyMatch(itemTagKey -> itemTagKey.toString().contains("dirt"))) ||
-//        itemStack.getTags().anyMatch(itemTagKey -> itemTagKey.toString().contains("base_stone_overworld")) {
-        LOGGER.info("DEBUG: Testing2 here we found base stone/dirt");
+        LOGGER.info("DEBUG2: Testing2 here we found base stone/dirt");
 
         // STEP 1: Get SuccessRate
         int baseSuccessRate = 30;  // 50% chance to fail loot at start.
@@ -783,14 +780,14 @@ public class CropsManager {
         // TODO make roll a mini method.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
-        LOGGER.info("DEBUG: Random Num = " + randomNum);
+        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
             LOGGER.info("DEBUG: DESTROYING stone block, no drops...");
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);  // this works fine, prevents drops, must have or it replaces it!
             return;
         }
-        LOGGER.info("DEBUG: ALLOWING stone block drops...");
+        LOGGER.info("DEBUG3: ALLOWING stone block drops...");
 
         // SECOND ABILITY (only if above worked)
         // trencher
