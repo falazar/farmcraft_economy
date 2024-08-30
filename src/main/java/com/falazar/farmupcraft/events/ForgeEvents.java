@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.data.BiomeRulesDataJsonManager;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.data.CropItemDataJsonManager;
 import com.falazar.farmupcraft.data.MarketDataJsonManager;
@@ -46,6 +47,7 @@ public class ForgeEvents {
     public static void serverStarted(final ServerStartedEvent event) {
         CropBlockDataJsonManager.populateCropBlockEntries(event.getServer().overworld());
         CropItemDataJsonManager.populateCropItemEntries(event.getServer().overworld());
+        BiomeRulesDataJsonManager.populateBiomeRulesInstances(event.getServer().overworld());
     }
 
     /**
@@ -61,6 +63,8 @@ public class ForgeEvents {
         AsyncLocator.handleServerStoppingEvent();
         CropBlockDataJsonManager.clearEntries();
         CropItemDataJsonManager.clearEntries();
+        BiomeRulesDataJsonManager.clearEntries();
+
     }
 
     /**
@@ -77,5 +81,6 @@ public class ForgeEvents {
         event.addListener(new CropBlockDataJsonManager());
         event.addListener(new CropItemDataJsonManager());
         event.addListener(new MarketDataJsonManager());
+        event.addListener(new BiomeRulesDataJsonManager());
     }
 }
