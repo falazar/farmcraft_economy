@@ -1,44 +1,37 @@
 package com.falazar.farmupcraft;
 
-import com.mojang.datafixers.util.Pair;
-import mezz.jei.api.constants.RecipeTypes;
+import com.falazar.farmupcraft.data.CropBlockData;
+import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
+import com.falazar.farmupcraft.data.CropItemData;
+import com.falazar.farmupcraft.data.CropItemDataJsonManager;
+import com.falazar.farmupcraft.util.AsyncLocator;
+import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
-import net.minecraft.core.NonNullList;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.data.recipes.CraftingRecipeBuilder;
-import net.minecraft.network.chat.ChatType;
-import net.minecraft.network.chat.OutgoingChatMessage;
-import net.minecraft.network.chat.PlayerChatMessage;
+import net.minecraft.network.chat.*;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
-import net.minecraft.world.Container;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.SimpleContainer;
-import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.CraftingContainer;
-import net.minecraft.world.inventory.RecipeHolder;
-import net.minecraft.world.inventory.TransientCraftingContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.crafting.*;
+import net.minecraft.world.item.crafting.Ingredient;
+import net.minecraft.world.item.crafting.Recipe;
+import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.CraftingTableBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -48,18 +41,16 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.items.ItemHandlerHelper;
+import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.annotation.Nullable;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import static org.apache.commons.lang3.StringUtils.replace;
 
+@Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class CropsManager {
     private static final Logger LOGGER = LogManager.getLogger();
 
@@ -70,70 +61,63 @@ public class CropsManager {
     @SubscribeEvent
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
-    public void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
+    public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
         // Step 1: If in creative mode, skip all rules and allow planting all.
-        Player player = null;
-        if (event.getEntity() instanceof Player) {
-            player = (Player) event.getEntity();
-            if (player.isCreative()) {
-                LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
-                return;
-            }
-        } else {
-            LOGGER.info("DEBUG: Not a player, leaving now.");
+        Player player = (Player) event.getEntity();
+        if(player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
+        if (player.isCreative()) {
+            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
             return;
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-//            LOGGER.info("DEBUG: 1 this target block is " + blockState.getBlock().getName().toString());  // not display name
-        if (blockState.getBlock() != Blocks.FARMLAND) {
-//                LOGGER.info("DEBUG: Not farmland leaving now. ");
+        if (!blockState.is(FUCTags.FARMLAND)) {
             return;
         }
 
         // TODO sugarcane and sweetberries.
 
         // STEP 3: Test if holding a vanilla or harvestcraft item, if not leave.
-        LOGGER.info("###################################### ");
         ItemStack stack = event.getItemStack();
-//        LOGGER.info("DEBUG: item held getDescriptionId is " + stack.getDescriptionId());
-        if (!stack.getDescriptionId().contains("pamhc2crops") && !isVanillaCrop(stack)) {
-            // Is not a crop type... leave..
-//                LOGGER.info("DEBUG: not a crop, leaving rules now.");
+        if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS)) {
             return;
         }
 
         // DEBUG ZONE:
-        if (stack.getDescriptionId().contains("wheat")) {
+        if (stack.is(Items.WHEAT_SEEDS)) {
             LOGGER.info("DEBUG: is a wheat seeds crop, running DEBUG METHOD.");
             findNearestVillage(event);
 
             // Only run on server side.
-            if (event.getSide().isServer()) {
-                ServerLevel serverLevel = player.getServer().getLevel(player.getCommandSenderWorld().dimension());
-                long worldSeed = player.getServer().getLevel(player.getCommandSenderWorld().dimension()).getSeed();
-//                ServerLevel serverLevel = event.getLevel());
-//                ServerLevel serverLevel = server.getLevel(level.dimension());
-
-                getAllFoods(serverLevel, worldSeed);
+            if (event.getLevel() instanceof ServerLevel serverLevel) {
+                long worldSeed = serverLevel.getSeed();
+//                getAllFoods(serverLevel, worldSeed);
             }
         }
 
         // Setup all of our biomes and crops rules allowed, saves to cache.
         // TODO move me, call one time only at start.
-        setupBiomeCrops(event);  // TEMP TESTER AREA.
+        //not needed anymore, is defined in CropItemDataJsonManager
+        //setupBiomeCrops(event);  // TEMP TESTER AREA.
 
         // STEP 4: Get current biome the block is in.
-        Biome biome = event.getLevel().getBiome(event.getPos()).value();
-        String biomeName = nameOfBiome(event.getLevel(), biome).toString();
-        LOGGER.info("DEBUG: this biome is " + nameOfBiome(event.getLevel(), biome));
+        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
+        if (CropItemDataJsonManager.getCropItemDataEntries() == null || !CropItemDataJsonManager.getCropItemDataEntries().containsKey(stack.getItem()))
+            return;
+        CropItemData data = CropItemDataJsonManager.getCropItemDataEntries().get(stack.getItem());
+
+
+        //String biomeName = nameOfBiome(event.getLevel(), biome).toString();
+        //LOGGER.info("DEBUG: this biome is " + nameOfBiome(event.getLevel(), biome));
 
 
         // STEP 5: Implement biome rules now, if fail, cancel plant and leave.
         // Is this an allowed plant for this biome?
-        if (!isCropAllowed(stack, biomeName, event)) {
+
+        //you can define stuff in the Crop Item Data! :)
+        if (!data.containsBiome(biome)) {
             // Cancel event and return now.
             event.setCanceled(true);
             return;
@@ -152,16 +136,22 @@ public class CropsManager {
     // TODO make a config var for base?
     // NOTICE: Event methods cannot be static.
     @SubscribeEvent
-    public void slowCropsEvent(BlockEvent.CropGrowEvent.Pre event) {
+    public static void slowCropsEvent(BlockEvent.CropGrowEvent.Pre event) {
         BlockPos blockPos = event.getPos();
         BlockState blockState = event.getLevel().getBlockState(blockPos);
         Block block = blockState.getBlock();
+        if (CropBlockDataJsonManager.getCropBlockDataEntries() == null || !CropBlockDataJsonManager.getCropBlockDataEntries().containsKey(block))
+            return;
+        //get the crop data to do stuff with it!
+        CropBlockData data = CropBlockDataJsonManager.getCropBlockDataEntries().get(block);
+
 
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
 
         // TODO testing with this. slow min.
-        int baseSuccessRate = 10;
+        //the rate is now defined in the crop data!
+        int baseSuccessRate = (int) data.getGrowthSuccesRate();
 
         // TODO add all modifiers here.
 
@@ -180,7 +170,7 @@ public class CropsManager {
         LOGGER.info("DEBUG: testDebugMethod: this target block is " + event.getLevel().getBlockState(event.getPos()).getBlock().getName().toString());
 
         // Leave if on client side.
-        if (!event.getSide().isServer()) {
+        if (event.getLevel().isClientSide) {
             // LOGGER.info("DEBUG: Skipping if client.");
             return;
         }
@@ -216,14 +206,12 @@ public class CropsManager {
             return;
         }
 
-        Level level = event.getEntity().getCommandSenderWorld();
         // Get the block position
         BlockPos blockPos = event.getPos();
         // Get serverLevel
-        ServerLevel serverLevel = server.getLevel(level.dimension());
-        LOGGER.info("DEBUG: serverLevel value gotten fine. ");
+        ServerLevel serverLevel = (ServerLevel) event.getLevel();
 
-//            TagKey<Structure> tagKey = StructureTags.EYE_OF_ENDER_LOCATED;
+//       TagKey<Structure> tagKey = StructureTags.EYE_OF_ENDER_LOCATED;
         TagKey<Structure> tagKey = StructureTags.VILLAGE;  // hardcoded testing.
 //            TagKey<Structure> tagKey = StructureTags.MINESHAFT;  // hardcoded testing.
         LOGGER.info("DEBUG: blockPos = " + blockPos);
@@ -241,62 +229,70 @@ public class CropsManager {
             LOGGER.info("DEBUG: structure registry is empty. ");
             return;
         }
-        // Main call here to find the nearest structure.
-        Pair<BlockPos, Holder<Structure>> pair = serverLevel.getChunkSource()
-                .getGenerator()
-                .findNearestMapStructure(serverLevel, (HolderSet<Structure>) optional.get(), blockPos, i, bl);
-        LOGGER.info("DEBUG: pair = " + pair);
-        Structure structure = pair.getSecond().get();
-        BlockPos structurePos = pair.getFirst();
-        LOGGER.info("DEBUG: structurePos = " + structurePos);
 
-        //  DEBUG: pair = (BlockPos{x=-864, y=0, z=-352}, Reference{ResourceKey[minecraft:worldgen/structure / minecraft:village_desert]=net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@4e1acf2e})
-        // TODO: get actual name of village type like desert_village.
 
-        if (structure == null) {
-            LOGGER.info("DEBUG: structure is null. ");
-            return;
-        }
+        //locate the structure async in order to not freeze the server
+        var async = AsyncLocator.locate(
+                serverLevel, optional.get(), blockPos, i, true
+        );
 
-        // Get the structure settings
+        async.thenOnServerThread(e -> {
+                    //make sure stuff gets merged to main thread on here
+                    LOGGER.info("DEBUG: pair = " + e);
+                    Structure structure = e.getSecond().get();
+                    BlockPos structurePos = e.getFirst();
+                    LOGGER.info("DEBUG: structurePos = " + structurePos);
+                    //  DEBUG: pair = (BlockPos{x=-864, y=0, z=-352}, Reference{ResourceKey[minecraft:worldgen/structure / minecraft:village_desert]=net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@4e1acf2e})
+                    // TODO: get actual name of village type like desert_village.
+
+                    if (structure == null) {
+                        LOGGER.info("DEBUG: structure is null. ");
+                        return;
+                    }
+
+                    // Get the structure settings
 //                  LOGGER.info("DEBUG: structure = " + structure);
-        LOGGER.info("DEBUG: structure.getModifiedStructureSettings() = " + structure.getModifiedStructureSettings());
+                    LOGGER.info("DEBUG: structure.getModifiedStructureSettings() = " + structure.getModifiedStructureSettings());
 
-        // TODO Get name from registry somehow now.
+                    // TODO Get name from registry somehow now.
 
 
-        // Cant get bounding box, may need to check all buildings.
-        // Need building count, location and name also.
-        StructureManager structureManager = serverLevel.structureManager();
-        LOGGER.info("DEBUG: structureManager = " + structureManager);
-        List<StructureStart> starts = structureManager.startsForStructure(new ChunkPos(structurePos), structureToCheck -> true);
-        LOGGER.info("DEBUG: starts = " + starts);
-        // check for null
+                    // Cant get bounding box, may need to check all buildings.
+                    // Need building count, location and name also.
+                    StructureManager structureManager = serverLevel.structureManager();
+                    LOGGER.info("DEBUG: structureManager = " + structureManager);
+                    List<StructureStart> starts = structureManager.startsForStructure(new ChunkPos(structurePos), structureToCheck -> true);
+                    LOGGER.info("DEBUG: starts = " + starts);
+                    // check for null
 
-        BoundingBox boundingBox = starts.get(0).getBoundingBox();
-        LOGGER.info("DEBUG: boundingBox = " + boundingBox);
+                    BoundingBox boundingBox = starts.get(0).getBoundingBox();
+                    LOGGER.info("DEBUG: boundingBox = " + boundingBox);
 
-        // Loop over each structure start and add up the bounding boxes.
-        structureManager.startsForStructure(new ChunkPos(structurePos), structureToCheck -> true).forEach(start -> {
-            LOGGER.info("DEBUG: start = " + start);
-            LOGGER.info("DEBUG: start.getBoundingBox() = " + start.getBoundingBox());
-        });
+                    // Loop over each structure start and add up the bounding boxes.
+                    structureManager.startsForStructure(new ChunkPos(structurePos), structureToCheck -> true).forEach(start -> {
+                        LOGGER.info("DEBUG: start = " + start);
+                        LOGGER.info("DEBUG: start.getBoundingBox() = " + start.getBoundingBox());
+                    });
 
-        LOGGER.info("DEBUG: DONE TEST AREA ");
+                    LOGGER.info("DEBUG: DONE TEST AREA ");
 
-        // TODO if new village pick a random name, and save it to a file.
+                    // TODO if new village pick a random name, and save it to a file.
 
-        // Results:
-        // [18:57:31] [Server thread/INFO] [co.mc.tu.Tutorial1Basics/]: DEBUG: blockPos = MutableBlockPos{x=292, y=70, z=73}
-        //18:57:31.891
-        //game
-        //[18:57:31] [Server thread/INFO] [co.mc.tu.Tutorial1Basics/]: DEBUG: pair = (BlockPos{x=272, y=0, z=16},
-        // Reference{ResourceKey[minecraft:worldgen/structure /
-        // ctov:small/village_jungle]=net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@6c539992})
-        // YAY correcto!
-        // now just loop the hell out of this and look for villages?  or as we walk start logging them all?
-        // need to save then to external feed!
-        // TODO how to save to data file.
+                    // Results:
+                    // [18:57:31] [Server thread/INFO] [co.mc.tu.Tutorial1Basics/]: DEBUG: blockPos = MutableBlockPos{x=292, y=70, z=73}
+                    //18:57:31.891
+                    //game
+                    //[18:57:31] [Server thread/INFO] [co.mc.tu.Tutorial1Basics/]: DEBUG: pair = (BlockPos{x=272, y=0, z=16},
+                    // Reference{ResourceKey[minecraft:worldgen/structure /
+                    // ctov:small/village_jungle]=net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@6c539992})
+                    // YAY correcto!
+                    // now just loop the hell out of this and look for villages?  or as we walk start logging them all?
+                    // need to save then to external feed!
+                    // TODO how to save to data file.
+                }
+        );
+
+
     }
 
 
@@ -323,7 +319,9 @@ public class CropsManager {
         // Check for 'seeditem', and item plain, as both can be planted.
         if (!cropsAllowed.contains(seedDescription) && !cropsAllowed.contains(seedDescriptionTwo)) {
             String biomeNameShow = biomeName.split(":")[1];
-            String cropItemShow = getCropShowName(seedDescription);
+
+            //use translatable to get correct name instead
+            String cropItemShow = Component.translatable(seedDescription).toString();
             List<String> cropsAllowedShow = getCropShowNames(cropsAllowed);
 //                LOGGER.info("DEBUG: For this biome: " + biomeNameShow + " you cannot plant " + cropItemShow);
 //                LOGGER.info("DEBUG: Crops you can plant in " + biomeNameShow + ": " + cropsAllowedShow.toString());
@@ -332,19 +330,29 @@ public class CropsManager {
             if (event.getLevel().isClientSide()) {
                 Player player = event.getEntity();
                 // TODO change to reddish for warnings.
-                PlayerChatMessage chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
-                player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+                //PlayerChatMessage chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
+                //player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+
+                MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
+                player.displayClientMessage(component, false);
 
                 // Send full crop list for this biome.
-                chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow.toString());
-                player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+                //chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow.toString());
+                //player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+
+                component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow.toString());
+                player.displayClientMessage(component, false);
 
                 LOGGER.info("DEBUG: seedItem = " + seedItem);
                 List<String> biomesAllowed = cropBiomes.get(seedItem);
                 if (biomesAllowed != null) {
                     // Send full list of biomes you can plant it in.
-                    chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§bBiomes you can plant " + cropItemShow + ": §3" + cropBiomes.get(seedItem).toString());
-                    player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+                    //chatMessage = PlayerChatMessage.unsigned(player.getUUID(), "§bBiomes you can plant " + cropItemShow + ": §3" + cropBiomes.get(seedItem).toString());
+                    //player.createCommandSourceStack().sendChatMessage(new OutgoingChatMessage.Player(chatMessage), false, ChatType.bind(ChatType.CHAT, player));
+
+
+                    component = Component.literal("§bBiomes you can plant " + cropItemShow + ": §3" + cropBiomes.get(seedItem).toString());
+                    player.displayClientMessage(component, false);
                 }
             }
             return false;
@@ -356,6 +364,8 @@ public class CropsManager {
 
     public static String getCropShowName(String itemName) {
         // Remove pam stuff and minecraft stuffs...
+
+        //todo use translatable to get correct name for this as well
         itemName = replace(itemName, "item.pamhc2crops.", "");
         itemName = replace(itemName, "item.minecraft.", "");
         itemName = replace(itemName, "seeditem", "");
@@ -532,16 +542,6 @@ public class CropsManager {
         return biomeName.hashCode();
     }
 
-    public static boolean isVanillaCrop(ItemStack stack) {
-        // Hardcoded for now.
-        Item item = stack.getItem();
-        if (item == Items.POTATO || item == Items.CARROT || item == Items.WHEAT_SEEDS || item == Items.BEETROOT_SEEDS) {
-            LOGGER.info("DEBUG: is a vanilla crop.");
-            return true;
-        }
-
-        return false;
-    }
 
     public static ResourceLocation nameOfBiome(Level level, Biome biome) {
         return level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
@@ -586,7 +586,7 @@ public class CropsManager {
     // but then also how do we handle bonuses for player?  just check with that math?
     // NOTICE: Event methods cannot be static.
     @SubscribeEvent
-    public void hunger(TickEvent.PlayerTickEvent event) {
+    public static void hunger(TickEvent.PlayerTickEvent event) {
         // Leave if on client side.
         if (!event.side.isServer()) {
 //             LOGGER.info("DEBUG: leaving if not on server side.");
@@ -618,7 +618,7 @@ public class CropsManager {
     // Get a list of all cooked items for market!
     // Generic method to get a list of items...
     // notice was static
-    public List<String> getAllFoods(ServerLevel serverLevel, long worldSeed) {
+    public static List<String> getAllFoods(ServerLevel serverLevel, long worldSeed) {
         // Get the list of all items
         Iterable<Item> allItems = ForgeRegistries.ITEMS;
 
@@ -696,7 +696,7 @@ public class CropsManager {
     }
 
 
-    public List<ItemStack> getIngredients(ServerLevel serverLevel, String itemResourceName) {
+    public static List<ItemStack> getIngredients(ServerLevel serverLevel, String itemResourceName) {
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemResourceName));
         LOGGER.info("###################");
         LOGGER.info("DEBUG: item name = " + item.getDescriptionId());
