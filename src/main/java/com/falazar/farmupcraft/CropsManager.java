@@ -766,11 +766,9 @@ public class CropsManager {
         LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
 
 
-        // todo make mini method. do all for above and here. multiple tags passed in.
-        if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD)) {
-
-            //should be like this, if its not a base stone overworld block do something here
-
+        // Only do rule if base stone or dirt.
+        if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD) && !blockState.is(BlockTags.DIRT)) {
+            return;
         }
 
         LOGGER.info("DEBUG2: Testing2 here we found base stone/dirt");
