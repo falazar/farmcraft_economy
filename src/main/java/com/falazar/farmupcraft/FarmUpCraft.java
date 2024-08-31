@@ -7,17 +7,26 @@ import com.falazar.farmupcraft.data.rules.crop.TagBasedRandomCropRule;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.setup.Registration;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.FileInfo;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.IEventBus;
+import net.minecraftforge.fml.ModContainer;
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
+import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.registries.DataPackRegistryEvent;
+import org.apache.maven.artifact.versioning.ArtifactVersion;
+import org.apache.maven.artifact.versioning.VersionRange;
 import org.slf4j.Logger;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Locale;
+import java.util.Properties;
 
 
 // The value here should match an entry in the META-INF/mods.toml file
@@ -36,6 +45,48 @@ public class FarmUpCraft {
         modEventBus.addListener((DataPackRegistryEvent.NewRegistry event) -> {
             event.dataPackRegistry(FUCRegistries.Keys.CROP_RULES, CropRules.DIRECT_CODEC, CropRules.DIRECT_CODEC);
         });
+
+        // Load the version from gradle.properties
+        LOGGER.info("FarmUpCraft initialized successfully!");
+        String modVersion = ModList.get().getModContainerById(MODID)
+                .map(ModContainer::getModInfo)
+                .map(IModInfo::getVersion)
+                .map(ArtifactVersion::toString)
+                .orElse("[UNKNOWN]");
+
+
+
+        String buildTime = FileInfo.getJarModificationTime(FarmUpCraft.class);
+
+        // Create a detailed startup message
+        String startupMessage = generateStartupMessage(
+                MODID,
+                MODID,
+                "MIT",
+                modVersion,
+                "47.1.3",
+                buildTime
+        );
+
+        // Log the startup message
+        LOGGER.info("\n" + startupMessage);
+    }
+
+    // Method to generate the startup message
+    private String generateStartupMessage(String modId, String modName, String modLicense, String modVersion, String forgeVersion, String buildTime) {
+        String border = "#".repeat(35);
+        String format = "# %-31s #\n";
+        return String.format(
+                "%s\n" +
+                        String.format(format, "MODID: " + modId) +
+                        String.format(format, "Name: " + modName) +
+                        String.format(format, "License: " + modLicense) +
+                        String.format(format, "Version: " + modVersion) +
+                        String.format(format, "Forge Version: " + forgeVersion) +
+                        String.format(format, "Build Time: " + buildTime) +
+                        "%s",
+                border, border
+        );
     }
 
     public static ResourceLocation prefix(String name) {
