@@ -181,7 +181,7 @@ public class BiomeRulesManager extends SavedData {
 
             CompoundTag rulesTag = biomeTag.getCompound("rules");
             Codec<BiomeRulesInstance> codec = BiomeRulesInstance.CODEC;
-            DataResult<BiomeRulesInstance> rulesInstance = codec.parse(NbtOps.INSTANCE, rulesTag);
+            DataResult<BiomeRulesInstance> rulesInstance = codec.parse(NbtOps.INSTANCE, rulesTag.get("rules_instance"));
             rulesInstance.resultOrPartial(err -> LOGGER.error("Failed to load rules for {} due to {}", biomeHolder, err))
                     .ifPresent(rulesInstancer    -> biomeRules.put(biomeHolder, rulesInstancer));
         }
