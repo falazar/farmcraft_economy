@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.BiomeRulesDataJsonManager;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -22,8 +23,16 @@ public class ManagersCommand {
                         .executes(context -> clearManager(context, context.getArgument("managerType", ManagerType.class))))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
 
+
+        LiteralArgumentBuilder<CommandSourceStack> repopulateBuilder = Commands.literal("repopulate")
+                .then(Commands.argument("managerType", EnumArgument.enumArgument(ManagerType.class))
+                        .executes(context -> repopulate(context, context.getArgument("managerType", ManagerType.class))))
+                .requires(s -> s.hasPermission(2));
+
+
         // Add the "clear" sub-command to the "managers" command
         builder.then(clearBuilder);
+        builder.then(repopulateBuilder);
 
         // Register the main "managers" command with the dispatcher
         dispatcher.register(builder);
@@ -38,6 +47,27 @@ public class ManagersCommand {
             case BIOME_RULES:
                 BiomeRulesManager biomeRulesManager = BiomeRulesManager.get(serverLevel);
                 biomeRulesManager.clear();  // Make sure you have a clearRules method in BiomeRulesManager
+                break;
+            // Add cases for other managers here
+            case NONE:
+            default:
+                source.sendFailure(Component.literal("Unknown manager type."));
+                return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(managerType.name() + " manager cleared."), true);
+        return 1;
+    }
+
+    private static int repopulate(CommandContext<CommandSourceStack> context, ManagerType managerType) {
+        CommandSourceStack source = context.getSource();
+        ServerLevel serverLevel = source.getLevel();
+
+        // Use the managerType to get the appropriate manager
+        switch (managerType) {
+            case BIOME_RULES:
+                BiomeRulesManager biomeRulesManager = BiomeRulesManager.get(serverLevel);
+                BiomeRulesDataJsonManager.populateBiomeRulesInstances(serverLevel);
                 break;
             // Add cases for other managers here
             case NONE:
