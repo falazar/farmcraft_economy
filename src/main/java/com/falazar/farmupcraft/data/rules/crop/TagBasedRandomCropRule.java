@@ -3,10 +3,12 @@ package com.falazar.farmupcraft.data.rules.crop;
 import com.falazar.farmupcraft.data.BiomeRulesDataJsonManager;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.registry.CropRulesRegistry;
+import com.falazar.farmupcraft.setup.Registration;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import com.pam.pamhc2crops.setup.ItemRegistration;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
@@ -113,7 +115,7 @@ public class TagBasedRandomCropRule implements CropRules{
         // Return a sublist of the shuffled crops based on the computed limit
 
        List<Item> randomList = shuffledCrops.subList(0, limit);
-
+        randomList.add(ItemRegistration.onionseeditem.get());
 
        //pamh2crops do some stupid fuckery where they have a seed and a normal item that can both be placed so we put
         // them both in here so it cant be used.
@@ -158,6 +160,8 @@ public class TagBasedRandomCropRule implements CropRules{
                 }
                 if(locationString.equals("pamhc2crops:sesameseedsitem")) {
                     modifiedString = "pamhc2crops:sesameseedsseeditem";
+                } if(locationString.equals("pamhc2crops:onionitem")) {
+                    modifiedString = "pamhc2crops:onionseeditem";
                 }
                 // Add the item if found
                 //LOGGER.info("Original: " + locationString + " | Modified: " + modifiedString);
