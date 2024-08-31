@@ -562,30 +562,30 @@ public class CropsManager {
 //            return;
 //        }
         String string = "";
-        StringBuilder builder = new StringBuilder();
-
-        Iterable<Item> allItems = ForgeRegistries.ITEMS;
-
-        // Filter information about items from the target mod
-        List<String> itemNames = new ArrayList<>();
-        for (Item item : allItems) {
-            // TODO add in basic foods and tree foods.
-
-            // Check if the item belongs to the target mod
-            String itemName = item.getDescriptionId();
-            // Example: 'pamhc2foodcore:baconcheeseburgeritem'
-            // rolleritem bad ones, filter out.
-            // Look for edible as well.
-            if ((itemName.contains("pamhc2foodcore") || itemName.contains("pamhc2foodextended"))
-                    && itemName.contains("item")
-                    && item.isEdible()) {
-//                LOGGER.info("DEBUG: name = " + itemName);
-                ResourceLocation rl = ForgeRegistries.ITEMS.getKey(item);
-                builder.append(".tag(new ResourceLocation(\"" + rl + "\"))");
-            }
-        }
-        builder.append(";");
-        LOGGER.info("Final string = " + builder.toString());
+        //StringBuilder builder = new StringBuilder();
+//
+        //Iterable<Item> allItems = ForgeRegistries.ITEMS;
+//
+        //// Filter information about items from the target mod
+        //List<String> itemNames = new ArrayList<>();
+        //for (Item item : allItems) {
+        //    // TODO add in basic foods and tree foods.
+//
+        //    // Check if the item belongs to the target mod
+        //    String itemName = item.getDescriptionId();
+        //    // Example: 'pamhc2foodcore:baconcheeseburgeritem'
+        //    // rolleritem bad ones, filter out.
+        //    // Look for edible as well.
+        //    if ((itemName.contains("pamhc2foodcore") || itemName.contains("pamhc2foodextended"))
+        //            && itemName.contains("item")
+        //            && item.isEdible()) {
+//      //          LOGGER.info("DEBUG: name = " + itemName);
+        //        ResourceLocation rl = ForgeRegistries.ITEMS.getKey(item);
+        //        builder.append(".tag(new ResourceLocation(\"" + rl + "\"))");
+        //    }
+        //}
+        //builder.append(";");
+        //LOGGER.info("Final string = " + builder.toString());
 
 
 
