@@ -328,18 +328,25 @@ public class CropsManager {
 
             // List the crops allowed in the current biome
             Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
-                    // Sort the items alphabetically by their translation key
-                    .sorted(Comparator.comparing(item -> Component.translatable(item.getDescriptionId()).getString()))
-                    .distinct() // Ensure each item is unique
-                    .map(item -> Component.translatable(item.getDescriptionId().replace("Seeds", "").replace("Seed", "")))
+                    // Translate the item description IDs to their human-readable names
+                    .map(item -> Component.translatable(item.getDescriptionId()).getString())
+                    // Filter out the names that include "Seed" or "Seeds"
+                    .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
+                    // Sort the remaining names alphabetically
+                    .sorted()
+                    .distinct() // Ensure each name is unique
+                    // Map the filtered names back to Component
+                    .map(Component::literal)
+                    // Join the names with commas
                     .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                     .orElse(Component.literal("None"));
 
-            // Construct the message for the crops that can be planted in the biome
+// Construct the message for the crops that can be planted in the biome
             component = Component.literal("§aCrops you can plant in ")
                     .append(biomeNameShow)
                     .append(": §2")
                     .append(cropsAllowedShow);
+
 
             player.displayClientMessage(component, false);
 
