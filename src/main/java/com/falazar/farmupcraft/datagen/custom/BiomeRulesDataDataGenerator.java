@@ -25,7 +25,10 @@ public class BiomeRulesDataDataGenerator extends BiomeRulesDataDataProvider {
         //)));
         pWriter.accept(new BiomeRulesDataConsumer(prefix("overworld_rules"), new BiomeRulesData(
                 BiomeTags.IS_OVERWORLD,
-                ItemListCropRule.EMPTY
+                new TagBasedRandomCropRule(
+                        FUCTags.VANILLA_AND_MODDED_CROPS,
+                        15
+                )
         )));
         pWriter.accept(new BiomeRulesDataConsumer(prefix("bop_rules"), new BiomeRulesData(
                 FUCTags.BIOMES_O_PLENTY_OVERWORLD_TAG,

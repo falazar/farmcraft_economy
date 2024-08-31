@@ -1,8 +1,8 @@
 {
   "biome": "minecraft:is_overworld",
   "crop_rules": {
-    "type": "farmupcraft:item_list_crop_rule",
-    "allowed_crops": [],
-    "random_crop_count": 0
+    "type": "farmupcraft:tag_based_random_crop_rule",
+    "random_crop_count": 15,
+    "tag": "farmupcraft:vanilla_and_modded_crops"
   }
 }
