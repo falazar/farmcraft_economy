@@ -93,7 +93,7 @@ public class CustomLogger {
         }
     }
 
-    // Method to format messages with level and metadata
+    // Method to format messages with level, metadata, and line number
     private String formatMessage(String level, String message) {
         StringBuilder formattedMessage = new StringBuilder();
         formattedMessage.append("[").append(level).append("] ");
@@ -101,10 +101,23 @@ public class CustomLogger {
             formattedMessage.append("[").append(source).append("] ");
         }
         if (className != null) {
-            formattedMessage.append("[").append(className).append("] ");
+            formattedMessage.append("[").append(className);
+            formattedMessage.append(":").append(getLineNumber());
+            formattedMessage.append("] ");
         }
+
         formattedMessage.append(message);
         return formattedMessage.toString();
+    }
+
+
+    // Method to get the current line number
+    private int getLineNumber() {
+        // Get the stack trace element
+        StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+
+        // Return the line number of the caller method (2 levels up in the stack trace)
+        return stackTrace[4].getLineNumber();
     }
 
     // Static methods to enable/disable logging levels

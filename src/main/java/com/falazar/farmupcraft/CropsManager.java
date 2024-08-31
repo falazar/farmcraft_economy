@@ -393,223 +393,6 @@ public class CropsManager {
         return "biome." + id + "." + name;
     }
 
-    public static String getCropShowName(String itemName) {
-        // Remove pam stuff and minecraft stuffs...
-
-        //todo use translatable to get correct name for this as well
-        itemName = replace(itemName, "item.pamhc2crops.", "");
-        itemName = replace(itemName, "item.minecraft.", "");
-        itemName = replace(itemName, "seeditem", "");
-        itemName = itemName.replaceAll("item$", ""); // last one only.
-
-        return itemName;
-    }
-
-    public static List<String> getCropShowNames(List<String> itemNames) {
-        List<String> modifiedNames = new ArrayList<>();
-
-        // Remove pam stuff and minecraft stuffs...
-        for (String itemName : itemNames) {
-            modifiedNames.add(getCropShowName(itemName));
-        }
-
-        return modifiedNames;
-    }
-
-    // Method to access biomeCrops globally
-    public static List<String> getCropsForBiome(String biomeName) {
-        return biomeCrops.getOrDefault(biomeName, new ArrayList<>());
-    }
-
-    // TODO change to an onLoading event instead.
-    // TODO make desert/wastelands have only 10 items.
-    public static void setupBiomeCrops(PlayerInteractEvent event) {
-        // Check cache now so isnt done twice.
-        if (!biomeCrops.isEmpty()) {
-//            LOGGER.info("DEBUG: Already have biomeCrops cache, not redoing it now. ");
-            return;
-        }
-
-        LOGGER.info("DEBUG: Setting up biomeCrops list now... ");
-
-        // STEP 1: get a list of all crops and seeds, harvestCraft crops and vanilla crops.
-        List<String> cropNames = getAllCropNames();
-
-
-        // STEP 2: Get the list of all biomes from the registry
-        List<String> biomeNames = getAllBiomeNames(event.getLevel());
-
-
-        // STEP 3: For each biome randomize seed list and assign a set to them.
-        // STEP 4: Save a biome list to each crop type also, for display.
-        // Loop over all biomes and save cropList to cache map.
-        for (String biomeName : biomeNames) {
-//                List<String> selectedCrops = setupRandomCrops(biomeName, cropNames);
-            List<String> selectedCrops = new ArrayList<>(setupRandomCrops(biomeName, cropNames));
-            biomeCrops.put(biomeName, selectedCrops);
-        }
-
-//            LOGGER.info("TEST DEBUG: all biome crops = " + biomeCrops.toString());
-
-        // STEP 5: create reverse cache list also.
-        cropBiomes = invertBiomeCrops(biomeCrops);
-//            LOGGER.info("TEST DEBUG: all cropBiomes = " + cropBiomes.toString());
-
-
-        // STEP 6: Save to local data storage. maybe no? so I can read it.
-        // LOAD previous ones from storage. maybe no?
-    }
-
-    public static Map<String, List<String>> invertBiomeCrops(Map<String, List<String>> biomeCrops) {
-        Map<String, List<String>> cropBiomes = new HashMap<>();
-
-        // Loop through each entry in biomeCrops
-        for (Map.Entry<String, List<String>> entry : biomeCrops.entrySet()) {
-            String biomeName = entry.getKey();
-            String biomeNameShow = biomeName.replace("minecraft:", "").replace("biomesoplenty:", "");
-            List<String> cropNames = entry.getValue();
-
-            // Loop through cropNames for the current biome
-            for (String cropName : cropNames) {
-                cropBiomes.computeIfAbsent(cropName, k -> new ArrayList<>()).add(biomeNameShow);
-            }
-        }
-
-        // STEP 2: Sort each one now also.
-        Map<String, List<String>> sortedCropBiomes = new HashMap<>();
-
-        for (Map.Entry<String, List<String>> entry : cropBiomes.entrySet()) {
-            List<String> sortedBiomes = new ArrayList<>(entry.getValue());
-            Collections.sort(sortedBiomes);
-            sortedCropBiomes.put(entry.getKey(), sortedBiomes);
-        }
-
-        return sortedCropBiomes;
-    }
-
-    public static List<String> getAllCropNames() {
-        // Get the list of all items
-        Iterable<Item> allItems = ForgeRegistries.ITEMS;
-
-        // Print information about items from the target mod
-        List<String> cropNames = new ArrayList<>();
-        for (Item item : allItems) {
-            // Check if the item belongs to the target mod
-            String itemName = item.getDescriptionId();
-            if (itemName.contains("pamhc2crops") && itemName.contains("seeditem")) {
-                // item.pamhc2crops.bokchoyseeditem
-//                    // Save list trim strings up.
-//                    itemName = replace(itemName, "item.pamhc2crops.", "");
-//                    itemName = replace(itemName, "seeditem", "");
-                cropNames.add(itemName);
-            }
-        }
-
-
-        // STEP 2: Add in vanilla crops.
-        // Careful not sure how we process this later on, hmmmm, need to convert back also.
-        // Maybe save all as registry first, then convert only on display?
-        cropNames.add("item.minecraft.potato");
-        cropNames.add("item.minecraft.carrot");
-        cropNames.add("item.minecraft.wheat_seeds");
-        cropNames.add("item.minecraft.beetroot_seeds");
-
-        return cropNames;
-    }
-
-    public static List<String> getAllBiomeNames(Level level) {
-        List<String> biomeNames = new ArrayList<>();
-        for (var biomeEntry : level.registryAccess().registryOrThrow(Registries.BIOME).entrySet()) {
-//              DEBUG: biomeEntry = ResourceKey[minecraft:worldgen/biome / minecraft:lukewarm_ocean]=net.minecraft.world.level.biome.Biome@54139c70
-            ResourceKey<Biome> biomeKey = biomeEntry.getKey();
-            // Get the ResourceLocation from the ResourceKey
-            ResourceLocation biomeLocation = biomeKey.location();
-//              LOGGER.info("biomeLocation: " + biomeLocation);
-            biomeNames.add(biomeLocation.toString());
-        }
-//            LOGGER.info("biomeNames list =" + biomeNames.toString());
-
-        return biomeNames;
-    }
-
-    public static List<String> setupRandomCrops(String biomeName, List<String> cropNames) {
-        // Rule: No crops plantable in ocean biomes.
-        if (biomeName.contains("ocean")) {
-            return Collections.emptyList();
-        }
-
-        // Randomly shuffle cropNames based on the seed derived from biomeName
-        long seed = getSeedFromBiomeName(biomeName);
-//            if (biomeName.equals("minecraft:plains") || biomeName.equals("minecraft:river")) {
-//                LOGGER.info("DEBUG3: biomeName is " + biomeName);
-//                LOGGER.info("DEBUG3: Seed value is " + seed);
-//            }
-
-        // TODO move to its own file this.
-
-        // TODO rename tutorial to my name.
-
-
-//            Collections.shuffle(cropNames, new Random(seed));
-        List<String> cropNameCopy = new ArrayList<>(cropNames);  // Create a copy of the original list
-        Collections.shuffle(cropNameCopy, new Random(seed));  // Shuffle the copy
-
-        // Grab the first 15 cropNames and sort them.
-        List<String> selectedCrops = cropNameCopy.subList(0, Math.min(cropNameCopy.size(), 15));
-        Collections.sort(selectedCrops);
-
-        // Print the selected crops
-//            if (biomeName.equals("minecraft:plains") || biomeName.equals("minecraft:river")) {
-//                LOGGER.info("DEBUG3: Selected Crops for " + biomeName + ": " + selectedCrops);
-//            }
-
-        return selectedCrops;
-    }
-
-    private static long getSeedFromBiomeName(String biomeName) {
-        // You can implement a custom method to derive a seed from the biomeName
-        // For simplicity, I'm using hashCode, but you might want a more robust approach
-        // TODO add a global shift variable to change them all.
-        return biomeName.hashCode();
-    }
-
-
-    public static ResourceLocation nameOfBiome(Level level, Biome biome) {
-        return level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-//        return level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-    }
-
-    public static String getBiomeName(String biomeKey) {
-        // Replace "minecraft:plains" with the registry name of the target biome
-        String targetBiomeRegistryName = "minecraft:plains";
-
-        // Get the biome from the registry
-        Biome targetBiome = ForgeRegistries.BIOMES.getValue(new ResourceLocation(targetBiomeRegistryName));
-        LOGGER.info(" targetBiome = " + targetBiome.toString());
-
-        if (targetBiome != null) {
-            // Get the biome category
-//            BiomeCategory category = targetBiome.getBiomeCategory();
-
-            // Check if I18n is available (might not be available in certain environments)
-            if (I18n.exists("biome.minecraft.plains")) {
-                // Get the localized name of the biome category
-                String localizedName = I18n.get("biome.minecraft.plains");
-
-                // Print the localized name
-                System.out.println("Localized Name of " + targetBiomeRegistryName + ": " + localizedName);
-                return localizedName;
-            } else {
-                System.out.println("I18n not available for biome : " + targetBiomeRegistryName);
-                return targetBiomeRegistryName;
-            }
-        } else {
-            System.out.println("Biome not found: " + targetBiomeRegistryName);
-            return targetBiomeRegistryName;
-        }
-    }
-
-
     // TODO move to a player class.
     // Make a player use food faster always!
     // REF: https://minecraft.fandom.com/wiki/Hunger
@@ -737,7 +520,7 @@ public class CropsManager {
         // todo test a not shapeless recipe?  same? just ordered?  no? hmmm
 
         // Now get recipe...
-        Recipe<CraftingContainer> recipe = serverLevel.getRecipeManager()
+        Recipe recipe = serverLevel.getRecipeManager()
                 .getAllRecipesFor(RecipeType.CRAFTING)
                 .stream()
                 .filter(recipe1 -> recipe1.getResultItem(serverLevel.registryAccess()).getItem() == item)
@@ -778,6 +561,32 @@ public class CropsManager {
 //        if (player == null) {
 //            return;
 //        }
+        String string = "";
+        StringBuilder builder = new StringBuilder();
+
+        Iterable<Item> allItems = ForgeRegistries.ITEMS;
+
+        // Filter information about items from the target mod
+        List<String> itemNames = new ArrayList<>();
+        for (Item item : allItems) {
+            // TODO add in basic foods and tree foods.
+
+            // Check if the item belongs to the target mod
+            String itemName = item.getDescriptionId();
+            // Example: 'pamhc2foodcore:baconcheeseburgeritem'
+            // rolleritem bad ones, filter out.
+            // Look for edible as well.
+            if ((itemName.contains("pamhc2foodcore") || itemName.contains("pamhc2foodextended"))
+                    && itemName.contains("item")
+                    && item.isEdible()) {
+//                LOGGER.info("DEBUG: name = " + itemName);
+                ResourceLocation rl = ForgeRegistries.ITEMS.getKey(item);
+                builder.append(".tag(new ResourceLocation(\"" + rl + "\"))");
+            }
+        }
+        builder.append(";");
+        LOGGER.info("Final string = " + builder.toString());
+
 
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
