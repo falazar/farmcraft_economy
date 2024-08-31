@@ -8,6 +8,7 @@ import net.minecraft.data.PackOutput;
 import net.minecraft.tags.BiomeTags;
 import net.minecraftforge.common.Tags;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
@@ -25,13 +26,15 @@ public class BiomeRulesDataDataGenerator extends BiomeRulesDataDataProvider {
         //)));
         pWriter.accept(new BiomeRulesDataConsumer(prefix("overworld_rules"), new BiomeRulesData(
                 BiomeTags.IS_OVERWORLD,
-                new TagBasedRandomCropRule(
+                Optional.of(BiomeTags.IS_OCEAN),
+        new TagBasedRandomCropRule(
                         FUCTags.VANILLA_AND_MODDED_CROPS,
                         15
                 )
         )));
         pWriter.accept(new BiomeRulesDataConsumer(prefix("bop_rules"), new BiomeRulesData(
                 FUCTags.BIOMES_O_PLENTY_OVERWORLD_TAG,
+                Optional.empty(),
                 new TagBasedRandomCropRule(
                         FUCTags.VANILLA_AND_MODDED_CROPS,
                         15

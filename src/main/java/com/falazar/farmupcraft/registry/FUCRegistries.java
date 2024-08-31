@@ -15,15 +15,15 @@ import static com.falazar.farmupcraft.FarmUpCraft.prefix;
 
 public class FUCRegistries {
     static { init(); }
-    public static final RegistryBuilder<CropRulesType<?>> CROP_RULES_TYPE_BUILDER = makeRegistry(Keys.CROP_RULES_SERIALIZER);
+    public static final RegistryBuilder<CropRulesType<?>> CROP_RULES_TYPE_BUILDER = makeRegistryNoSync(Keys.CROP_RULES_SERIALIZER);
 
     public static final DeferredRegister<CropRulesType<?>> CROP_RULES_TYPE_SERIALIZER = DeferredRegister.create(Keys.CROP_RULES_SERIALIZER, Keys.CROP_RULES_SERIALIZER.location().getNamespace());
     public static final Supplier<IForgeRegistry<CropRulesType<?>>> CROP_RULES_TYPE_SERIALIZER_SUPP = CROP_RULES_TYPE_SERIALIZER.makeRegistry(() -> CROP_RULES_TYPE_BUILDER);
 
 
-    private static <T> RegistryBuilder<T> makeRegistry(ResourceKey<? extends Registry<T>> key)
+    private static <T> RegistryBuilder<T> makeRegistryNoSync(ResourceKey<? extends Registry<T>> key)
     {
-        return new RegistryBuilder<T>().setName(key.location()).setMaxID(Integer.MAX_VALUE - 1);
+        return new RegistryBuilder<T>().setName(key.location()).setMaxID(Integer.MAX_VALUE - 1).disableSync();
     }
 
     public static final class Keys {

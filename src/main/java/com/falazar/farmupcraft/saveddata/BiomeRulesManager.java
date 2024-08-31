@@ -316,6 +316,10 @@ public class BiomeRulesManager extends SavedData {
         return itemToBiomeList.computeIfAbsent(item, e -> new ArrayList<>());
     }
 
+    public Set<Item> getItems() {
+        return itemToBiomeList.keySet();
+    }
+
     public void setItemBiomeList(Item item, Holder<Biome> biomeHolder) {
         List<Holder<Biome>> biomeList = itemToBiomeList.computeIfAbsent(item, e -> new ArrayList<>());
         biomeList.add(biomeHolder);

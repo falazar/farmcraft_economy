@@ -23,6 +23,7 @@ public class FUCTags {
     public static final TagKey<Biome> BIOMES_O_PLENTY_OVERWORLD_TAG = registerBiomeTag("biomes_o_plenty_overworld_biomes");
 
     public static final TagKey<Biome> BIOMES_O_PLENTY_TAG = registerBiomeTag("biomes_o_plenty_biomes");
+    public static final TagKey<Biome> OVERWORLD_NO_OCEAN = registerBiomeTag("overworld_no_ocean");
 
     private static TagKey<Biome> registerBiomeTag(String name) {
         return TagKey.create(Registries.BIOME, new ResourceLocation(FarmUpCraft.MODID, name));

@@ -9,6 +9,8 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.level.biome.Biome;
 
+import java.util.Optional;
+
 /**
  * Represents data associated with biome rules, including biome tags and crop rules.
  * <p>
@@ -20,16 +22,18 @@ public class BiomeRulesData {
     public static final Codec<BiomeRulesData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     TagKey.codec(Registries.BIOME).fieldOf("biome").forGetter(BiomeRulesData::getBiome), // Biome tag
+                    TagKey.codec(Registries.BIOME).optionalFieldOf("biome_filter").forGetter(BiomeRulesData::getBiomeFilter),
                     CropRules.DIRECT_CODEC.fieldOf("crop_rules").forGetter(BiomeRulesData::getCropRules) // Crop rules data
                     // Add more fields here for other types of rules if needed
             ).apply(instance, BiomeRulesData::new)
     );
 
     private final TagKey<Biome> biome; // Tag for the biome
+    private final Optional<TagKey<Biome>> biomeFilter;
     private final CropRules cropRules; // Data related to crop rules in the biome
 
     // Empty instance with default values
-    public static final BiomeRulesData EMPTY = new BiomeRulesData(FUCTags.EMPTY_BIOME_TAG, ItemListCropRule.EMPTY);
+    public static final BiomeRulesData EMPTY = new BiomeRulesData(FUCTags.EMPTY_BIOME_TAG, Optional.empty(),ItemListCropRule.EMPTY);
 
     /**
      * Constructs a new BiomeRulesData instance.
@@ -37,8 +41,9 @@ public class BiomeRulesData {
      * @param biome The biome tag associated with this rules data.
      * @param cropRules The crop rules data associated with this biome.
      */
-    public BiomeRulesData(TagKey<Biome> biome, CropRules cropRules) {
+    public BiomeRulesData(TagKey<Biome> biome, Optional<TagKey<Biome>> biomeFilter, CropRules cropRules) {
         this.biome = biome;
+        this.biomeFilter = biomeFilter;
         this.cropRules = cropRules;
     }
 
@@ -58,5 +63,9 @@ public class BiomeRulesData {
      */
     public CropRules getCropRules() {
         return cropRules;
+    }
+
+    public Optional<TagKey<Biome>> getBiomeFilter() {
+        return biomeFilter;
     }
 }

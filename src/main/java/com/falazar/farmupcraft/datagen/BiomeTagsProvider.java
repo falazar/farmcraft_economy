@@ -12,6 +12,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.data.PackOutput;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.Biomes;
 import net.minecraftforge.common.data.ExistingFileHelper;
@@ -40,5 +41,6 @@ public class BiomeTagsProvider extends net.minecraft.data.tags.BiomeTagsProvider
         LOGGER.error("Tag has {} entries", BOPBiomes.getOverworldBiomes().size() );
         this.tag(FUCTags.BIOMES_O_PLENTY_TAG)
                 .addOptional(FUCTags.BIOMES_O_PLENTY_OVERWORLD_TAG.location());
+        this.tag(FUCTags.OVERWORLD_NO_OCEAN).addTags(BiomeTags.IS_OVERWORLD).remove(BiomeTags.IS_OCEAN);
     }
 }

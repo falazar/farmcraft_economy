@@ -23,6 +23,8 @@ import org.apache.logging.log4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
+
 /**
  * Manages the loading and handling of biome rules data from JSON files.
  * <p>
@@ -77,19 +79,24 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
             if(biomes != null) {
                 level.registryAccess().registry(Registries.BIOME).ifPresent(reg -> {
                     Iterable<Holder<Biome>> holders = reg.getTagOrEmpty(biomes);
+                    Optional<TagKey<Biome>> biomeFilter = data.getBiomeFilter();
+
                     for (Holder<Biome> biomeHolder : holders) {
-
                         //LOGGER.warn("Biome Pre" + biomeHolder);
-                        if(!manager.containsBiome(biomeHolder)) {
-                            //LOGGER.warn("Biome After" + biomeHolder);
+                        // Apply the biome filter if it's present
+                        boolean matchesFilter = biomeFilter
+                                .map(biomeHolder::is) // Check if the biome matches the filter
+                                .orElse(false); // If no filter is present, proceed with true
 
+                        if(!manager.containsBiome(biomeHolder) && !matchesFilter) {
+                            //LOGGER.warn("Biome After" + biomeHolder);
                             manager.setBiomeRules(biomeHolder, new BiomeRulesInstance(data));
                         }
                     }
                 });
             }
         }
-
+        LOGGER.info("Created a total of {} biomes with rules", manager.getBiomeKeys().size());
 
         if(manager.hasItems()) return;
         for(Holder<Biome> biomes : manager.getBiomeKeys()){
@@ -102,6 +109,8 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
                 manager.setItemBiomeList(item, biomes);
             }
         }
+
+        LOGGER.info("Assigned a total of {} items with biomes", manager.getItems().size());
     }
 
 

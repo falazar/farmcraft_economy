@@ -1,5 +1,6 @@
 {
   "biome": "minecraft:is_overworld",
+  "biome_filter": "minecraft:is_ocean",
   "crop_rules": {
     "type": "farmupcraft:tag_based_random_crop_rule",
     "random_crop_count": 15,
