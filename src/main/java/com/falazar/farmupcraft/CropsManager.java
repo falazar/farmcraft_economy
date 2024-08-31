@@ -342,6 +342,8 @@ public class CropsManager {
                             translatedName = "Sesame Seeds"; // Same display name to keep only one of them
                         } else if (locationString.contains("mustardseedsitem")) {
                             translatedName = "Mustard Seeds"; // Same display name to keep only one of them
+                        } else if (locationString.contains("wheat_seeds")) {
+                            translatedName = "Wheat"; // Same display name to keep only one of them
                         }
 
                         return translatedName; // Return the adjusted or original translated name
