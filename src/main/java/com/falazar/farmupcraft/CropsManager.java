@@ -170,7 +170,7 @@ public class CropsManager {
     // DEBUG: Testing, Looking for village.
     public static void findNearestVillage(PlayerInteractEvent.RightClickBlock event) {
         LOGGER.info("DEBUG: testDebugMethod: this target block is " + event.getLevel().getBlockState(event.getPos()).getBlock().getName().toString());
-        if(true) return;
+        if (true) return;
         // Leave if on client side.
         if (event.getLevel().isClientSide) {
             // LOGGER.info("DEBUG: Skipping if client.");
@@ -248,7 +248,7 @@ public class CropsManager {
                     LOGGER.info("DEBUG: structurePos = " + structurePos);
                     //  DEBUG: pair = (BlockPos{x=-864, y=0, z=-352}, Reference{ResourceKey[minecraft:worldgen/structure / minecraft:village_desert]=net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@4e1acf2e})
                     // TODO: get actual name of village type like desert_village.
-                    if(structurePos == null) {
+                    if (structurePos == null) {
                         LOGGER.info("DEBUG: structurepos is null. ");
                         return;
                     }
@@ -305,67 +305,62 @@ public class CropsManager {
     }
 
     private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unkown"));
+
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
-        // TODO invert this.
-        if (!instance.biomeHasCrops(stack)) {
+        // This crop is allowed here in this biome.
+        if (instance.biomeHasCrops(stack)) {
+            return true;
+        }
 
-            // Get the name of the crop item
-            String cropItemShow = stack.getHoverName().getString();
+        // Get the name of the crop item
+        String cropItemShow = stack.getHoverName().getString();
 
-            // Get the biome name
-            ResourceKey<Biome> rl = biome.unwrapKey().orElse(UKNOWN_RK);
-            Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
+        // Get the biome name
+        ResourceKey<Biome> rl = biome.unwrapKey().orElse(UKNOWN_RK);
+        Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
 
-            Player player = event.getEntity();
-            if (!event.getLevel().isClientSide) {
-                // Display message that this crop cannot be planted in this biome
-                MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
-                player.displayClientMessage(component, false);
+        Player player = event.getEntity();
+        if (!event.getLevel().isClientSide) {
+            // Display message that this crop cannot be planted in this biome
+            MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
+            player.displayClientMessage(component, false);
 
-                // List the crops allowed in the current biome
-                Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
-                        // Sort the items alphabetically by their translation key
-                        .sorted(Comparator.comparing(item -> Component.translatable(item.getDescriptionId()).getString()))
-                        .distinct() // Ensure each item is unique
-                        .map(item -> Component.translatable(item.getDescriptionId()))
+            // List the crops allowed in the current biome
+            Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
+                    // Sort the items alphabetically by their translation key
+                    .sorted(Comparator.comparing(item -> Component.translatable(item.getDescriptionId()).getString()))
+                    .distinct() // Ensure each item is unique
+                    .map(item -> Component.translatable(item.getDescriptionId().replace("Seeds", "").replace("Seed", "")))
+                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                    .orElse(Component.literal("None"));
+
+            // Construct the message for the crops that can be planted in the biome
+            component = Component.literal("§aCrops you can plant in ")
+                    .append(biomeNameShow)
+                    .append(": §2")
+                    .append(cropsAllowedShow);
+
+            player.displayClientMessage(component, false);
+
+            // List the biomes where this crop can be planted
+            if (manager.hasItems()) {
+                // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
+                Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
+                        .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+                        .map(Component::getString) // Convert to plain text for uniqueness check
+                        .distinct() // Ensure each biome is unique
+                        .sorted() // Sort the biomes alphabetically
+                        .map(name -> Component.literal(name)) // Convert back to Component
                         .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                         .orElse(Component.literal("None"));
 
-                // Construct the message for the crops that can be planted in the biome
-                component = Component.literal("§aCrops you can plant in ")
-                        .append(biomeNameShow)
-                        .append(": §2")
-                        .append(cropsAllowedShow);
-
-
-
+                // Create the final message component
+                component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
                 player.displayClientMessage(component, false);
-
-                // List the biomes where this crop can be planted
-                if (manager.hasItems()) {
-                    // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
-                    Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-                            .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-                            .map(Component::getString) // Convert to plain text for uniqueness check
-                            .distinct() // Ensure each biome is unique
-                            .sorted() // Sort the biomes alphabetically
-                            .map(name -> Component.literal(name)) // Convert back to Component
-                            .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
-                            .orElse(Component.literal("None"));
-
-                    // Create the final message component
-                    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
-                    player.displayClientMessage(component, false);
-                }
-
-
             }
-            return false;
         }
-
-        // Passed all, allow planting.
-        return true;
+        return false;
     }
 
     private static String getBiomeLangKey(ResourceLocation location) {
