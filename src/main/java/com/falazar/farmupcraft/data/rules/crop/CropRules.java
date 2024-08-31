@@ -15,6 +15,7 @@ public interface CropRules {
                     .dispatch(CropRules::type, CropRulesType::codec));
 
     List<Item> getCropItems(ServerLevel level);
+    List<Item> getCropItemsWithRandomId(ServerLevel level, int id);
 
     CropRulesType<? extends CropRules> type();
 }

@@ -1,13 +1,17 @@
 package com.falazar.farmupcraft.data.rules.crop;
 
+import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.registry.CropRulesRegistry;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -67,8 +71,14 @@ public class TagBasedRandomCropRule implements CropRules{
         return randomCropCount;
     }
 
+
     @Override
     public List<Item> getCropItems(ServerLevel level) {
+        return List.of();
+    }
+
+    @Override
+    public List<Item> getCropItemsWithRandomId(ServerLevel level, int id) {
         if(items.isEmpty()) {
             level.registryAccess().registry(Registries.ITEM).ifPresent(reg -> {
                 Iterable<Holder<Item>> holders = reg.getTagOrEmpty(getCropTag());
@@ -81,8 +91,7 @@ public class TagBasedRandomCropRule implements CropRules{
 
         //different way to get a random element from a tag
         //ForgeRegistries.ITEMS.tags().getTag(getCropTag()).getRandomElement(random);
-
-        Random random = new Random(level.getSeed());
+        Random random = new Random(level.getSeed() + id);
 
         // Create a copy of the allowed crops list to shuffle and select from
         List<Item> shuffledCrops = new ArrayList<>(items);

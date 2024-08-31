@@ -5,6 +5,7 @@ import com.falazar.farmupcraft.data.BiomeRulesDataJsonManager;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.data.CropItemDataJsonManager;
 import com.falazar.farmupcraft.data.MarketDataJsonManager;
+import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
@@ -33,6 +34,7 @@ public class ForgeEvents {
     @SubscribeEvent
     public static void serverAboutToStart(final ServerAboutToStartEvent event) {
         AsyncLocator.handleServerAboutToStartEvent();
+        BiomeRegistryHolder.setupBiomeRegistry(event.getServer());
     }
 
     /**

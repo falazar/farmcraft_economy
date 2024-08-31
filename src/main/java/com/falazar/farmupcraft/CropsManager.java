@@ -324,6 +324,9 @@ public class CropsManager {
 
                 // List the crops allowed in the current biome
                 Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
+                        // Sort the items alphabetically by their translation key
+                        .sorted(Comparator.comparing(item -> Component.translatable(item.getDescriptionId()).getString()))
+                        .distinct() // Ensure each item is unique
                         .map(item -> Component.translatable(item.getDescriptionId()))
                         .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                         .orElse(Component.literal("None"));
@@ -334,14 +337,19 @@ public class CropsManager {
                         .append(": §2")
                         .append(cropsAllowedShow);
 
+
+
                 player.displayClientMessage(component, false);
 
                 // List the biomes where this crop can be planted
-
                 if (manager.hasItems()) {
-                    // Get the translated biome names and combine them into a single component
+                    // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
                     Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
                             .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+                            .map(Component::getString) // Convert to plain text for uniqueness check
+                            .distinct() // Ensure each biome is unique
+                            .sorted() // Sort the biomes alphabetically
+                            .map(name -> Component.literal(name)) // Convert back to Component
                             .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                             .orElse(Component.literal("None"));
 
@@ -349,6 +357,8 @@ public class CropsManager {
                     component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
                     player.displayClientMessage(component, false);
                 }
+
+
             }
             return false;
         }

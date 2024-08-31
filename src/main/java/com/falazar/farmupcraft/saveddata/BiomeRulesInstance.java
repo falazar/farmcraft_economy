@@ -89,11 +89,19 @@ public class BiomeRulesInstance {
     }
 
     public List<Item> getCrops(ServerLevel level, boolean newTry) {
-        if (this.randomCrops.isEmpty() || newTry) {
+        if (this.randomCrops.isEmpty() && newTry) {
             this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItems(level));
         }
         return randomCrops;
     }
+
+    public List<Item> getCropsWithRandomId(ServerLevel level, int id) {
+        if (this.randomCrops.isEmpty()) {
+            this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItemsWithRandomId(level, id));
+        }
+        return randomCrops;
+    }
+
 
     /**
      * Checks if a given item stack's item is considered a crop for this biome.

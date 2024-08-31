@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.google.gson.Gson;
@@ -7,6 +8,7 @@ import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -91,7 +93,11 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
         if(manager.hasItems()) return;
         for(Holder<Biome> biomes : manager.getBiomeKeys()){
             BiomeRulesInstance instance = manager.getBiomeRules(biomes);
-            for(Item item : instance.getCrops(level, true)) {
+            ResourceKey<Biome> biomeRk = BiomeRegistryHolder.convertToID(biomes);
+            for(Item item : instance.getCropsWithRandomId(level, BiomeRegistryHolder.convertToID(biomeRk))) {
+                manager.setItemBiomeList(item, biomes);
+            }
+            for(Item item : instance.getCrops(level)){
                 manager.setItemBiomeList(item, biomes);
             }
         }
