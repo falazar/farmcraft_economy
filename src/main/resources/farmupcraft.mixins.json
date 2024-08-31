@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.falazar.farmupcraft.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "farmupcraft.refmap.json",
+  "mixins": [
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

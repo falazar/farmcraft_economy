@@ -1,11 +1,8 @@
 package com.falazar.farmupcraft.datagen.custom;
 
-import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.GoodsData;
 import com.falazar.farmupcraft.data.MarketData;
-import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.data.PackOutput;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.registries.ForgeRegistries;
 

@@ -20,6 +20,9 @@ public class FUCTags {
     public static final TagKey<Block> VANILLA_CROPS_BLOCKS = registerBlockTag("vanilla_crops");
     public static final TagKey<Block> MODDED_CROPS_BLOCKS = registerBlockTag("modded_crops");
     public static final TagKey<Biome> EMPTY_BIOME_TAG = registerBiomeTag("empty_biome_tag");
+    public static final TagKey<Biome> BIOMES_O_PLENTY_OVERWORLD_TAG = registerBiomeTag("biomes_o_plenty_overworld_biomes");
+
+    public static final TagKey<Biome> BIOMES_O_PLENTY_TAG = registerBiomeTag("biomes_o_plenty_biomes");
 
     private static TagKey<Biome> registerBiomeTag(String name) {
         return TagKey.create(Registries.BIOME, new ResourceLocation(FarmUpCraft.MODID, name));

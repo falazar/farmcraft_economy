@@ -1,23 +1,24 @@
 package com.falazar.farmupcraft;
 
-import com.falazar.farmupcraft.data.*;
+import com.falazar.farmupcraft.data.CropBlockData;
+import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.FUCTags;
-import net.minecraft.client.Minecraft;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.resources.language.I18n;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.network.chat.*;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
-import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
@@ -39,7 +40,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
-import net.minecraftforge.common.Tags;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
@@ -118,7 +118,7 @@ public class CropsManager {
         if (instance == null) return;
 
         //check if the crop is allowed in the biome
-        if (!isCropAllowed(manager ,instance, stack, biome, event)) {
+        if (!isCropAllowed(manager, instance, stack, biome, event)) {
             // Cancel event and return now.
             event.setCanceled(true);
             return;
@@ -169,7 +169,7 @@ public class CropsManager {
     // DEBUG: Testing, Looking for village.
     public static void findNearestVillage(PlayerInteractEvent.RightClickBlock event) {
         LOGGER.info("DEBUG: testDebugMethod: this target block is " + event.getLevel().getBlockState(event.getPos()).getBlock().getName().toString());
-
+        if(true) return;
         // Leave if on client side.
         if (event.getLevel().isClientSide) {
             // LOGGER.info("DEBUG: Skipping if client.");
@@ -247,6 +247,11 @@ public class CropsManager {
                     LOGGER.info("DEBUG: structurePos = " + structurePos);
                     //  DEBUG: pair = (BlockPos{x=-864, y=0, z=-352}, Reference{ResourceKey[minecraft:worldgen/structure / minecraft:village_desert]=net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@4e1acf2e})
                     // TODO: get actual name of village type like desert_village.
+                    if(structurePos == null) {
+                        LOGGER.info("DEBUG: structurepos is null. ");
+                        return;
+                    }
+
 
                     if (structure == null) {
                         LOGGER.info("DEBUG: structure is null. ");
@@ -300,7 +305,7 @@ public class CropsManager {
 
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
-    public static boolean isCropAllowed(BiomeRulesManager manager,BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
+    public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // TODO invert this.
         if (!instance.biomeHasCrops(stack)) {
 
@@ -308,32 +313,40 @@ public class CropsManager {
             String cropItemShow = stack.getHoverName().getString();
 
             // Get the biome name
-            String biomeNameShow = biome.unwrapKey().map(key -> key.location().toString()).orElse("Unknown");
+            ResourceKey<Biome> rl = biome.unwrapKey().orElse(ResourceKey.create(Registries.BIOME, new ResourceLocation("unkown")));
+            Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
 
             Player player = event.getEntity();
             if (!event.getLevel().isClientSide) {
                 // Display message that this crop cannot be planted in this biome
-                MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in " + biomeNameShow + " biome.");
+                MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
                 player.displayClientMessage(component, false);
 
                 // List the crops allowed in the current biome
-                String cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
-                        .map(item -> Component.translatable(item.getDescriptionId()).toString())
-                        .reduce((s1, s2) -> s1 + ", " + s2)
-                        .orElse("None");
-//
-                component = Component.literal("§aCrops you can plant in " + biomeNameShow + ": §2" + cropsAllowedShow);
+                Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
+                        .map(item -> Component.translatable(item.getDescriptionId()))
+                        .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                        .orElse(Component.literal("None"));
+
+                // Construct the message for the crops that can be planted in the biome
+                component = Component.literal("§aCrops you can plant in ")
+                        .append(biomeNameShow)
+                        .append(": §2")
+                        .append(cropsAllowedShow);
+
                 player.displayClientMessage(component, false);
 
                 // List the biomes where this crop can be planted
 
                 if (manager.hasItems()) {
-                    String biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-                            .map(b -> b.unwrapKey().map(key -> key.location().toString()).orElse("Unknown"))
-                            .reduce((s1, s2) -> s1 + ", " + s2)
-                            .orElse("None");
-//
-                    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3" + biomesListShow);
+                    // Get the translated biome names and combine them into a single component
+                    Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
+                            .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+                            .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                            .orElse(Component.literal("None"));
+
+                    // Create the final message component
+                    component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
                     player.displayClientMessage(component, false);
                 }
             }
@@ -342,6 +355,12 @@ public class CropsManager {
 
         // Passed all, allow planting.
         return true;
+    }
+
+    private static String getBiomeLangKey(ResourceLocation location) {
+        String name = location.getPath();
+        String id = location.getNamespace();
+        return "biome." + id + "." + name;
     }
 
     public static String getCropShowName(String itemName) {

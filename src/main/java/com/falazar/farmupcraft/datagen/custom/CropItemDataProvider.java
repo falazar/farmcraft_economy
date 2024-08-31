@@ -1,6 +1,5 @@
 package com.falazar.farmupcraft.datagen.custom;
 
-import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropItemData;
 import com.google.common.collect.Sets;
 import com.mojang.serialization.JsonOps;

@@ -254,6 +254,7 @@ public class BiomeRulesManager extends SavedData {
     public void clear() {
         biomeRules.clear();
         itemToBiomeList.clear();
+        setDirty();
     }
 
     /**

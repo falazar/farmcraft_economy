@@ -7,12 +7,8 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.levelgen.feature.ConfiguredFeature;
-import net.minecraft.world.level.saveddata.SavedData;
 
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 
@@ -61,7 +57,7 @@ public class BiomeRulesInstance {
     /**
      * Constructs a new {@link BiomeRulesInstance} with the specified rules data and a predefined list of random crops.
      *
-     * @param rulesData    The {@link BiomeRulesData} that defines the rules for the biome.
+     * @param rulesData   The {@link BiomeRulesData} that defines the rules for the biome.
      * @param randomCrops A list of items representing the random crops for the biome.
      */
     public BiomeRulesInstance(BiomeRulesData rulesData, List<Item> randomCrops) {
@@ -88,10 +84,13 @@ public class BiomeRulesInstance {
     }
 
 
-
     public List<Item> getCrops(ServerLevel level) {
-        if(this.randomCrops.isEmpty()) {
-            this.randomCrops =  new ArrayList<>(this.rulesData.getCropRules().getCropItems(level));
+        return getCrops(level, false);
+    }
+
+    public List<Item> getCrops(ServerLevel level, boolean newTry) {
+        if (this.randomCrops.isEmpty() || newTry) {
+            this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItems(level));
         }
         return randomCrops;
     }

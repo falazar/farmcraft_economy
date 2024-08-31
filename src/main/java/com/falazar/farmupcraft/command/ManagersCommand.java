@@ -19,7 +19,7 @@ public class ManagersCommand {
         // Define the "clear" sub-command
         LiteralArgumentBuilder<CommandSourceStack> clearBuilder = Commands.literal("clear")
                 .then(Commands.argument("managerType", EnumArgument.enumArgument(ManagerType.class))
-                        .executes(context -> clearManager(context, ManagerType.getByName(context.getArgument("managerType", String.class)))))
+                        .executes(context -> clearManager(context, context.getArgument("managerType", ManagerType.class))))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
 
         // Add the "clear" sub-command to the "managers" command
@@ -37,7 +37,7 @@ public class ManagersCommand {
         switch (managerType) {
             case BIOME_RULES:
                 BiomeRulesManager biomeRulesManager = BiomeRulesManager.get(serverLevel);
-                biomeRulesManager.clear();  // Add a clear method in BiomeRulesManager
+                biomeRulesManager.clear();  // Make sure you have a clearRules method in BiomeRulesManager
                 break;
             // Add cases for other managers here
             case NONE:
@@ -53,6 +53,7 @@ public class ManagersCommand {
     public enum ManagerType {
         BIOME_RULES("biome_rules"),
         NONE("none");
+
         private final String name;
 
         ManagerType(String name) {
@@ -73,3 +74,4 @@ public class ManagersCommand {
         }
     }
 }
+

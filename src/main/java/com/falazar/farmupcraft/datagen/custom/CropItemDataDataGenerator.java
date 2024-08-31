@@ -1,11 +1,9 @@
 
 package com.falazar.farmupcraft.datagen.custom;
 
-import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropItemData;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.data.PackOutput;
-import net.minecraft.tags.BiomeTags;
 import net.minecraftforge.common.Tags;
 
 import java.util.function.Consumer;

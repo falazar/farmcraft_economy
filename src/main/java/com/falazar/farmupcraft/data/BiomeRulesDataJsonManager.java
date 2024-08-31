@@ -15,13 +15,10 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.block.Block;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 /**
  * Manages the loading and handling of biome rules data from JSON files.
@@ -78,7 +75,11 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
                 level.registryAccess().registry(Registries.BIOME).ifPresent(reg -> {
                     Iterable<Holder<Biome>> holders = reg.getTagOrEmpty(biomes);
                     for (Holder<Biome> biomeHolder : holders) {
+
+                        LOGGER.warn("Biome Pre" + biomeHolder);
                         if(!manager.containsBiome(biomeHolder)) {
+                            LOGGER.warn("Biome After" + biomeHolder);
+
                             manager.setBiomeRules(biomeHolder, new BiomeRulesInstance(data));
                         }
                     }
@@ -90,7 +91,7 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
         if(manager.hasItems()) return;
         for(Holder<Biome> biomes : manager.getBiomeKeys()){
             BiomeRulesInstance instance = manager.getBiomeRules(biomes);
-            for(Item item : instance.getCrops(level)) {
+            for(Item item : instance.getCrops(level, true)) {
                 manager.setItemBiomeList(item, biomes);
             }
         }

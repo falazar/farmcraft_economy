@@ -1,0 +1,8 @@
+{
+  "biome": "farmupcraft:biomes_o_plenty_overworld_biomes",
+  "crop_rules": {
+    "type": "farmupcraft:tag_based_random_crop_rule",
+    "random_crop_count": 15,
+    "tag": "farmupcraft:vanilla_and_modded_crops"
+  }
+}

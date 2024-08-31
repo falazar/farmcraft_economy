@@ -1,15 +1,11 @@
 package com.falazar.farmupcraft.datagen.custom;
 
-import com.falazar.farmupcraft.data.BiomeCropRulesData;
 import com.falazar.farmupcraft.data.BiomeRulesData;
 import com.falazar.farmupcraft.data.rules.crop.ItemListCropRule;
 import com.falazar.farmupcraft.data.rules.crop.TagBasedRandomCropRule;
 import com.falazar.farmupcraft.util.FUCTags;
-import com.google.common.collect.ImmutableList;
-import com.pam.pamhc2crops.setup.ItemRegistration;
 import net.minecraft.data.PackOutput;
 import net.minecraft.tags.BiomeTags;
-import net.minecraft.world.item.Items;
 import net.minecraftforge.common.Tags;
 
 import java.util.function.Consumer;
@@ -26,6 +22,14 @@ public class BiomeRulesDataDataGenerator extends BiomeRulesDataDataProvider {
         pWriter.accept(new BiomeRulesDataConsumer(prefix("desert_rules"), new BiomeRulesData(
                 Tags.Biomes.IS_DESERT,
                 ItemListCropRule.EMPTY
+        )));
+
+        pWriter.accept(new BiomeRulesDataConsumer(prefix("bop_rules"), new BiomeRulesData(
+                FUCTags.BIOMES_O_PLENTY_OVERWORLD_TAG,
+                new TagBasedRandomCropRule(
+                        FUCTags.VANILLA_AND_MODDED_CROPS,
+                        15
+                )
         )));
 
         pWriter.accept(new BiomeRulesDataConsumer(prefix("plains_rules"), new BiomeRulesData(
