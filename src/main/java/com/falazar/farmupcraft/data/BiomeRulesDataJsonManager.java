@@ -3,6 +3,7 @@ package com.falazar.farmupcraft.data;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
@@ -31,7 +32,7 @@ import java.util.Map;
 public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener {
     private static final Gson STANDARD_GSON = new Gson();
     private final String folderName;
-    public static final Logger LOGGER = LogManager.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(BiomeRulesDataJsonManager.class.getSimpleName());
 
 
     protected static Map<ResourceLocation, BiomeRulesData> biomeRules = new HashMap<>();
@@ -78,9 +79,9 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
                     Iterable<Holder<Biome>> holders = reg.getTagOrEmpty(biomes);
                     for (Holder<Biome> biomeHolder : holders) {
 
-                        LOGGER.warn("Biome Pre" + biomeHolder);
+                        //LOGGER.warn("Biome Pre" + biomeHolder);
                         if(!manager.containsBiome(biomeHolder)) {
-                            LOGGER.warn("Biome After" + biomeHolder);
+                            //LOGGER.warn("Biome After" + biomeHolder);
 
                             manager.setBiomeRules(biomeHolder, new BiomeRulesInstance(data));
                         }

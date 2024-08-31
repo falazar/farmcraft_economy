@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft.datagen;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.data.PackOutput;
@@ -22,7 +23,7 @@ public class ItemTagsGenerator extends ItemTagsProvider {
                              CompletableFuture<TagLookup<Block>> p_275322_, @Nullable ExistingFileHelper existingFileHelper) {
         super(p_275343_, p_275729_, p_275322_, FarmUpCraft.MODID, existingFileHelper);
     }
-    private static final Logger LOGGER = LogManager.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(ItemTagsGenerator.class.getSimpleName());
 
     @Override
     protected void addTags(HolderLookup.Provider pProvider) {

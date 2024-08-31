@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.util;
 
+import com.falazar.farmupcraft.datagen.ItemTagsGenerator;
 import com.mojang.logging.LogUtils;
 import net.minecraft.advancements.critereon.LocationPredicate;
 import net.minecraft.core.BlockPos;
@@ -18,7 +19,7 @@ import org.slf4j.Logger;
 import java.util.List;
 
 public class StructureUtils {
-    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(StructureUtils.class.getSimpleName());
 
 
     public static boolean isInStructure(ServerLevel serverLevel, BlockPos pos, ResourceKey<Structure> structure) {

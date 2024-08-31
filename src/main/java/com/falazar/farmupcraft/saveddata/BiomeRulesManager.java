@@ -1,6 +1,8 @@
 package com.falazar.farmupcraft.saveddata;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.StructureUtils;
 import com.mojang.logging.LogUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
@@ -31,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * It uses {@link SavedData} to persist biome rules across world saves.
  */
 public class BiomeRulesManager extends SavedData {
-    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(BiomeRulesManager.class.getSimpleName());
     public static final String DATA_NAME = FarmUpCraft.MODID + "_biome_rules_manager";
 
     private static BiomeRulesManager clientMangerCache = new BiomeRulesManager();

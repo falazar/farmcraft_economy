@@ -1,7 +1,9 @@
 package com.falazar.farmupcraft.datagen;
 
 import biomesoplenty.api.biome.BOPBiomes;
+import com.falazar.farmupcraft.CropsManager;
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.HolderLookup;
@@ -22,7 +24,7 @@ public class BiomeTagsProvider extends net.minecraft.data.tags.BiomeTagsProvider
     public BiomeTagsProvider(PackOutput pOutput, CompletableFuture<HolderLookup.Provider> pPro, ExistingFileHelper existingFileHelper) {
         super(pOutput, pPro, FarmUpCraft.MODID, existingFileHelper);
     }
-    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(BiomeTagsProvider.class.getSimpleName());
 
     @Override
     protected void addTags(HolderLookup.Provider pProvider) {

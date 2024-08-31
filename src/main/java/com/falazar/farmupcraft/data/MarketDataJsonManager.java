@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
@@ -16,7 +17,7 @@ import java.util.Map;
 public class MarketDataJsonManager extends SimpleJsonResourceReloadListener {
     private static final Gson STANDARD_GSON = new Gson();
     private final String folderName;
-    public static final Logger LOGGER = LogManager.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(MarketDataJsonManager.class.getSimpleName());
 
 
     protected static Map<ResourceLocation, MarketData> marketEntries = new HashMap<>();

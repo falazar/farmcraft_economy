@@ -3,8 +3,10 @@ package com.falazar.farmupcraft;
 import com.falazar.farmupcraft.command.ManagersCommand;
 import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
+import com.falazar.farmupcraft.data.rules.crop.TagBasedRandomCropRule;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.setup.Registration;
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
@@ -24,7 +26,7 @@ public class FarmUpCraft {
     // Define mod id in a common place for everything to reference
     public static final String MODID = "farmupcraft";
     // Directly reference a slf4j logger
-    private static final Logger LOGGER = LogUtils.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(FarmUpCraft.class.getSimpleName());
 
 
     public FarmUpCraft() {

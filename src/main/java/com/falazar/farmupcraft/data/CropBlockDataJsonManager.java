@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
@@ -21,7 +22,7 @@ import java.util.Map;
 public class CropBlockDataJsonManager extends SimpleJsonResourceReloadListener {
     private static final Gson STANDARD_GSON = new Gson();
     private final String folderName;
-    public static final Logger LOGGER = LogManager.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(CropBlockDataJsonManager.class.getSimpleName());
 
 
     protected static Map<ResourceLocation, CropBlockData> cropDataEntries = new HashMap<>();

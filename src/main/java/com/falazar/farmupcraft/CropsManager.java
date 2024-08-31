@@ -5,6 +5,7 @@ import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.resources.language.I18n;
@@ -57,7 +58,7 @@ import static org.apache.commons.lang3.StringUtils.replace;
 
 @Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class CropsManager {
-    private static final Logger LOGGER = LogManager.getLogger();
+    public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
     // Class-level variable to store biome information
     private static Map<String, List<String>> biomeCrops = new HashMap<>();

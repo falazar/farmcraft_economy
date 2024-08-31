@@ -76,7 +76,7 @@ public class ManagersCommand {
                 return 0;
         }
 
-        source.sendSuccess(() -> Component.literal(managerType.name() + " manager cleared."), true);
+        source.sendSuccess(() -> Component.literal(managerType.name() + " manager repopulated."), true);
         return 1;
     }
 
