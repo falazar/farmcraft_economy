@@ -328,9 +328,25 @@ public class CropsManager {
 
             // List the crops allowed in the current biome
             Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
-                    // Translate the item description IDs to their human-readable names
-                    .map(item -> Component.translatable(item.getDescriptionId()).getString())
-                    // Filter out the names that include "Seed" or "Seeds"
+                    // Map item to a custom string for special cases and then translate
+                    .map(item -> {
+                        String locationString = item.getDescriptionId();
+                        String translatedName = Component.translatable(locationString).getString();
+
+                        // Handle special cases where we want to avoid filtering out specific seeds
+                        if (locationString.contains("sesameseedsseeditem")) {
+                            translatedName = "Sesame";
+                        } else if (locationString.contains("mustardseedsseeditem")) {
+                            translatedName = "Mustard";
+                        } else if (locationString.contains("sesameseedsitem")) {
+                            translatedName = "Sesame Seeds"; // Same display name to keep only one of them
+                        } else if (locationString.contains("mustardseedsitem")) {
+                            translatedName = "Mustard Seeds"; // Same display name to keep only one of them
+                        }
+
+                        return translatedName; // Return the adjusted or original translated name
+                    })
+                    // Filter out the remaining names that still include "Seed" or "Seeds" but not the special cases
                     .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
                     // Sort the remaining names alphabetically
                     .sorted()
@@ -340,6 +356,7 @@ public class CropsManager {
                     // Join the names with commas
                     .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                     .orElse(Component.literal("None"));
+
 
 // Construct the message for the crops that can be planted in the biome
             component = Component.literal("§aCrops you can plant in ")
