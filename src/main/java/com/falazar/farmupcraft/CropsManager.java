@@ -163,7 +163,7 @@ public class CropsManager {
         }
         // Else allow to grow as normal.
 
-        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
+//        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
     }
 
 
