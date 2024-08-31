@@ -1,5 +1,5 @@
 {
-  "biome": "forge:is_desert",
+  "biome": "minecraft:is_overworld",
   "crop_rules": {
     "type": "farmupcraft:item_list_crop_rule",
     "allowed_crops": [],

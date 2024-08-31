@@ -110,6 +110,7 @@ public class BiomeRulesInstance {
      * @return True if the item is a valid crop for this biome, false otherwise.
      */
     public boolean biomeHasCrops(ItemStack itemStack) {
+        //if(randomCrops.isEmpty()) return true;
         return randomCrops.contains(itemStack.getItem());
     }
 

@@ -304,7 +304,7 @@ public class CropsManager {
 
     }
 
-
+    private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unkown"));
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // TODO invert this.
@@ -314,7 +314,7 @@ public class CropsManager {
             String cropItemShow = stack.getHoverName().getString();
 
             // Get the biome name
-            ResourceKey<Biome> rl = biome.unwrapKey().orElse(ResourceKey.create(Registries.BIOME, new ResourceLocation("unkown")));
+            ResourceKey<Biome> rl = biome.unwrapKey().orElse(UKNOWN_RK);
             Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
 
             Player player = event.getEntity();
