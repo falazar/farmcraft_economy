@@ -11,7 +11,10 @@ import net.minecraft.world.level.block.Block;
 public class FUCTags {
     public static final TagKey<Item> FOOD = registerItemTag("food");
     public static final TagKey<Item> VANILLA_CROPS = registerItemTag("vanilla_crops");
+    public static final TagKey<Item> MODDED_SEEDS = registerItemTag("modded_seeds");
     public static final TagKey<Item> MODDED_CROPS = registerItemTag("modded_crops");
+
+
     public static final TagKey<Item> MARKET_FOODS = registerItemTag("market_foods");
     public static final TagKey<Item> VANILLA_AND_MODDED_CROPS = registerItemTag("vanilla_and_modded_crops");
 

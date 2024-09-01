@@ -117,7 +117,7 @@ public class TagBasedRandomCropRule implements CropRules{
        List<Item> randomList = shuffledCrops.subList(0, limit);
         //randomList.add(ItemRegistration.onionseeditem.get());
 
-       //pamh2crops do some stupid fuckery where they have a seed and a normal item that can both be placed so we put
+        //pamh2crops do some stupid fuckery where they have a seed and a normal item that can both be placed so we put
         // them both in here so it cant be used.
         if (ModList.get().isLoaded("pamhc2crops")) {
             List<Item> additionalItems = new ArrayList<>();

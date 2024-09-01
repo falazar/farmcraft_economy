@@ -7,6 +7,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.data.PackOutput;
 import net.minecraft.data.tags.ItemTagsProvider;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
@@ -32,7 +33,12 @@ public class ItemTagsGenerator extends ItemTagsProvider {
         for(Item object : ForgeRegistries.ITEMS.getValues()) {
             if(object.getDescriptionId().contains("pamhc2crops") && object.getDescriptionId().contains("seed")) {
                 ResourceLocation location = ForgeRegistries.ITEMS.getKey(object);
-                this.tag(FUCTags.MODDED_CROPS).addOptional(location);
+                this.tag(FUCTags.MODDED_SEEDS).addOptional(location);
+            } else if(object.getDescriptionId().contains("pamhc2crops")) {
+                if(object instanceof BlockItem item) {
+                    ResourceLocation location = ForgeRegistries.ITEMS.getKey(object);
+                    this.tag(FUCTags.MODDED_CROPS).addOptional(location);
+                }
             }
             if ((object.getDescriptionId().contains("pamhc2foodcore") || object.getDescriptionId().contains("pamhc2foodextended"))
                     && object.isEdible()) {
@@ -40,8 +46,8 @@ public class ItemTagsGenerator extends ItemTagsProvider {
                 this.tag(FUCTags.MARKET_FOODS).addOptional(location);
             }
         }
-
-        this.tag(FUCTags.VANILLA_AND_MODDED_CROPS).addTag(FUCTags.VANILLA_CROPS).addOptionalTag(FUCTags.MODDED_CROPS.location());
+        //this.copy(FUCTags.MODDED_CROPS_BLOCKS,FUCTags.MODDED_CROPS);
+        this.tag(FUCTags.VANILLA_AND_MODDED_CROPS).addTag(FUCTags.VANILLA_CROPS).addOptionalTag(FUCTags.MODDED_SEEDS.location());
     }
 
     @Override

@@ -87,7 +87,7 @@ public class CropsManager {
 
         // STEP 3: Test if holding a vanilla or harvestcraft item, if not leave.
         ItemStack stack = event.getItemStack();
-        if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS)) {
+        if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
             return;
         }
 

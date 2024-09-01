@@ -2,7 +2,7 @@
   "values": [
     "#farmupcraft:vanilla_crops",
     {
-      "id": "#farmupcraft:modded_crops",
+      "id": "#farmupcraft:modded_seeds",
       "required": false
     }
   ]
