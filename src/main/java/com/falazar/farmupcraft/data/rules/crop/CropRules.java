@@ -14,8 +14,8 @@ public interface CropRules {
                     FUCRegistries.CROP_RULES_TYPE_SERIALIZER_SUPP.get().getCodec()
                     .dispatch(CropRules::type, CropRulesType::codec));
 
-    List<Item> getCropItems(ServerLevel level);
-    List<Item> getCropItemsWithRandomId(ServerLevel level, int id);
+    //List<Item> getCropItems(ServerLevel level);
+    List<Item> getCropItems(ServerLevel level, int id);
 
     CropRulesType<? extends CropRules> type();
 }

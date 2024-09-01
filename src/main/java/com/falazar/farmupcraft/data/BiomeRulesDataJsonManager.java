@@ -86,7 +86,7 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
                         // Apply the biome filter if it's present
                         boolean matchesFilter = biomeFilter
                                 .map(biomeHolder::is) // Check if the biome matches the filter
-                                .orElse(false); // If no filter is present, proceed with true
+                                .orElse(false); // If no filter is present, proceed with false
 
                         if(!manager.containsBiome(biomeHolder) && !matchesFilter) {
                             //LOGGER.warn("Biome After" + biomeHolder);
@@ -103,9 +103,6 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
             BiomeRulesInstance instance = manager.getBiomeRules(biomes);
             ResourceKey<Biome> biomeRk = BiomeRegistryHolder.convertToID(biomes);
             for(Item item : instance.getCropsWithRandomId(level, BiomeRegistryHolder.convertToID(biomeRk))) {
-                manager.setItemBiomeList(item, biomes);
-            }
-            for(Item item : instance.getCrops(level)){
                 manager.setItemBiomeList(item, biomes);
             }
         }

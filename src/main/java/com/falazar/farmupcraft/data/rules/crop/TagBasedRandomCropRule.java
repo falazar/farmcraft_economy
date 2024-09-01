@@ -82,13 +82,9 @@ public class TagBasedRandomCropRule implements CropRules{
     }
 
 
-    @Override
-    public List<Item> getCropItems(ServerLevel level) {
-        return List.of();
-    }
 
     @Override
-    public List<Item> getCropItemsWithRandomId(ServerLevel level, int id) {
+    public List<Item> getCropItems(ServerLevel level, int id) {
         if(items.isEmpty()) {
             level.registryAccess().registry(Registries.ITEM).ifPresent(reg -> {
                 Iterable<Holder<Item>> holders = reg.getTagOrEmpty(getCropTag());
@@ -188,6 +184,8 @@ public class TagBasedRandomCropRule implements CropRules{
             LOGGER.warn("Tried to add a non existing item for {}", loc);
         }
     }
+
+
     @Override
     public CropRulesType<? extends CropRules> type() {
         return CropRulesRegistry.TAG_BASED_RANDOM_CROP_RULE.get();

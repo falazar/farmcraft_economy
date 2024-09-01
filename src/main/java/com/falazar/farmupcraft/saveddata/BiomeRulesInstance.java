@@ -90,14 +90,14 @@ public class BiomeRulesInstance {
 
     public List<Item> getCrops(ServerLevel level, boolean newTry) {
         if (this.randomCrops.isEmpty() && newTry) {
-            this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItems(level));
+            this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItems(level, 0));
         }
         return randomCrops;
     }
 
     public List<Item> getCropsWithRandomId(ServerLevel level, int id) {
         if (this.randomCrops.isEmpty()) {
-            this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItemsWithRandomId(level, id));
+            this.randomCrops = new ArrayList<>(this.rulesData.getCropRules().getCropItems(level, id));
         }
         return randomCrops;
     }

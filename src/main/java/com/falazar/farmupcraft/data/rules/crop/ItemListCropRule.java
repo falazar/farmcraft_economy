@@ -68,13 +68,8 @@ public class ItemListCropRule implements CropRules{
     }
 
     @Override
-    public List<Item> getCropItems(ServerLevel level) {
+    public List<Item> getCropItems(ServerLevel level, int id) {
         return getAllowedCrops();
-    }
-
-    @Override
-    public List<Item> getCropItemsWithRandomId(ServerLevel level, int id) {
-        return List.of();
     }
 
     @Override
