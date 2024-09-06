@@ -41,6 +41,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
@@ -54,9 +55,10 @@ import org.apache.logging.log4j.Logger;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static org.apache.commons.lang3.StringUtils.replace;
 
-@Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
+@Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
@@ -94,12 +96,49 @@ public class CropsManager {
         // DEBUG ZONE:
         if (stack.is(Items.WHEAT_SEEDS)) {
             LOGGER.info("DEBUG: is a wheat seeds crop, running DEBUG METHOD.");
-            findNearestVillage(event);
+//            findNearestVillage(event);
+
+            // set some loaded chunks for farms now.
+
+//            ForgeChunkManager chunkManager = ForgeChunkManager.
+            // Get the chunk manager
+            // Now set a chunk to stay loaded.
+//             ForgeChunkManager.forceChunk(event.getLevel(), new ChunkPos(event.getPos()), player);
 
             // Only run on server side.
             if (event.getLevel() instanceof ServerLevel serverLevel) {
                 long worldSeed = serverLevel.getSeed();
 //                getAllFoods(serverLevel, worldSeed);
+
+                // TEST 3:  todo test/
+                // Test force three farms:
+                // 16,52
+                // 18,54
+                // 23,56
+                // TESTER: 24,57
+                // Orleans
+                // 16,6
+                // 17,3
+                // 24,0
+                // 19,-2
+                // Added Gaelis farm;
+                // 63,-18
+                // hardcoded values to test. Nave farms and one chunk.
+                // manually force loaded 3 with command.
+                LOGGER.info("Adding force chunk loads now. ");
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16,52, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 18,54, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 23,56, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24,57, true, true);
+                // Orleans:
+                // NOTE does this make underground active?  probably... is there another flag? dont see it.
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16,6, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 17,3, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24,0, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 19,-2, true, true);
+                // Gaelis:
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 63,-18, true, true);
+                // working?
             }
         }
 
@@ -163,7 +202,7 @@ public class CropsManager {
         }
         // Else allow to grow as normal.
 
-//        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString());
+//        LOGGER.info("DEBUG: slowCropsEvent: " + randomNum + " allowed, this target block is " + block.getName().toString() + " at "+ blockPos.toShortString());
     }
 
 
@@ -410,6 +449,11 @@ public class CropsManager {
         }
 
         Player player = event.player;
+        if (player.isCreative()) {
+            LOGGER.info("DEBUG: Player is in creative mode, skipping hunger rules.");
+            return;
+        }
+
         Random random = new Random();
 
         // 500 will starve in about 40 minutes.
