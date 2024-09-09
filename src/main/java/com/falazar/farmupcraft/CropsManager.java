@@ -641,8 +641,10 @@ public class CropsManager {
         LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
 
 
-        // Only do rule if base stone or dirt.
-        if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD) && !blockState.is(BlockTags.DIRT)) {
+        // Only do rule if base stones or dirt.
+        if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD)
+                && !blockState.is(BlockTags.DIRT)
+                && !blockState.is(BlockTags.BASE_STONE_NETHER)) {
             return;
         }
 
@@ -661,7 +663,12 @@ public class CropsManager {
 //            else {
 //                baseSuccessRate += player.getLevel() * 2;
 //            }
+
         int successRate = baseSuccessRate;
+
+        // For falazar now, increase as faking a skill......
+        successRate = 100;
+
 
         // STEP 2: Roll and check for success.
         // TODO make roll a mini method.
