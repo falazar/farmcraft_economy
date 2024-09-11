@@ -450,7 +450,7 @@ public class CropsManager {
 
         Player player = event.player;
         if (player.isCreative()) {
-            LOGGER.info("DEBUG: Player is in creative mode, skipping hunger rules.");
+//            LOGGER.info("DEBUG: Player is in creative mode, skipping hunger rules.");
             return;
         }
 
@@ -638,7 +638,7 @@ public class CropsManager {
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
         MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
         String s = component.toString();
-        LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
+//        LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
 
 
         // Only do rule if base stones or dirt.
@@ -648,7 +648,7 @@ public class CropsManager {
             return;
         }
 
-        LOGGER.info("DEBUG2: Testing2 here we found base stone/dirt");
+//        LOGGER.info("DEBUG2: Testing2 here we found base stone/dirt");
 
         // STEP 1: Get SuccessRate
         int baseSuccessRate = 30;  // 50% chance to fail loot at start.
@@ -674,14 +674,14 @@ public class CropsManager {
         // TODO make roll a mini method.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
-        LOGGER.info("DEBUG3: Random Num = " + randomNum);
+//        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
             LOGGER.info("DEBUG: DESTROYING stone block, no drops...");
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);  // this works fine, prevents drops, must have or it replaces it!
             return;
         }
-        LOGGER.info("DEBUG3: ALLOWING stone block drops...");
+//        LOGGER.info("DEBUG3: ALLOWING stone block drops...");
 
         // SECOND ABILITY (only if above worked)
         // trencher
