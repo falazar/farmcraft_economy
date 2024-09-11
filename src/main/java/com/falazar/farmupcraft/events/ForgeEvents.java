@@ -6,13 +6,26 @@ import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.data.CropItemDataJsonManager;
 import com.falazar.farmupcraft.data.MarketDataJsonManager;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.DataBaseAccess;
+import com.falazar.farmupcraft.database.DataBaseManager;
+import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
+import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.util.AsyncLocator;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.event.AddReloadListenerEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Handles various Forge events related to server lifecycle and resource reloads.
@@ -66,6 +79,12 @@ public class ForgeEvents {
         CropBlockDataJsonManager.clearEntries();
         CropItemDataJsonManager.clearEntries();
         BiomeRulesDataJsonManager.clearEntries();
+
+
+    }
+    @SubscribeEvent
+    public static void serverStopped(final ServerStoppedEvent event) {
+        DataBaseManager.shutDownDataBases(event.getServer().overworld());
     }
 
     /**
@@ -84,4 +103,30 @@ public class ForgeEvents {
         event.addListener(new MarketDataJsonManager());
         event.addListener(new BiomeRulesDataJsonManager());
     }
+
+
+    @SubscribeEvent
+    public static void onLoginEvent(PlayerEvent.PlayerLoggedInEvent event) {
+        if (event.getEntity().level() instanceof ServerLevel level) {
+            for (ResourceLocation dataBaseName : DataBaseManager.getDataBasesToSync()) {
+                DataBaseAccess<?, ?> dataBaseAccess = DataBaseManager.getDataBaseAccess(dataBaseName);
+
+                // Run saving operation asynchronously
+                CompletableFuture.runAsync(() -> {
+                    DataBase<?, ?> dataBase = dataBaseAccess.get(level);
+
+                    // Perform the save operation (this may take time)
+                    CompoundTag tag = dataBase.save(new CompoundTag());
+
+                    // Send the saved data back to the main thread for sending to the player
+                    level.getServer().execute(() -> {
+                        EDBMessages.sendToPlayer(new DataBaseFullS2C<>(tag, dataBase.getDatabaseName()), (ServerPlayer) event.getEntity());
+                    });
+                });
+            }
+        }
+    }
+
+
+
 }

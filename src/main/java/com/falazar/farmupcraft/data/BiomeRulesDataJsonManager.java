@@ -1,8 +1,11 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
+import com.falazar.farmupcraft.database.DataBaseAccess;
+import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
@@ -18,8 +21,6 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.biome.Biome;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -107,7 +108,6 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
             }
         }
 
-        LOGGER.info("Assigned a total of {} items with biomes", manager.getItems().size());
     }
 
 

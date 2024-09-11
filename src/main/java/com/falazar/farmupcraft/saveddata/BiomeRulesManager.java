@@ -327,6 +327,10 @@ public class BiomeRulesManager extends SavedData {
         setDirty();
     }
 
+    public Map<Holder<Biome>, BiomeRulesInstance> getData() {
+        return biomeRules;
+    }
+
     public boolean hasItems() {
         return !itemToBiomeList.isEmpty();
     }

@@ -1,5 +1,11 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.DataBaseAccess;
+import com.falazar.farmupcraft.database.DataBaseManager;
+import com.falazar.farmupcraft.events.ModEvents;
+import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -8,6 +14,7 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -54,6 +61,9 @@ public class PlotCommand {
             Level level = summoner.level();
 
             ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
+            DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
+            DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
+            ChunkData data = dataBase.getData(chunkPos);
 
             // TODO load plot data here.
 

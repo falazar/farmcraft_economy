@@ -1,15 +1,15 @@
 package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.command.ManagersCommand;
-import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.falazar.farmupcraft.command.PlotCommand;
+import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
-import com.falazar.farmupcraft.data.rules.crop.TagBasedRandomCropRule;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.setup.Registration;
+import com.falazar.farmupcraft.database.DataBaseCommand;
+import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FileInfo;
-import com.mojang.logging.LogUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -17,17 +17,13 @@ import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.ModContainer;
 import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.forgespi.language.IModInfo;
 import net.minecraftforge.registries.DataPackRegistryEvent;
 import org.apache.maven.artifact.versioning.ArtifactVersion;
-import org.apache.maven.artifact.versioning.VersionRange;
-import org.slf4j.Logger;
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.Locale;
-import java.util.Properties;
 
 
 // The value here should match an entry in the META-INF/mods.toml file
@@ -42,7 +38,9 @@ public class FarmUpCraft {
     public FarmUpCraft() {
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         MinecraftForge.EVENT_BUS.addListener(this::commands);
+        modEventBus.addListener(this::commonSetup);
         Registration.init();
+
         modEventBus.addListener((DataPackRegistryEvent.NewRegistry event) -> {
             event.dataPackRegistry(FUCRegistries.Keys.CROP_RULES, CropRules.DIRECT_CODEC, CropRules.DIRECT_CODEC);
         });
@@ -98,7 +96,14 @@ public class FarmUpCraft {
     public void commands(RegisterCommandsEvent e) {
         ShowBiomesCommand.register(e.getDispatcher());
         ManagersCommand.register(e.getDispatcher());
+        DataBaseCommand.register(e.getDispatcher());
         PlotCommand.register(e.getDispatcher());
+    }
+
+
+    private void commonSetup(final FMLCommonSetupEvent event) {
+        EDBMessages.register();
+
     }
 }
 
