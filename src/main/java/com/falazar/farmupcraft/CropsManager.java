@@ -1,14 +1,19 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.DataBaseAccess;
+import com.falazar.farmupcraft.database.DataBaseManager;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.resources.language.I18n;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -25,7 +30,6 @@ import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.CraftingContainer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -37,6 +41,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -49,11 +54,8 @@ import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static org.apache.commons.lang3.StringUtils.replace;
@@ -62,13 +64,10 @@ import static org.apache.commons.lang3.StringUtils.replace;
 public class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
-    // Class-level variable to store biome information
-    private static Map<String, List<String>> biomeCrops = new HashMap<>();
-    private static Map<String, List<String>> cropBiomes = new HashMap<>();
-
-    @SubscribeEvent
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
+    // NOTE: Planting IS allowed on non-farm plots - villager created plots. Only can hoe on farms though.
+    @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
         // Step 1: If in creative mode, skip all rules and allow planting all.
@@ -126,18 +125,18 @@ public class CropsManager {
                 // hardcoded values to test. Nave farms and one chunk.
                 // manually force loaded 3 with command.
                 LOGGER.info("Adding force chunk loads now. ");
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16,52, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 18,54, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 23,56, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24,57, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16, 52, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 18, 54, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 23, 56, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24, 57, true, true);
                 // Orleans:
                 // NOTE does this make underground active?  probably... is there another flag? dont see it.
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16,6, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 17,3, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24,0, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 19,-2, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16, 6, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 17, 3, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24, 0, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 19, -2, true, true);
                 // Gaelis:
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 63,-18, true, true);
+                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 63, -18, true, true);
                 // working?
             }
         }
@@ -164,6 +163,63 @@ public class CropsManager {
             return;
         }
     }
+
+    // When trying to hoe a dirt plot, you MUST be on a farm.
+    @SubscribeEvent
+    public static void onRightClickHoeing(PlayerInteractEvent.RightClickItem event) {
+        LOGGER.info("DEBUG2: onRightClickHoeing: ");
+
+        // Step 1: If in creative mode, skip all rules and allow planting all.
+        Player player = (Player) event.getEntity();
+
+        if (player.isCreative()) {
+            LOGGER.info("DEBUG2: Player is in creative mode, skipping all hoe rules.");
+            return;
+        }
+
+        // STEP 2: Test if holding a hoe.
+        ItemStack stack = event.getItemStack();
+        if (stack.getItem() != Items.WOODEN_HOE && stack.getItem() != Items.STONE_HOE
+                && stack.getItem() != Items.IRON_HOE && stack.getItem() != Items.DIAMOND_HOE
+                && stack.getItem() != Items.GOLDEN_HOE && stack.getItem() != Items.NETHERITE_HOE) {
+            return;
+        }
+        LOGGER.info("DEBUG2: holding a hoe, testing now. ");
+
+        // STEP 3: Test if target block is dirt.
+        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
+        if (!blockState.is(Blocks.DIRT)) {
+            return;
+        }
+        LOGGER.info("DEBUG2: target block is dirt, testing now. ");
+
+        // STEP 4: See if we are on a farm plot now.
+        if (getPlotType(event.getPos()).equals("farm")) {
+            LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
+        } else {
+            // Cancel event and return now.
+            LOGGER.info("DEBUG4: target block is not in a farm plot, cancelling hoeing. ");
+            event.setCanceled(true);
+        }
+    }
+
+    // TODO Move to proper object home.
+    // Check plot type pos is on now.
+    public static String getPlotType(BlockPos pos) {
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
+        Level level = Minecraft.getInstance().level; // TODO TEST
+        DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
+        ChunkData data = dataBase.getData(chunkPos);
+        if (data == null) {
+            LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
+            return "";
+        }
+
+        LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
+        return data.getType();
+    }
+
 
 
     // NOTE: Is about 3 hours now with 400 growth.
@@ -343,14 +399,16 @@ public class CropsManager {
 
     }
 
-    private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unkown"));
+    private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unknown"));
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
-        // This crop is allowed here in this biome.
+        // This crop is allowed here in this biome, return now and allow planting.  Else show some crop biome info.
         if (instance.biomeHasCrops(stack)) {
             return true;
         }
+
+        // TODO MAKE METHOD
 
         // Get the name of the crop item
         String cropItemShow = stack.getHoverName().getString();
@@ -360,72 +418,75 @@ public class CropsManager {
         Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
 
         Player player = event.getEntity();
-        if (!event.getLevel().isClientSide) {
-            // Display message that this crop cannot be planted in this biome
-            MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
-            player.displayClientMessage(component, false);
+        if (event.getLevel().isClientSide) {
+            return false;
+        }
 
-            // List the crops allowed in the current biome
-            Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
-                    // Map item to a custom string for special cases and then translate
-                    .map(item -> {
-                        String locationString = item.getDescriptionId();
-                        String translatedName = Component.translatable(locationString).getString();
+        // Display message that this crop cannot be planted in this biome
+        MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
+        player.displayClientMessage(component, false);
 
-                        // Handle special cases where we want to avoid filtering out specific seeds
-                        if (locationString.contains("sesameseedsseeditem")) {
-                            translatedName = "Sesame";
-                        } else if (locationString.contains("mustardseedsseeditem")) {
-                            translatedName = "Mustard";
-                        } else if (locationString.contains("sesameseedsitem")) {
-                            translatedName = "Sesame Seeds"; // Same display name to keep only one of them
-                        } else if (locationString.contains("mustardseedsitem")) {
-                            translatedName = "Mustard Seeds"; // Same display name to keep only one of them
-                        } else if (locationString.contains("wheat_seeds")) {
-                            translatedName = "Wheat"; // Same display name to keep only one of them
-                        }
+        // List the crops allowed in the current biome
+        Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
+                // Map item to a custom string for special cases and then translate
+                .map(item -> {
+                    String locationString = item.getDescriptionId();
+                    String translatedName = Component.translatable(locationString).getString();
 
-                        return translatedName; // Return the adjusted or original translated name
-                    })
-                    // Filter out the remaining names that still include "Seed" or "Seeds" but not the special cases
-                    .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
-                    // Sort the remaining names alphabetically
-                    .sorted()
-                    .distinct() // Ensure each name is unique
-                    // Map the filtered names back to Component
-                    .map(Component::literal)
-                    // Join the names with commas
+                    // Handle special cases where we want to avoid filtering out specific seeds
+                    if (locationString.contains("sesameseedsseeditem")) {
+                        translatedName = "Sesame";
+                    } else if (locationString.contains("mustardseedsseeditem")) {
+                        translatedName = "Mustard";
+                    } else if (locationString.contains("sesameseedsitem")) {
+                        translatedName = "Sesame Seeds"; // Same display name to keep only one of them
+                    } else if (locationString.contains("mustardseedsitem")) {
+                        translatedName = "Mustard Seeds"; // Same display name to keep only one of them
+                    } else if (locationString.contains("wheat_seeds")) {
+                        translatedName = "Wheat"; // Same display name to keep only one of them
+                    }
+
+                    return translatedName; // Return the adjusted or original translated name
+                })
+                // Filter out the remaining names that still include "Seed" or "Seeds" but not the special cases
+                .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
+                // Sort the remaining names alphabetically
+                .sorted()
+                .distinct() // Ensure each name is unique
+                // Map the filtered names back to Component
+                .map(Component::literal)
+                // Join the names with commas
+                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                .orElse(Component.literal("None"));
+
+
+        // Construct the message for the crops that can be planted in the biome
+        component = Component.literal("§aCrops you can plant in ")
+                .append(biomeNameShow)
+                .append(": §2")
+                .append(cropsAllowedShow);
+
+
+        player.displayClientMessage(component, false);
+
+        // List the biomes where this crop can be planted
+        if (manager.hasItems()) {
+            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
+            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
+                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+                    .map(Component::getString) // Convert to plain text for uniqueness check
+                    .distinct() // Ensure each biome is unique
+                    .sorted() // Sort the biomes alphabetically
+                    .map(name -> Component.literal(name)) // Convert back to Component
                     .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                     .orElse(Component.literal("None"));
 
-
-// Construct the message for the crops that can be planted in the biome
-            component = Component.literal("§aCrops you can plant in ")
-                    .append(biomeNameShow)
-                    .append(": §2")
-                    .append(cropsAllowedShow);
-
-
+            // Create the final message component
+            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
             player.displayClientMessage(component, false);
-
-            // List the biomes where this crop can be planted
-            if (manager.hasItems()) {
-                // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
-                Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-                        .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-                        .map(Component::getString) // Convert to plain text for uniqueness check
-                        .distinct() // Ensure each biome is unique
-                        .sorted() // Sort the biomes alphabetically
-                        .map(name -> Component.literal(name)) // Convert back to Component
-                        .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
-                        .orElse(Component.literal("None"));
-
-                // Create the final message component
-                component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
-                player.displayClientMessage(component, false);
-            }
         }
-        return false;
+
+        return true;
     }
 
     private static String getBiomeLangKey(ResourceLocation location) {
@@ -632,7 +693,6 @@ public class CropsManager {
         //}
         //builder.append(";");
         //LOGGER.info("Final string = " + builder.toString());
-
 
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
