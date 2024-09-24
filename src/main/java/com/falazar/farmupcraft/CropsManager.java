@@ -156,24 +156,22 @@ public class CropsManager {
         BiomeRulesInstance instance = manager.getBiomeRules(biome);
         if (instance == null) return;
 
-        //check if the crop is allowed in the biome
+        // Check if the crop is allowed in the biome
         if (!isCropAllowed(manager, instance, stack, biome, event)) {
             // Cancel event and return now.
             event.setCanceled(true);
-            return;
         }
     }
 
     // When trying to hoe a dirt plot, you MUST be on a farm.
     @SubscribeEvent
-    public static void onRightClickHoeing(PlayerInteractEvent.RightClickItem event) {
-        LOGGER.info("DEBUG2: onRightClickHoeing: ");
-
+    public static void onRightClickHoeing(PlayerInteractEvent.RightClickBlock event) {
         // Step 1: If in creative mode, skip all rules and allow planting all.
         Player player = (Player) event.getEntity();
+        Level level = event.getLevel();
 
         if (player.isCreative()) {
-            LOGGER.info("DEBUG2: Player is in creative mode, skipping all hoe rules.");
+//            LOGGER.info("DEBUG2: Player is in creative mode, skipping all hoe rules.");
             return;
         }
 
@@ -184,40 +182,45 @@ public class CropsManager {
                 && stack.getItem() != Items.GOLDEN_HOE && stack.getItem() != Items.NETHERITE_HOE) {
             return;
         }
-        LOGGER.info("DEBUG2: holding a hoe, testing now. ");
 
         // STEP 3: Test if target block is dirt.
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
         if (!blockState.is(Blocks.DIRT)) {
             return;
         }
-        LOGGER.info("DEBUG2: target block is dirt, testing now. ");
 
         // STEP 4: See if we are on a farm plot now.
-        if (getPlotType(event.getPos()).equals("farm")) {
-            LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
+        if (getPlotType(event.getPos(), level).equals("farm")) {
+//            LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
         } else {
             // Cancel event and return now.
-            LOGGER.info("DEBUG4: target block is not in a farm plot, cancelling hoeing. ");
+            // Send message to player now.
+            player.displayClientMessage(Component.literal("You can only hoe on farm plots.  Use /plot buy command to buy plots in your village. "), false);
             event.setCanceled(true);
         }
     }
 
     // TODO Move to proper object home.
     // Check plot type pos is on now.
-    public static String getPlotType(BlockPos pos) {
-        ChunkPos chunkPos = new ChunkPos(pos);
-        DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
-        Level level = Minecraft.getInstance().level; // TODO TEST
-        DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
-        ChunkData data = dataBase.getData(chunkPos);
-        if (data == null) {
-            LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
+    public static String getPlotType(BlockPos pos, Level level) {
+        try {
+            // TODO: can we get level somehow easier? internal.
+            ChunkPos chunkPos = new ChunkPos(pos);
+            DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
+//        Level level = Minecraft.getInstance().level; // TODO TEST
+            DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
+            ChunkData data = dataBase.getData(chunkPos);
+            if (data == null) {
+                LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
+                return "";
+            }
+
+            LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
+            return data.getType();
+        } catch (Exception e) {
+            LOGGER.info("DEBUG3: checkPlotType: error " + e.getMessage());
             return "";
         }
-
-        LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
-        return data.getType();
     }
 
 
@@ -402,6 +405,7 @@ public class CropsManager {
     private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unknown"));
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
+    // Show crop info data if not allowed.
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // This crop is allowed here in this biome, return now and allow planting.  Else show some crop biome info.
         if (instance.biomeHasCrops(stack)) {
