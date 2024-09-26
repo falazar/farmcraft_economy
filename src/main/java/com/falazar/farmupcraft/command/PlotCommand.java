@@ -2,6 +2,7 @@ package com.falazar.farmupcraft.command;
 
 import com.falazar.farmupcraft.CropsManager;
 import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.DataBaseAccess;
 import com.falazar.farmupcraft.database.DataBaseManager;
@@ -18,6 +19,7 @@ import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.Vec3i;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -49,9 +51,6 @@ public class PlotCommand {
                 .executes(PlotCommand::showPlotInfo);
 
         // Define the "buy" sub-command
-//        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
-//                .executes(PlotCommand::buyPlot);
-        // Define the "buy" sub-command with a string argument
         LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
                 .then(Commands.argument("type", StringArgumentType.word())
                         .suggests((context, builder2) -> {
@@ -59,7 +58,39 @@ public class PlotCommand {
                             builder2.suggest("farm");
                             return builder2.buildFuture();
                         })
-                        .executes(PlotCommand::buyPlot));
+                        // this is not quite right, fix me.
+                        .then(Commands.argument("villageName", StringArgumentType.string())
+                                .executes(context -> {
+                                    String plotType = StringArgumentType.getString(context, "type");
+                                    String villageName = StringArgumentType.getString(context, "villageName");
+                                    if ("village".equals(plotType)) {
+                                        return buyPlot(context.getSource(), plotType, villageName);
+                                    } else {
+                                        context.getSource().sendFailure(Component.literal("Village name is only required for village plot type."));
+                                        return 0;
+                                    }
+                                }))
+                        .executes(context -> {
+                            String plotType = StringArgumentType.getString(context, "type");
+                            if ("farm".equals(plotType)) {
+                                return buyPlot(context.getSource(), plotType, null);
+                            } else {
+                                context.getSource().sendFailure(Component.literal("Village name is required for village plot type."));
+                                return 0;
+                            }
+                        }));
+
+//        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
+//                .executes(PlotCommand::buyPlot);
+        // Define the "buy" sub-command with a string argument
+//        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
+//                .then(Commands.argument("type", StringArgumentType.word())
+//                        .suggests((context, builder2) -> {
+//                            builder2.suggest("village");
+//                            builder2.suggest("farm");
+//                            return builder2.buildFuture();
+//                        })
+//                        .executes(PlotCommand::buyPlot));
 
         // Define the "delete" sub-command - For admins only!
 //        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
@@ -91,7 +122,7 @@ public class PlotCommand {
             DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
             ChunkData data = dataBase.getData(chunkPos);
             if (data == null) {
-                context.getSource().sendFailure(Component.literal("Plot is not owned."));
+                context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
                 // todo show closest village still though.
                 return 0;
             }
@@ -99,7 +130,7 @@ public class PlotCommand {
             // Pull out plot info and owner and village.
             ServerLevel serverLevel = context.getSource().getLevel();
 
-            // BUG here maybe.
+            // BUG here maybe. update playerid to uuid string.
             LOGGER.info("Plot info for " + chunkPos + ": player id = " + data.getPlayerId() + ", village id = " + data.getVillageId() + ", type = " + data.getType());
             LOGGER.info("Player name: " + data.getNameForPlayer(serverLevel));
 
@@ -118,19 +149,18 @@ public class PlotCommand {
     }
 
 
-    // TODO buy with a name, farm, village, etc.
-    public static int buyPlot(CommandContext<CommandSourceStack> context) {
+    // TODO buy with a type, farm, village, etc.
+    public static int buyPlot(CommandSourceStack source, String plotType, String villageName) {
         try {
-            Entity nullableSummoner = context.getSource().getEntity();
+            Entity nullableSummoner = source.getEntity();
             Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             if (summoner == null) {
-                context.getSource().sendFailure(Component.literal("Player not found."));
+                source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
 
-            String plotType = StringArgumentType.getString(context, "type");
             if (!VALID_PLOT_TYPES.contains(plotType)) {
-                context.getSource().sendFailure(Component.literal("Invalid plot type. Must be 'village' or 'farm'."));
+                source.sendFailure(Component.literal("Invalid plot type. Must be 'village' or 'farm'."));
                 return 0;
             }
 
@@ -139,8 +169,14 @@ public class PlotCommand {
             DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
             DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
             ChunkData data = dataBase.getData(chunkPos);
-            if (data != null) {
-                context.getSource().sendFailure(Component.literal("Plot is already owned."));
+            // TEMP REMOVE FOR TESTING.
+//            if (data != null) {
+//                source.sendFailure(Component.literal("Plot is already owned."));
+//                return 0;
+//            }
+
+            if ("village".equals(plotType) && (villageName == null || villageName.isEmpty())) {
+                source.sendFailure(Component.literal("Village name is required for village plot type."));
                 return 0;
             }
 
@@ -166,26 +202,54 @@ public class PlotCommand {
 //            data.setPlayerId(summoner.getId());
 //            data.setVillageId(0); // TODO set to village id.
 //            data.setType("farm"); // TODO set to type.
-            // mark dirty to save.
             ChunkData newPlot = new ChunkData(plotType, summoner.getId(), 1234); // hack test.
             dataBase.putData(chunkPos, newPlot);
-            dataBase.setDirty();
             LOGGER.info("Plot bought at " + chunkPos);
 
             // STEP 5: Subtract money out of player.
 //            player.subtractMoney(cost);
 
-            // STEP 6: if village, setup and save village object and owner - make method.
-//            createNewVillage(village, player, chunkPos);
-
             // Build a response message
             MutableComponent response = Component.literal("Plot bought at " + chunkPos + " as " + plotType);
-            context.getSource().sendSuccess(() -> response, false);
 
+            // STEP 6: if village, setup and save village object and owner - make method.
+//            createNewVillage(village, player, chunkPos);
+            if ("village".equals(plotType)) {
+                String villageId = "TEST12345"; // fake test id.
+                createNewVillage(level, villageId, villageName, summoner, summoner.blockPosition());
+
+                response = response.append(Component.literal(" and created village " + villageName));
+            }
+
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
-            context.getSource().sendFailure(Component.literal("Exception thrown - see log"));
+            source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
         }
+        return 0;
+    }
+
+    private static int createNewVillage(Level level, String villageId, String villageName, Player player, BlockPos blockPos) {
+        // TODO implement village creation logic here.
+        // Step 1: Check if village name is unique.
+        // todo
+        // Step 2: Check if player is in village.
+        // todo
+        // Step 3: Check if player has enough money.
+        // todo
+        // Step 4: Create village object.
+        VillageData villageData = new VillageData(villageId, villageName, 0, 1, new Vec3i(blockPos.getX(), blockPos.getY(), blockPos.getZ()));
+        DataBaseAccess<String, VillageData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.VILLAGE_DATABASE.getDatabaseName());
+        DataBase<String, VillageData> dataBase = dataBaseAccess.get(level);
+        dataBase.putData(villageId, villageData);
+        LOGGER.info("Village "+villageName+" saved at " + blockPos);
+        // Step 5: Add player to village.
+        // todo
+        // Step 6: Subtract money from player.
+        // todo
+        // Step 7: Return village id.
+        // todo
         return 0;
     }
 

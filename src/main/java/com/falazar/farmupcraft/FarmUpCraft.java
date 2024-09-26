@@ -3,6 +3,7 @@ package com.falazar.farmupcraft;
 import com.falazar.farmupcraft.command.ManagersCommand;
 import com.falazar.farmupcraft.command.PlotCommand;
 import com.falazar.farmupcraft.command.ShowBiomesCommand;
+import com.falazar.farmupcraft.command.VillageCommand;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.setup.Registration;
@@ -92,18 +93,16 @@ public class FarmUpCraft {
         return new ResourceLocation(MODID, name.toLowerCase(Locale.ROOT));
     }
 
-
     public void commands(RegisterCommandsEvent e) {
         ShowBiomesCommand.register(e.getDispatcher());
         ManagersCommand.register(e.getDispatcher());
         DataBaseCommand.register(e.getDispatcher());
         PlotCommand.register(e.getDispatcher());
+        VillageCommand.register(e.getDispatcher());
     }
-
 
     private void commonSetup(final FMLCommonSetupEvent event) {
         EDBMessages.register();
-
     }
 }
 
