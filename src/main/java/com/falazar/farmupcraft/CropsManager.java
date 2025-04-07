@@ -206,9 +206,8 @@ public class CropsManager {
         try {
             // TODO: can we get level somehow easier? internal.
             ChunkPos chunkPos = new ChunkPos(pos);
-            DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
 //        Level level = Minecraft.getInstance().level; // TODO TEST
-            DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
             if (data == null) {
                 LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);

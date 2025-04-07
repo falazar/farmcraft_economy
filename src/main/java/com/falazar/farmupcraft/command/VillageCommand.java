@@ -73,8 +73,7 @@ public class VillageCommand {
             // TODO load village from db.
             String villageId = "TEST12345"; // TODO get from player data.
 
-            DataBaseAccess<String, VillageData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.VILLAGE_DATABASE.getDatabaseName());
-            DataBase<String, VillageData> dataBase = dataBaseAccess.get(level);
+            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();;
             VillageData villageData = dataBase.getData(villageId);
             if (villageData == null) {
                 // TODO
@@ -116,8 +115,7 @@ public class VillageCommand {
 
             // TODO load all village from db.
             // TODO MAKE METHOD.
-            DataBaseAccess<String, VillageData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.VILLAGE_DATABASE.getDatabaseName());
-            DataBase<String, VillageData> dataBase = dataBaseAccess.get(level);
+            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
             Collection<VillageData> dataList = dataBase.getValues();
             if (dataList == null || dataList.isEmpty()) {
                 context.getSource().sendFailure(Component.literal("No villages data found."));

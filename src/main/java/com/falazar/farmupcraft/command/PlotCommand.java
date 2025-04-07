@@ -1,42 +1,28 @@
 package com.falazar.farmupcraft.command;
 
-import com.falazar.farmupcraft.CropsManager;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
-import com.falazar.farmupcraft.database.DataBaseAccess;
-import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.events.ModEvents;
-import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
 import net.minecraft.core.Vec3i;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.biome.Biome;
-import net.minecraft.world.level.chunk.ChunkAccess;
-import net.minecraft.world.phys.Vec3;
 
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
@@ -118,8 +104,7 @@ public class PlotCommand {
             Level level = summoner.level();
 
             ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
-            DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
-            DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ChunkData data = dataBase.getData(chunkPos);
             if (data == null) {
                 context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
@@ -166,8 +151,9 @@ public class PlotCommand {
 
             Level level = summoner.level();
             ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
-            DataBaseAccess<ChunkPos, ChunkData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.CHUNK_DATA_DATABASE.getDatabaseName());
-            DataBase<ChunkPos, ChunkData> dataBase = dataBaseAccess.get(level);
+
+
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
             // TEMP REMOVE FOR TESTING.
 //            if (data != null) {
@@ -240,8 +226,7 @@ public class PlotCommand {
         // todo
         // Step 4: Create village object.
         VillageData villageData = new VillageData(villageId, villageName, 0, 1, new Vec3i(blockPos.getX(), blockPos.getY(), blockPos.getZ()));
-        DataBaseAccess<String, VillageData> dataBaseAccess = DataBaseManager.getDataBaseAccess(ModEvents.VILLAGE_DATABASE.getDatabaseName());
-        DataBase<String, VillageData> dataBase = dataBaseAccess.get(level);
+        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();;
         dataBase.putData(villageId, villageData);
         LOGGER.info("Village "+villageName+" saved at " + blockPos);
         // Step 5: Add player to village.

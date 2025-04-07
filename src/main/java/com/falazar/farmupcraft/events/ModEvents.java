@@ -12,12 +12,14 @@ import com.falazar.farmupcraft.util.CustomLogger;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
+import net.minecraftforge.server.ServerLifecycleHooks;
 
 import java.util.Collection;
 
@@ -27,25 +29,49 @@ import static com.falazar.farmupcraft.FarmUpCraft.prefix;
 public class ModEvents {
     public static final CustomLogger LOGGER = new CustomLogger(ModEvents.class.getSimpleName());
 
-    public static final DataBaseAccess<Holder<Biome>, BiomeRulesInstance> BIOME_RULES_DATABASE = new DataBaseBuilder<Holder<Biome>, BiomeRulesInstance>(prefix("biome_rules_database"))
+    private static final DataBaseAccess<Holder<Biome>, BiomeRulesInstance> BIOME_RULES_DATABASE = new DataBaseBuilder<Holder<Biome>, BiomeRulesInstance>(prefix("biome_rules_database"))
             .setKeySerializer(new VersionedDataSerializer<>(new HolderDataSerializer<>(Registries.BIOME), new HolderDataSerializer<>(Registries.BIOME), 1))
             .setValueSerializer(new CodecDataSerializer<>(BiomeRulesInstance.CODEC))
             .build();
 
-    public static final DataBaseAccess<Integer, PlayerData> PLAYER_DATABASE = new DataBaseBuilder<Integer, PlayerData>(prefix("player_database"))
+    private static final DataBaseAccess<Integer, PlayerData> PLAYER_DATABASE = new DataBaseBuilder<Integer, PlayerData>(prefix("player_database"))
             .setKeySerializer(new IntDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(PlayerData.CODEC))
             .build();
 
-    public static final DataBaseAccess<ChunkPos, ChunkData> CHUNK_DATA_DATABASE = new DataBaseBuilder<ChunkPos, ChunkData>(prefix("chunk_data_database"))
+    private static final DataBaseAccess<ChunkPos, ChunkData> CHUNK_DATA_DATABASE = new DataBaseBuilder<ChunkPos, ChunkData>(prefix("chunk_data_database"))
             .setKeySerializer(new ChunkPosDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(ChunkData.CODEC))
             .build();
 
-    public static final DataBaseAccess<String, VillageData> VILLAGE_DATABASE = new DataBaseBuilder<String, VillageData>(prefix("village_database"))
+    private static final DataBaseAccess<String, VillageData> VILLAGE_DATABASE = new DataBaseBuilder<String, VillageData>(prefix("village_database"))
             .setKeySerializer(new StringDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(VillageData.CODEC))
             .build();
+
+
+    public static DataBase<String, VillageData> getVillageDatabase() {
+        return getDatabase(VILLAGE_DATABASE);
+    }
+
+    public static DataBase<ChunkPos, ChunkData> getChunkDataDatabase() {
+        return getDatabase(CHUNK_DATA_DATABASE);
+    }
+
+    public static DataBase<Integer, PlayerData> getPlayerDatabase() {
+        return getDatabase(PLAYER_DATABASE);
+    }
+
+    public static DataBase<Holder<Biome>, BiomeRulesInstance> getBiomeRulesDatabase() {
+        return getDatabase(BIOME_RULES_DATABASE);
+    }
+
+
+    public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
+        DataBaseAccess<M, V> dataBaseAccess = DataBaseManager.getDataBaseAccess(access.getDatabaseName());
+        ServerLevel serverLevel = ServerLifecycleHooks.getCurrentServer().overworld();
+        return dataBaseAccess.get(serverLevel);
+    }
 
 
     @SubscribeEvent
