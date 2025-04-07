@@ -25,6 +25,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
@@ -177,9 +178,7 @@ public class CropsManager {
 
         // STEP 2: Test if holding a hoe.
         ItemStack stack = event.getItemStack();
-        if (stack.getItem() != Items.WOODEN_HOE && stack.getItem() != Items.STONE_HOE
-                && stack.getItem() != Items.IRON_HOE && stack.getItem() != Items.DIAMOND_HOE
-                && stack.getItem() != Items.GOLDEN_HOE && stack.getItem() != Items.NETHERITE_HOE) {
+        if (!stack.is(ItemTags.HOES)) {
             return;
         }
 
@@ -206,7 +205,6 @@ public class CropsManager {
         try {
             // TODO: can we get level somehow easier? internal.
             ChunkPos chunkPos = new ChunkPos(pos);
-//        Level level = Minecraft.getInstance().level; // TODO TEST
             DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
             if (data == null) {
@@ -489,7 +487,7 @@ public class CropsManager {
             player.displayClientMessage(component, false);
         }
 
-        return true;
+        return false;
     }
 
     private static String getBiomeLangKey(ResourceLocation location) {
