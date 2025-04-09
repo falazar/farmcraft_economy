@@ -47,6 +47,7 @@ public class ModEvents {
     private static final DataBaseAccess<String, VillageData> VILLAGE_DATABASE = new DataBaseBuilder<String, VillageData>(prefix("village_database"))
             .setKeySerializer(new StringDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(VillageData.CODEC))
+            .autoSync()
             .build();
 
 

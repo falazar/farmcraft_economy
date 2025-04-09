@@ -70,10 +70,11 @@ public class DataBaseManager {
             dataBaseAccessEntry.getValue().get(level).shutdown();
             LOGGER.info("Shutdown {}", dataBaseAccessEntry.getKey());
         }
+        BackupQueue.shutdown();
         LOGGER.info("Shutdown all databases");
     }
 
-    public static void removeDataBaseAccess(ServerLevel level, String name) {
+    public static void removeDataBaseAccess(ServerLevel level, ResourceLocation name) {
         if (databaseAccessMap.containsKey(name)) {
             DataBaseAccess<?,?> dataBaseAccess = databaseAccessMap.get(name);
             dataBaseAccess.get(level).shutdown();
@@ -83,7 +84,12 @@ public class DataBaseManager {
             LOGGER.warn("DataBaseAccess for database '{}' not found", name);
         }
     }
-
+    public static void unregisterDataBaseAccess(ResourceLocation name) {
+        databaseAccessMap.remove(name);
+        dataBasesToSync.remove(name);
+        BackupQueue.removeFromQueue(name);
+        LOGGER.info("Unregistered DataBaseAccess for '{}'", name);
+    }
     public static Set<ResourceLocation> getDataBasesToSync() {
         return dataBasesToSync;
     }

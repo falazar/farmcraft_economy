@@ -83,4 +83,10 @@ public class VillageData {
         return position;
     }
 
+
+    @Override
+    public String toString() {
+        return "Village ID: " + id + ", Owner: " + name + ", Position: " + position;
+    }
+
 }

@@ -15,12 +15,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 public class BackupQueue {
     private static final Logger LOGGER = LogUtils.getLogger();
 
     private static final PriorityQueue<BackupTask> queue = new PriorityQueue<>();
+    private static final ExecutorService backupExecutor = Executors.newSingleThreadExecutor();
 
     public static void addToQueue(ResourceLocation databaseName) {
         DataBaseAccess<?, ?> dataBaseAccess = DataBaseManager.getDataBaseAccess(databaseName);
@@ -36,24 +40,27 @@ public class BackupQueue {
         while (!queue.isEmpty() && queue.peek().nextBackupTime <= currentTime) {
             BackupTask task = queue.poll();
             DataBaseAccess<?, ?> dataBaseAccess = DataBaseManager.getDataBaseAccess(task.databaseName);
-            DataBase<?,?> dataBase = dataBaseAccess.get(level);
+            if (dataBaseAccess == null) {
+                LOGGER.warn("No DataBaseAccess found for '{}', skipping backup", task.databaseName);
+                continue;
+            }
+            DataBase<?, ?> dataBase = dataBaseAccess.get(level);
             performBackupAsync(dataBase, dataBaseAccess.getBackUpFileFormat(), dataBaseAccess.getBackupCount(), dataBaseAccess.getBackupRemovalTime());
             // Re-add to queue with updated backup time
-            if (dataBaseAccess != null) {
-                long backupTime = currentTime + dataBaseAccess.getBackupInterval();
-                task.nextBackupTime = backupTime;
+            long backupTime = currentTime + dataBaseAccess.getBackupInterval();
+            task.nextBackupTime = backupTime;
 
-                // Convert backup time to milliseconds for display
-                String formattedDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(backupTime * 1000));
-                queue.add(task);
-                LOGGER.info("Next backup for {} at: {}", dataBase.getDatabaseName(), formattedDate);
-            }
+            // Convert backup time to milliseconds for display
+            String formattedDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(backupTime * 1000));
+            queue.add(task);
+            LOGGER.info("Next backup for {} at: {}", dataBase.getDatabaseName(), formattedDate);
+
         }
     }
 
 
     public static void performBackupAsync(DataBase<?, ?> dataBase, FileFormat format, int backupCount, long backupRemovalTime) {
-        new Thread(() -> {
+        backupExecutor.submit(() -> {
             try {
                 if (dataBase == null) {
                     LOGGER.error("Database is null, cannot perform backup.");
@@ -79,7 +86,24 @@ public class BackupQueue {
             } catch (Exception e) {
                 LOGGER.error("An error occurred during backup", e);
             }
-        }).start();
+        });
+    }
+
+
+    public static void shutdown() {
+        try {
+            backupExecutor.shutdown();
+            if (!backupExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                backupExecutor.shutdownNow();
+                LOGGER.warn("Backup executor forced to shut down after timeout");
+            } else {
+                LOGGER.info("Backup executor shut down cleanly");
+            }
+        } catch (InterruptedException e) {
+            LOGGER.error("Backup executor shutdown interrupted", e);
+            backupExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private static Path createBackupFilePath(DataBase<?, ?> dataBase, FileFormat format) {
@@ -100,7 +124,6 @@ public class BackupQueue {
         String checksum = ChecksumUtil.generateChecksum(file);
         ChecksumUtil.saveChecksum(file, checksum);
     }
-
 
 
     private static void cleanupOldBackups(Path backupDir, int backupCount, long backupRemovalTime) {
@@ -169,6 +192,11 @@ public class BackupQueue {
 
     private static boolean isOldBackup(File file, long currentTime, long backupRemovalTime) {
         return (currentTime - file.lastModified()) > backupRemovalTime;
+    }
+
+    public static void removeFromQueue(ResourceLocation databaseName) {
+        queue.removeIf(task -> task.databaseName.equals(databaseName));
+        LOGGER.info("Removed {} from backup queue", databaseName);
     }
 
 

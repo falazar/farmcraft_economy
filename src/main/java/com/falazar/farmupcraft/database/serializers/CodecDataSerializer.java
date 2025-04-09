@@ -22,7 +22,11 @@ public class CodecDataSerializer<T> implements DataBase.DataSerializer<T> {
 
     @Override
     public CompoundTag serialize(T value) {
+        if(codec == null) return null;
+
         CompoundTag codecTag = new CompoundTag();
+
+
         DataResult<Tag> result = codec.encodeStart(NbtOps.INSTANCE, value);
 
         result.get().ifLeft(tag -> {
@@ -35,6 +39,8 @@ public class CodecDataSerializer<T> implements DataBase.DataSerializer<T> {
     }
 
     public T deserialize(CompoundTag tag, Level level) {
+        if(codec == null) return null;
+
         if (!tag.contains(CODEC_VALUE_TAG)) {
             LOGGER.error("Missing '{}' tag in CompoundTag", CODEC_VALUE_TAG);
             return null;

@@ -21,10 +21,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class DataBaseCommand {
@@ -168,8 +165,52 @@ public class DataBaseCommand {
                                         StringArgumentType.getString(context, "backupName")))))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
 
+
+        LiteralArgumentBuilder<CommandSourceStack> queryBuilder = Commands.literal("query")
+                .then(Commands.argument("databaseName", ResourceLocationArgument.id()).suggests(SUGGEST_TYPE)
+                        .executes(ctx -> queryData(ctx, ResourceLocationArgument.getId(ctx, "databaseName"), null, 0))
+                        .then(Commands.argument("filter", StringArgumentType.string())
+                                .executes(ctx -> queryData(
+                                        ctx,
+                                        ResourceLocationArgument.getId(ctx, "databaseName"),
+                                        StringArgumentType.getString(ctx, "filter"),
+                                        0
+                                ))
+                                .then(Commands.argument("page", StringArgumentType.word())
+                                        .executes(ctx -> {
+                                            String pageString = StringArgumentType.getString(ctx, "page");
+                                            int page = 0;
+                                            try {
+                                                page = Integer.parseInt(pageString);
+                                            } catch (NumberFormatException e) {
+                                                ctx.getSource().sendFailure(Component.literal("Page must be a number."));
+                                                return 0;
+                                            }
+
+                                            return queryData(
+                                                    ctx,
+                                                    ResourceLocationArgument.getId(ctx, "databaseName"),
+                                                    StringArgumentType.getString(ctx, "filter"),
+                                                    page
+                                            );
+                                        })
+                                )
+                        )
+                );
+        builder.then(queryBuilder);
+
+
+
+
+
+
         // Add sub-commands to the "database" command
         builder.then(restoreBuilder);
+
+
+
+
+
 
 
         // Add sub-commands to the "database" command
@@ -316,5 +357,48 @@ public class DataBaseCommand {
     //}
 //
     //// Simple DataSerializer for strings
+    private static <M, V> int queryData(CommandContext<CommandSourceStack> ctx, ResourceLocation dbName, String filter, int page) {
+        CommandSourceStack source = ctx.getSource();
+        ServerLevel level = source.getLevel();
+
+        DataBaseAccess<M, V> access = DataBaseManager.getDataBaseAccess(dbName);
+        if (access == null) {
+            source.sendFailure(Component.literal("Database not found: " + dbName));
+            return 0;
+        }
+
+        DataBase<M, V> db = access.get(level);
+        if (db == null) {
+            source.sendFailure(Component.literal("Failed to access database: " + dbName));
+            return 0;
+        }
+
+        List<Map.Entry<M, V>> entries = db.getDataMap().entrySet().stream()
+                .filter(entry -> {
+                    if (filter == null) return true;
+                    return entry.getKey().toString().contains(filter) || entry.getValue().toString().contains(filter);
+                })
+                .sorted(Comparator.comparing(e -> e.getKey().toString()))
+                .toList();
+
+        int pageSize = 10;
+        int start = page * pageSize;
+        int end = Math.min(start + pageSize, entries.size());
+
+        if (start >= entries.size()) {
+            source.sendFailure(Component.literal("No results on page " + page));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal("Showing entries " + (start + 1) + "–" + end + " of " + entries.size()), false);
+        for (int i = start; i < end; i++) {
+            Map.Entry<M, V> entry = entries.get(i);
+            source.sendSuccess(() -> Component.literal("[" + entry.getKey() + "] → " + entry.getValue()), false);
+        }
+
+        return 1;
+    }
+
+
 
 }

@@ -40,8 +40,9 @@ public class DataBaseAccess<M, V> {
     }
 
     public DataBase<M, V> get(Level level) {
+
         if (level.isClientSide()) {
-            if (levelCache.get() != ClientUtils.getClientLevel()) {
+            if (levelCache.get() != ClientUtils.getClientLevel() || levelCache.get() == null || clientCache.get() == null) {
                 levelCache = new WeakReference<>(ClientUtils.getClientLevel());
                 clientCache = new WeakReference<>(new DataBase<>(databaseName.toString(), keySerializer, valueSerializer, enableExpiry, expiryDuration, false));
             }

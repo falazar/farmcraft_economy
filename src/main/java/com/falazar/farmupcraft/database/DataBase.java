@@ -51,9 +51,9 @@ public class DataBase<M, V> extends SavedData {
     private final boolean enableExpiry;
     private final long expiryDuration; // in milliseconds
 
-    private final Stack<Map<M, V>> transactionStack = new Stack<>();
+    private final Deque<Map<M, V>> transactionStack = new ArrayDeque<>();
 
-    private final Stack<Map<M, V>> savepoints = new Stack<>();
+    private final Deque<Map<M, V>> savepoints = new ArrayDeque<>();
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);

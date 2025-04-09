@@ -45,7 +45,7 @@ public class DataBaseEntryS2C<M, V> {
     public static <M, V> void handle(DataBaseEntryS2C<M, V> message, Supplier<NetworkEvent.Context> contextSupplier) {
         NetworkEvent.Context context = contextSupplier.get();
         context.enqueueWork(() -> {
-            Level level =  ClientUtils.getLevel();
+            Level level = ClientUtils.getLevel();
 
             if (level == null) {
                 LOGGER.error("ClientLevel is null.");
@@ -81,13 +81,10 @@ public class DataBaseEntryS2C<M, V> {
                 return;
             }
 
-            M deserializedKey;
-            V deserializedValue;
-            try {
-                deserializedKey = keySerializer.deserialize(message.key, level);
-                deserializedValue = valueSerializer.deserialize(message.value, level);
-            } catch (Exception e) {
-                LOGGER.error("Failed to deserialize key or value for database: " + message.databaseName, e);
+            M deserializedKey = keySerializer.deserialize(message.key, level);
+            V deserializedValue = valueSerializer.deserialize(message.value, level);
+            if (deserializedKey == null || deserializedValue == null) {
+                LOGGER.error("Failed to deserialize key or value for database: {}", message.databaseName);
                 return;
             }
 

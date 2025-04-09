@@ -1,9 +1,6 @@
 package com.falazar.farmupcraft;
 
-import com.falazar.farmupcraft.command.ManagersCommand;
-import com.falazar.farmupcraft.command.PlotCommand;
-import com.falazar.farmupcraft.command.ShowBiomesCommand;
-import com.falazar.farmupcraft.command.VillageCommand;
+import com.falazar.farmupcraft.command.*;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.setup.Registration;
