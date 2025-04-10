@@ -48,7 +48,7 @@ public class DataBaseManager {
     public static <M, V> DataBaseAccess<M, V> getDataBaseAccess(ResourceLocation name) {
         DataBaseAccess<M, V> access = (DataBaseAccess<M, V>) databaseAccessMap.get(name);
         if (access != null) {
-            LOGGER.info("Retrieved DataBaseAccess for database '{}'", name);
+          //  LOGGER.info("Retrieved DataBaseAccess for database '{}'", name);
         } else {
             LOGGER.warn("DataBaseAccess for database '{}' not found", name);
         }

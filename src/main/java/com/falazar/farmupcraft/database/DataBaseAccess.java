@@ -21,7 +21,7 @@ public class DataBaseAccess<M, V> {
     private final long backupRemovalTime;
     private final FileFormat fileFormat; // Added FileFormat field
 
-    private WeakReference<DataBase<M, V>> clientCache = new WeakReference<>(null);
+    private DataBase<M, V> clientCache = null;
     private static WeakReference<ClientLevel> levelCache = new WeakReference<>(null);
     private final boolean autoSync;
 
@@ -42,11 +42,11 @@ public class DataBaseAccess<M, V> {
     public DataBase<M, V> get(Level level) {
 
         if (level.isClientSide()) {
-            if (levelCache.get() != ClientUtils.getClientLevel() || levelCache.get() == null || clientCache.get() == null) {
+            if (levelCache.get() != ClientUtils.getClientLevel() || levelCache.get() == null || clientCache == null) {
                 levelCache = new WeakReference<>(ClientUtils.getClientLevel());
-                clientCache = new WeakReference<>(new DataBase<>(databaseName.toString(), keySerializer, valueSerializer, enableExpiry, expiryDuration, false));
+                clientCache = new DataBase<>(databaseName.toString(), keySerializer, valueSerializer, enableExpiry, expiryDuration, false);
             }
-            return clientCache.get();
+            return clientCache;
         }
         return DataBase.get(level, databaseName.toString(), keySerializer, valueSerializer, enableExpiry, expiryDuration,autoSync);
     }

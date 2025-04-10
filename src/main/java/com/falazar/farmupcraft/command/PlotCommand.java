@@ -225,7 +225,7 @@ public class PlotCommand {
         // Step 3: Check if player has enough money.
         // todo
         // Step 4: Create village object.
-        VillageData villageData = new VillageData(villageId, villageName, 0, 1, new Vec3i(blockPos.getX(), blockPos.getY(), blockPos.getZ()));
+        VillageData villageData = new VillageData(villageId, villageName, 0, 1, List.of(new ChunkPos(blockPos)));
         DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();;
         dataBase.putData(villageId, villageData);
         LOGGER.info("Village "+villageName+" saved at " + blockPos);

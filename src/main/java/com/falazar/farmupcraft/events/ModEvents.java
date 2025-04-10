@@ -67,12 +67,20 @@ public class ModEvents {
         return getDatabase(BIOME_RULES_DATABASE);
     }
 
-
     public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
-        DataBaseAccess<M, V> dataBaseAccess = DataBaseManager.getDataBaseAccess(access.getDatabaseName());
-        ServerLevel serverLevel = ServerLifecycleHooks.getCurrentServer().overworld();
-        return dataBaseAccess.get(serverLevel);
+        return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
+
+    public static DataBase<String, VillageData> getVillageDatabase(Level level) {
+        return getDatabase(VILLAGE_DATABASE, level);
+    }
+
+    public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access, Level level) {
+        DataBaseAccess<M, V> dataBaseAccess = DataBaseManager.getDataBaseAccess(access.getDatabaseName());
+        return dataBaseAccess.get(level);
+    }
+
+
 
 
     @SubscribeEvent

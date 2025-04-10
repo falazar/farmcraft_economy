@@ -89,7 +89,7 @@ public class VillageCommand {
 
             // Build a response message
             MutableComponent response = Component.literal("Village info for VILLAGE NAME: " + villageData.getName()
-                    + " at " + villageData.getPosition().toShortString() + " with id = " + villageData.getId());
+                    + " at " + villageData.getClaimedChunks() + " with id = " + villageData.getId());
 //            response = response.append(Component.literal("Owned by: " + data.getNameForPlayer(serverLevel) + ", "));
 //            response = response.append(Component.literal("Village: " + data.getVillageId() + ", "));
 //            response = response.append(Component.literal("Type: " + data.getType()));
@@ -127,7 +127,7 @@ public class VillageCommand {
             int index = 1;
             for (VillageData data : dataList) {
                 response = response.append(Component.literal(index++ + ". " + data.getName() + " id = " + data.getId() +
-                        " at " + data.getPosition().toShortString() + ", \n"));
+                        " at " + data.getClaimedChunks() + ", \n"));
             }
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);

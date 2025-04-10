@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
@@ -7,6 +8,9 @@ import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.ChunkPos;
+
+import java.util.List;
 
 public class VillageData {
 
@@ -16,7 +20,7 @@ public class VillageData {
                             Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
                             Codec.INT.fieldOf("coins").forGetter(VillageData::getCoins),
                             Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
-                            Vec3i.CODEC.fieldOf("position").forGetter(VillageData::getPosition)
+                            CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks)
                     ).apply(instance, VillageData::new)
     );
 
@@ -24,7 +28,7 @@ public class VillageData {
     private final String name;
     private final int coins;
     private final int level;
-    private final Vec3i position;
+    private final List<ChunkPos> claimedChunks;
 
     /**
      * Constructs a new ChunkData object.
@@ -35,12 +39,12 @@ public class VillageData {
      * @param level    the level of village
      * @param position the 3d position of village
      */
-    public VillageData(String id, String name, int coins, int level, Vec3i position) {
+    public VillageData(String id, String name, int coins, int level, List<ChunkPos> claimedChunks) {
         this.id = id;
         this.name = name;
         this.coins = coins;
         this.level = level;
-        this.position = position;
+        this.claimedChunks = claimedChunks;
     }
 
     /**
@@ -75,18 +79,16 @@ public class VillageData {
         return level;
     }
 
-    /**
-     * Gets the village's position.
-     * @return the village's position
-     */
-    public Vec3i getPosition() {
-        return position;
+    public List<ChunkPos> getClaimedChunks() {
+        return claimedChunks;
     }
+
+
 
 
     @Override
     public String toString() {
-        return "Village ID: " + id + ", Owner: " + name + ", Position: " + position;
+        return "Village ID: " + id + ", Owner: " + name + ", Chunks: " + claimedChunks;
     }
 
 }
