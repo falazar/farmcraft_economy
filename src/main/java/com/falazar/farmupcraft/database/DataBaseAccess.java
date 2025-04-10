@@ -5,6 +5,7 @@ import com.falazar.farmupcraft.util.ClientUtils;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.ref.WeakReference;
 
@@ -39,8 +40,9 @@ public class DataBaseAccess<M, V> {
         this.autoSync = autoSync;
     }
 
-    public DataBase<M, V> get(Level level) {
 
+    @Nullable
+    public DataBase<M, V> get(Level level) {
         if (level.isClientSide()) {
             if (levelCache.get() != ClientUtils.getClientLevel() || levelCache.get() == null || clientCache == null) {
                 levelCache = new WeakReference<>(ClientUtils.getClientLevel());

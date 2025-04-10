@@ -10,7 +10,9 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class VillageData {
 
@@ -29,6 +31,7 @@ public class VillageData {
     private final int coins;
     private final int level;
     private final List<ChunkPos> claimedChunks;
+    private final Set<Long> claimedChunkSet = new HashSet<>();
 
     /**
      * Constructs a new ChunkData object.
@@ -45,6 +48,9 @@ public class VillageData {
         this.coins = coins;
         this.level = level;
         this.claimedChunks = claimedChunks;
+        for (ChunkPos pos : claimedChunks) {
+            claimedChunkSet.add(ChunkPos.asLong(pos.x, pos.z));
+        }
     }
 
     /**
@@ -83,7 +89,9 @@ public class VillageData {
         return claimedChunks;
     }
 
-
+    public Set<Long> getClaimedChunkSet() {
+        return claimedChunkSet;
+    }
 
 
     @Override

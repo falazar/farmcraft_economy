@@ -12,7 +12,7 @@ public class LevelRendererMixin {
 
 
     @Inject(method = "renderSnowAndRain", at = @At(value = "HEAD"), cancellable = true)
-    public void ArcaneHappenings$renderWeather(LightTexture pLightTexture, float pPartialTick, double pCamX, double pCamY, double pCamZ, CallbackInfo ci) {
+    public void farmupcraft$renderClaimedChunk(LightTexture pLightTexture, float pPartialTick, double pCamX, double pCamY, double pCamZ, CallbackInfo ci) {
         LevelRenderer levelRenderer = (LevelRenderer) (Object) this;
         BorderRenderer.renderClaimedChunk(levelRenderer, pLightTexture, pPartialTick, pCamX, pCamY, pCamZ);
     }
