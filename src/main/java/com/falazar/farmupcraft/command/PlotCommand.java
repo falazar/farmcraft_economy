@@ -32,6 +32,7 @@ import net.minecraft.world.level.Level;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
@@ -165,8 +166,8 @@ public class PlotCommand {
             DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
 
-            DataBase<Integer, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDataBase.getData(1);
+            DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDataBase.getData(summoner.getUUID());
             Wallet wallet =  playerData.getWallet();
 
             Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
