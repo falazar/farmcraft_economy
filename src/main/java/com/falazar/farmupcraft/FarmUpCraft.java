@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.command.*;
+import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.setup.Registration;
@@ -41,6 +42,7 @@ public class FarmUpCraft {
 
         modEventBus.addListener((DataPackRegistryEvent.NewRegistry event) -> {
             event.dataPackRegistry(FUCRegistries.Keys.CROP_RULES, CropRules.DIRECT_CODEC, CropRules.DIRECT_CODEC);
+            event.dataPackRegistry(FUCRegistries.Keys.COIN, Coin.DIRECT_CODEC, Coin.DIRECT_CODEC);
         });
 
         // Load the version from gradle.properties

@@ -33,7 +33,8 @@ public class DataGenerators {
         generator.addProvider(event.includeServer(), new BiomeRulesDataDataGenerator(packOutput, FarmUpCraft.MODID));
         generator.addProvider(true,new BiomeTagsProvider(packOutput, lookupProvider, existingFileHelper));
 
-
+        FUCDatapackBuiltinEntriesProvider datapackEntries = new FUCDatapackBuiltinEntriesProvider(packOutput, lookupProvider);
+        generator.addProvider(event.includeServer(), datapackEntries);
     }
 
 }

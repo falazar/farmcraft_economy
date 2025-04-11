@@ -1,9 +1,15 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.currency.Coin;
+import com.falazar.farmupcraft.currency.CurrencyCost;
+import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
+import com.falazar.farmupcraft.registry.CoinRegistry;
+import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -12,15 +18,18 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Registry;
 import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -155,6 +164,19 @@ public class PlotCommand {
 
             DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
+
+            DataBase<Integer, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDataBase.getData(1);
+            Wallet wallet =  playerData.getWallet();
+
+            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
+
+             if(currencyCost.canAfford(wallet)) {
+                 //do something
+             }
+
             // TEMP REMOVE FOR TESTING.
 //            if (data != null) {
 //                source.sendFailure(Component.literal("Plot is already owned."));
@@ -217,26 +239,43 @@ public class PlotCommand {
     }
 
     private static int createNewVillage(Level level, String villageId, String villageName, Player player, BlockPos blockPos) {
-        // TODO implement village creation logic here.
         // Step 1: Check if village name is unique.
-        // todo
-        // Step 2: Check if player is in village.
-        // todo
+        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        //if (dataBase.containsKey(villageId)) {
+        //    LOGGER.warn("Village ID already exists: " + villageId);
+        //    return -1;
+        //}
+
+        // Step 2: Check if player is in another village.
+        // TODO: Implement based on your player-village mapping system
+
         // Step 3: Check if player has enough money.
-        // todo
-        // Step 4: Create village object.
-        VillageData villageData = new VillageData(villageId, villageName, 0, 1, List.of(new ChunkPos(blockPos)));
-        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();;
+        // TODO: Implement based on your economy system
+        int radius = 1;
+        // Step 4: Generate all chunk positions in the radius
+        ChunkPos centerChunk = new ChunkPos(blockPos);
+        List<ChunkPos> villageChunks = new ArrayList<>();
+
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dz = -radius; dz <= radius; dz++) {
+                villageChunks.add(new ChunkPos(centerChunk.x + dx, centerChunk.z + dz));
+            }
+        }
+
+        // Step 5: Create village object and save it
+        VillageData villageData = new VillageData(villageId, villageName, 1, villageChunks, true);
         dataBase.putData(villageId, villageData);
-        LOGGER.info("Village "+villageName+" saved at " + blockPos);
-        // Step 5: Add player to village.
-        // todo
-        // Step 6: Subtract money from player.
-        // todo
-        // Step 7: Return village id.
-        // todo
-        return 0;
+        LOGGER.info("Village " + villageName + " saved with " + villageChunks.size() + " chunks around " + blockPos);
+
+        // Step 6: Add player to village
+        // TODO: Implement
+
+        // Step 7: Subtract money from player
+        // TODO: Implement
+
+        return 0; // Return some meaningful status code if needed
     }
+
 
     private static int calculatePlotCost(String village, String player, String plotType) {
         // TODO implement cost calculation logic here.

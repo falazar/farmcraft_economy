@@ -223,6 +223,18 @@ public class DataBase<M, V> extends SavedData {
         }
     }
 
+    public boolean containsKey(M key) {
+        readWriteLock.readLock().lock();
+        try {
+            return data.containsKey(key);
+        } finally {
+            readWriteLock.readLock().unlock();
+        }
+    }
+
+
+
+
     public M getKeyByValue(V value) {
         readWriteLock.readLock().lock();
         try {

@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.registry;
 
+import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
 import com.falazar.farmupcraft.data.rules.crop.CropRulesType;
 import net.minecraft.core.Registry;
@@ -29,6 +30,7 @@ public class FUCRegistries {
     public static final class Keys {
         public static final ResourceKey<Registry<CropRulesType<?>>> CROP_RULES_SERIALIZER = key(prefix("crop_rules_type").toString());
         public static final ResourceKey<Registry<CropRules>> CROP_RULES = key(prefix("crop_rules").toString());
+        public static final ResourceKey<Registry<Coin>> COIN = key(prefix("coin").toString());
 
         private static <T> ResourceKey<Registry<T>> key(String name)
         {

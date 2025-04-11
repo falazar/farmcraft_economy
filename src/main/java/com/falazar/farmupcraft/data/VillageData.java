@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -20,19 +21,18 @@ public class VillageData {
                     instance.group(
                             Codec.STRING.fieldOf("id").forGetter(VillageData::getId),
                             Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
-                            Codec.INT.fieldOf("coins").forGetter(VillageData::getCoins),
                             Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
-                            CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks)
+                            CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
+                            Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought)
                     ).apply(instance, VillageData::new)
     );
 
     private final String id;
     private final String name;
-    private final int coins;
     private final int level;
     private final List<ChunkPos> claimedChunks;
     private final Set<Long> claimedChunkSet = new HashSet<>();
-
+    private final boolean bought;
     /**
      * Constructs a new ChunkData object.
      *
@@ -42,12 +42,12 @@ public class VillageData {
      * @param level    the level of village
      * @param position the 3d position of village
      */
-    public VillageData(String id, String name, int coins, int level, List<ChunkPos> claimedChunks) {
+    public VillageData(String id, String name, int level, List<ChunkPos> claimedChunks, boolean bought) {
         this.id = id;
         this.name = name;
-        this.coins = coins;
         this.level = level;
         this.claimedChunks = claimedChunks;
+        this.bought = bought;
         for (ChunkPos pos : claimedChunks) {
             claimedChunkSet.add(ChunkPos.asLong(pos.x, pos.z));
         }
@@ -70,14 +70,6 @@ public class VillageData {
     }
 
     /**
-     * Gets the village's coins.
-     * @return the village's coins
-     */
-    public int getCoins() {
-        return coins;
-    }
-
-    /**
      * Gets the village's level.
      * @return the village's level
      */
@@ -93,6 +85,9 @@ public class VillageData {
         return claimedChunkSet;
     }
 
+    public boolean isBought() {
+        return bought;
+    }
 
     @Override
     public String toString() {
