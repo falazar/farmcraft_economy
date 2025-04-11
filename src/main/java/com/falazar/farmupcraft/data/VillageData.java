@@ -29,6 +29,7 @@ public class VillageData {
 
     private final String id;
     private final String name;
+    private final ChunkPos position;
     private final int level;
     private final List<ChunkPos> claimedChunks;
     private final Set<Long> claimedChunkSet = new HashSet<>();
@@ -42,9 +43,10 @@ public class VillageData {
      * @param level    the level of village
      * @param position the 3d position of village
      */
-    public VillageData(String id, String name, int level, List<ChunkPos> claimedChunks, boolean bought) {
+    public VillageData(String id, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks, boolean bought) {
         this.id = id;
         this.name = name;
+        this.position = position;
         this.level = level;
         this.claimedChunks = claimedChunks;
         this.bought = bought;

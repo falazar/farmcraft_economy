@@ -45,6 +45,7 @@ public class PlotCommand {
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(PlotCommand::showPlotInfo);
 
+        // todo remove village.
         // Define the "buy" sub-command
         LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
                 .then(Commands.argument("type", StringArgumentType.word())
@@ -143,6 +144,7 @@ public class PlotCommand {
     }
 
 
+    // todo remove village.
     // TODO buy with a type, farm, village, etc.
     public static int buyPlot(CommandSourceStack source, String plotType, String villageName) {
         try {
@@ -238,6 +240,7 @@ public class PlotCommand {
         return 0;
     }
 
+    // TODO REMOVE
     private static int createNewVillage(Level level, String villageId, String villageName, Player player, BlockPos blockPos) {
         // Step 1: Check if village name is unique.
         DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();

@@ -21,7 +21,7 @@ public class PlayerData {
 
     // TODO change to string.
     private final int id;
-    private final String homeVillageId;
+    private String homeVillageId;
     private final Wallet wallet;
 
     /**
@@ -65,6 +65,10 @@ public class PlayerData {
      */
     public String getHomeVillageId() {
         return homeVillageId;
+    }
+
+    public void setHomeVillageId(String homeVillageId) {
+        this.homeVillageId = homeVillageId;
     }
 
     /**
