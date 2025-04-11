@@ -39,7 +39,7 @@ public class VillageData {
     private final boolean bought;  // TODO what is
     /**
      * Constructs a new ChunkData object.
-     * @param id       unique id of village
+     * @param uuid       unique id of village
      * @param name     the mame of village
      * @param level    the level of village
      * @param position the 3d position of village
@@ -102,7 +102,7 @@ public class VillageData {
 
     @Override
     public String toString() {
-        return "Village ID: " + id + ", Owner: " + name + ", Chunks: " + claimedChunks;
+        return "Village ID: " + uuid + ", Owner: " + name + ", Chunks: " + claimedChunks;
     }
 
 }

@@ -15,7 +15,7 @@ public class PlayerData {
     public static final Codec<PlayerData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     Codec.INT.fieldOf("id").forGetter(PlayerData::getId),
-                    UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.fromString("")).forGetter(PlayerData::getHomeVillageUUID),
+                    UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID()).forGetter(PlayerData::getHomeVillageUUID),
                     Wallet.CODEC.fieldOf("wallet").forGetter(PlayerData::getWallet)
             ).apply(instance, PlayerData::new)
             // DOES ABOVE WORK EASIER?
