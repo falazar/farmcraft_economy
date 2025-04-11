@@ -125,8 +125,8 @@ public class PlotCommand {
     public static int buyPlot(CommandSourceStack source, String plotType) {
         try {
             Entity nullableSummoner = source.getEntity();
-            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (summoner == null) {
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
                 source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
@@ -136,13 +136,13 @@ public class PlotCommand {
                 return 0;
             }
 
-            Level level = summoner.level();
-            ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
+            Level level = player.level();
+            ChunkPos chunkPos = new ChunkPos(player.blockPosition());
             DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
 
-            DataBase<Integer, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDataBase.getData(1);
+            DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDataBase.getData(player.getUUID());
 //            Wallet wallet =  playerData.getWallet();
 //            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
 //            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
@@ -165,8 +165,11 @@ public class PlotCommand {
             String village = "testobj";
 
             // STEP 3: Calc cost to buy plot.
-            String player = "testobj";  // TODO not needed?
-            int cost = calculatePlotCost(village, player, plotType);
+//            String player = "testobj";  // TODO not needed?
+//            int cost = calculatePlotCost(village, player, plotType);
+            int cost = 100; // TODO get from village Object.
+
+            // TODO check if player has enough money.
 //            if (player.checkPlayerMoney(cost)) {
 //                context.getSource().sendFailure(Component.literal("Player does not have enough money."));
 //                return 0;
@@ -176,7 +179,7 @@ public class PlotCommand {
 //            data.setPlayerId(summoner.getId());
 //            data.setType("farm"); // TODO set to type.
             // TODO get village id.
-            ChunkData newPlot = new ChunkData(plotType, summoner.getId(), 1234); // hack test.
+            ChunkData newPlot = new ChunkData(plotType, player.getId(), 1234); // hack test.
             dataBase.putData(chunkPos, newPlot);
             LOGGER.info("Plot bought at " + chunkPos);
 
