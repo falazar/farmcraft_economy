@@ -142,10 +142,10 @@ public class PlotCommand {
 
             DataBase<Integer, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(1);
-            Wallet wallet =  playerData.getWallet();
-            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
+//            Wallet wallet =  playerData.getWallet();
+//            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+//            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+//            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
 
 //             if (currencyCost.canAfford(wallet)) {
 //                 //do something
@@ -200,7 +200,7 @@ public class PlotCommand {
         // 100 + 100 for each plot.... whatevers.
 
         int plotCount = 1; // TODO get from village Object.
-        int totalCost = baseCost + (plotCount-1) * 100);
+        int totalCost = baseCost + (plotCount-1) * 100;
 
         return totalCost;
     }

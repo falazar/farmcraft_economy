@@ -85,11 +85,12 @@ public class VillageCommand {
             DataBase<Integer, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             // TODO can we hide all this inside???
             PlayerData playerData = playerDataDataBase.getData(1);  // is this the id???
-            if (playerData == null) {
-                source.sendFailure(Component.literal("Player data not found."));
-                return 0;
-            }
-            LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageId());
+            // TODO1 temp out, for testing Scouter todo
+//            if (playerData == null) {
+//                source.sendFailure(Component.literal("Player data not found."));
+//                return 0;
+//            }
+//            LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageId());
 
 //            Wallet wallet =  playerData.getWallet();
 //            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
@@ -143,6 +144,7 @@ public class VillageCommand {
                     villageChunks.add(new ChunkPos(centerChunk.x + dx, centerChunk.z + dz));
                 }
             }
+            // TODO add chunk count somewhere?
 
             // Step 8: Create Village object and save it
             String villageId = UUID.randomUUID().toString();
@@ -167,6 +169,7 @@ public class VillageCommand {
 
 
             // STEP 11: Add village to player.
+            // TODO unlock playerData error above.
 //            playerData.setHomeVillageId(villageId);
 
 
