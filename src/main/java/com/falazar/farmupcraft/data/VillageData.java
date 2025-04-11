@@ -21,6 +21,7 @@ public class VillageData {
                     instance.group(
                             Codec.STRING.fieldOf("id").forGetter(VillageData::getId),
                             Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
+                            CodecUtils.CHUNK_POS_CODEC.fieldOf("position").forGetter(VillageData::getPosition),
                             Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
                             CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
                             Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought)
@@ -33,7 +34,7 @@ public class VillageData {
     private final int level;
     private final List<ChunkPos> claimedChunks;
     private final Set<Long> claimedChunkSet = new HashSet<>();
-    private final boolean bought;
+    private final boolean bought;  // TODO what is
     /**
      * Constructs a new ChunkData object.
      * @param id       unique id of village
@@ -67,6 +68,14 @@ public class VillageData {
      */
     public String getName() {
         return name;
+    }
+
+    /**
+     * Gets the village's position.
+     * @return the village's position
+     */
+    public ChunkPos getPosition() {
+        return position;
     }
 
     /**

@@ -266,7 +266,7 @@ public class PlotCommand {
         }
 
         // Step 5: Create village object and save it
-        VillageData villageData = new VillageData(villageId, villageName, 1, villageChunks, true);
+        VillageData villageData = new VillageData(villageId, villageName, centerChunk, 1, villageChunks, true);
         dataBase.putData(villageId, villageData);
         LOGGER.info("Village " + villageName + " saved with " + villageChunks.size() + " chunks around " + blockPos);
 
