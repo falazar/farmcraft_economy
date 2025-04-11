@@ -91,7 +91,7 @@ public class VillageCommand {
                 source.sendFailure(Component.literal("Player data not found."));
                 return 0;
             }
-            LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageId());
+            LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageUUID());
 
 //            Wallet wallet =  playerData.getWallet();
 //            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
@@ -141,9 +141,9 @@ public class VillageCommand {
 
 
             // Step 6: TODO Check if player is in another village right now.
-            String homeVillageId = playerData.getHomeVillageId();
-            DataBase<String, VillageData> villageDatabase = ModEvents.getVillageDatabase();
-            if (homeVillageId != null && !homeVillageId.isEmpty()) {
+            UUID homeVillageId = playerData.getHomeVillageUUID();
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            if (homeVillageId != null) {
                 VillageData homeVillage = villageDatabase.getData(homeVillageId);
                 if (homeVillage != null) {
                     source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
@@ -164,7 +164,7 @@ public class VillageCommand {
             // TODO add chunk count somewhere?
 
             // Step 8: Create Village object and save it
-            String villageId = UUID.randomUUID().toString();
+            UUID villageId = UUID.randomUUID();
             VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks, true);
             villageDatabase.putData(villageId, villageData);
             LOGGER.info("Village " + villageName + " created with id " + villageId +
@@ -216,9 +216,13 @@ public class VillageCommand {
 
             // TODO MAKE METHOD.
             // TODO load village from db.
-            String villageId = "TEST12345"; // TODO get from player data.
 
-            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+            DataBase<UUID,PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDataBase.getData(summoner.getUUID());
+
+            UUID villageId = playerData.getHomeVillageUUID(); // TODO get from player data.
+
+            DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
             ;
             VillageData villageData = dataBase.getData(villageId);
             if (villageData == null) {
@@ -235,7 +239,7 @@ public class VillageCommand {
 
             // Build a response message
             MutableComponent response = Component.literal("Village info for VILLAGE NAME: " + villageData.getName()
-                    + " at " + villageData.getClaimedChunks() + " with id = " + villageData.getId());
+                    + " at " + villageData.getClaimedChunks() + " with id = " + villageData.getUUID().toString());
 //            response = response.append(Component.literal("Owned by: " + data.getNameForPlayer(serverLevel) + ", "));
 //            response = response.append(Component.literal("Village: " + data.getVillageId() + ", "));
 //            response = response.append(Component.literal("Type: " + data.getType()));
@@ -261,7 +265,7 @@ public class VillageCommand {
 
             // TODO load all village from db.
             // TODO MAKE METHOD.
-            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+            DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
             Collection<VillageData> dataList = dataBase.getValues();
             if (dataList == null || dataList.isEmpty()) {
                 context.getSource().sendFailure(Component.literal("No villages data found."));
@@ -287,7 +291,7 @@ public class VillageCommand {
     // TODO MOVE these over to a manager.
     // Get closest village to location.
     public static VillageData getClosestVillage(BlockPos pos) {
-        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
         Collection<VillageData> dataList = dataBase.getValues();
         if (dataList == null || dataList.isEmpty()) {
             return null;
@@ -310,8 +314,11 @@ public class VillageCommand {
     }
 
     // Check if village name is unique.
+
+
+    //todo maybe check UUIDS instead of village names
     public static boolean isVillageNameUnique(String villageName) {
-        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
         Collection<VillageData> dataList = dataBase.getValues();
         if (dataList == null || dataList.isEmpty()) {
             return true;
