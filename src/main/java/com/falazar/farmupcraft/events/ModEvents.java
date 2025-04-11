@@ -22,6 +22,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
 import java.util.Collection;
+import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
 
@@ -34,8 +35,8 @@ public class ModEvents {
             .setValueSerializer(new CodecDataSerializer<>(BiomeRulesInstance.CODEC))
             .build();
 
-    private static final DataBaseAccess<Integer, PlayerData> PLAYER_DATABASE = new DataBaseBuilder<Integer, PlayerData>(prefix("player_database"))
-            .setKeySerializer(new IntDataSerializer())
+    private static final DataBaseAccess<UUID, PlayerData> PLAYER_DATABASE = new DataBaseBuilder<UUID, PlayerData>(prefix("player_database"))
+            .setKeySerializer(new UUIDDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(PlayerData.CODEC))
             .build();
 
@@ -59,7 +60,7 @@ public class ModEvents {
         return getDatabase(CHUNK_DATA_DATABASE);
     }
 
-    public static DataBase<Integer, PlayerData> getPlayerDatabase() {
+    public static DataBase<UUID, PlayerData> getPlayerDatabase() {
         return getDatabase(PLAYER_DATABASE);
     }
 

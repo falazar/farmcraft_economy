@@ -1,10 +1,8 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
-import com.falazar.farmupcraft.data.BiomeRulesDataJsonManager;
-import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
-import com.falazar.farmupcraft.data.CropItemDataJsonManager;
-import com.falazar.farmupcraft.data.MarketDataJsonManager;
+import com.falazar.farmupcraft.currency.Wallet;
+import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.DataBaseAccess;
@@ -25,6 +23,8 @@ import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -108,6 +108,13 @@ public class ForgeEvents {
     @SubscribeEvent
     public static void onLoginEvent(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity().level() instanceof ServerLevel level) {
+
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            UUID uuid = ((ServerPlayer) event.getEntity()).getUUID();
+            if(!playerDatabase.containsKey(uuid)) {
+                playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), "", new Wallet(List.of())));
+            }
+
             for (ResourceLocation dataBaseName : DataBaseManager.getDataBasesToSync()) {
                 DataBaseAccess<?, ?> dataBaseAccess = DataBaseManager.getDataBaseAccess(dataBaseName);
 
