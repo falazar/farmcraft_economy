@@ -82,15 +82,15 @@ public class VillageCommand {
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
             DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
             ChunkData data = dataBase.getData(chunkPos);
-            DataBase<Integer, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             // TODO can we hide all this inside???
-            PlayerData playerData = playerDataDataBase.getData(1);  // is this the id???
-            // TODO1 temp out, for testing Scouter todo
-//            if (playerData == null) {
-//                source.sendFailure(Component.literal("Player data not found."));
-//                return 0;
-//            }
-//            LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageId());
+            DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+//            PlayerData playerData = playerDataDataBase.getData(1);  // is this the id???
+            PlayerData playerData = playerDataDataBase.getData(player.getUUID());
+            if (playerData == null) {
+                source.sendFailure(Component.literal("Player data not found."));
+                return 0;
+            }
+            LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageId());
 
 //            Wallet wallet =  playerData.getWallet();
 //            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
@@ -102,7 +102,7 @@ public class VillageCommand {
             // Step 1: Check if chunk is owned. (Inside another village)
             // TEMP REMOVE FOR TESTING.  TODO add in, make method.
 //            if (data != null) {
-//                source.sendFailure(Component.literal("Chunnk is already owned."));
+//                source.sendFailure(Component.literal("Chunk is already owned."));
 //                return 0;
 //            }
 
@@ -175,7 +175,7 @@ public class VillageCommand {
 
             // STEP 12: Build a response message and send.
             MutableComponent response = Component.literal("Village bought at " + chunkPos);
-            response = response.append(Component.literal(" and created village " + villageName));
+            response = response.append(Component.literal(" and created with name " + villageName));
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
