@@ -79,12 +79,13 @@ public class VillageCommand {
             }
 
             Level level = player.level();
+
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            ;
             ChunkData data = dataBase.getData(chunkPos);
             // TODO can we hide all this inside???
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-//            PlayerData playerData = playerDataDataBase.getData(1);  // is this the id???
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
             if (playerData == null) {
                 source.sendFailure(Component.literal("Player data not found."));
@@ -98,7 +99,6 @@ public class VillageCommand {
 //            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
 
 
-
             // Step 1: Check if chunk is owned. (Inside another village)
             // TEMP REMOVE FOR TESTING.  TODO add in, make method.
 //            if (data != null) {
@@ -106,15 +106,23 @@ public class VillageCommand {
 //                return 0;
 //            }
 
-            // Step 2: TODO Check if too close to nearest village
-            // TODO make method.
+            // Step 2: Check if too close to nearest village
+            VillageData closestVillage = getClosestVillage(player.blockPosition());
+            if (closestVillage != null) {
+                BlockPos closestVillagePos = closestVillage.getPosition().getWorldPosition();
+                int distance = Math.abs(closestVillagePos.getX() - player.blockPosition().getX()) +
+                        Math.abs(closestVillagePos.getZ() - player.blockPosition().getZ());
+                if (distance < 100) { // TODO make this a config value.
+                    source.sendFailure(Component.literal("Too close to another village: " + closestVillage.getName() + " distance = " + distance));
+                    return 0;
+                }
+            }
 
-            // Step 3: TODO Check if village name is unique.
-            DataBase<String, VillageData> villageDatabase = ModEvents.getVillageDatabase();
-            //if (villageDatabase.containsKey(villageId)) {
-            //    LOGGER.warn("Village ID already exists: " + villageId);
-            //    return -1;
-            //}
+            // Step 3: Check if village name is unique.
+            if (!isVillageNameUnique(villageName)) {
+                source.sendFailure(Component.literal("Village name "+villageName+" is not unique, please choose another."));
+                return 0;
+            }
 
 
             // STEP 4: Calc cost to buy village.
@@ -133,6 +141,15 @@ public class VillageCommand {
 
 
             // Step 6: TODO Check if player is in another village right now.
+            String homeVillageId = playerData.getHomeVillageId();
+            DataBase<String, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            if (homeVillageId != null && !homeVillageId.isEmpty()) {
+                VillageData homeVillage = villageDatabase.getData(homeVillageId);
+                if (homeVillage != null) {
+                    source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
+                    return 0;
+                }
+            }
 
 
             // Step 7: Generate all chunk positions in the radius
@@ -151,7 +168,7 @@ public class VillageCommand {
             VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks, true);
             villageDatabase.putData(villageId, villageData);
             LOGGER.info("Village " + villageName + " created with id " + villageId +
-                    " saved with " + villageChunks.size() + " chunks around " +  player.blockPosition());
+                    " saved with " + villageChunks.size() + " chunks around " + player.blockPosition());
 
             // STEP 9: Buy plot and mark to db.
             // TODO1 this doesnt buy the plot does it?
@@ -164,13 +181,11 @@ public class VillageCommand {
             // TODO1 add plot to city.
 
 
-            // STEP 10: Add player to village.
+            // STEP 10: Add player to village list.
             // TODO: Implement
 
-
             // STEP 11: Add village to player.
-            // TODO unlock playerData error above.
-//            playerData.setHomeVillageId(villageId);
+            playerData.setHomeVillageId(villageId);
 
 
             // STEP 12: Build a response message and send.
@@ -203,7 +218,8 @@ public class VillageCommand {
             // TODO load village from db.
             String villageId = "TEST12345"; // TODO get from player data.
 
-            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();;
+            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+            ;
             VillageData villageData = dataBase.getData(villageId);
             if (villageData == null) {
                 // TODO
@@ -266,5 +282,47 @@ public class VillageCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    // TODO MOVE these over to a manager.
+    // Get closest village to location.
+    public static VillageData getClosestVillage(BlockPos pos) {
+        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        Collection<VillageData> dataList = dataBase.getValues();
+        if (dataList == null || dataList.isEmpty()) {
+            return null;
+        }
+
+        // Loop and find the closest village.
+        VillageData closestVillage = null;
+        int closestDistance = Integer.MAX_VALUE;
+        for (VillageData data : dataList) {
+            closestVillage = data;
+            // Use abs manhattan distance formula
+            int distance = Math.abs(data.getPosition().x - pos.getX()) +
+                    Math.abs(data.getPosition().z - pos.getZ());
+            if (distance < closestDistance) {
+                closestDistance = distance;
+            }
+        }
+
+        return closestVillage;
+    }
+
+    // Check if village name is unique.
+    public static boolean isVillageNameUnique(String villageName) {
+        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        Collection<VillageData> dataList = dataBase.getValues();
+        if (dataList == null || dataList.isEmpty()) {
+            return true;
+        }
+
+        // Loop and check all village names.
+        for (VillageData data : dataList) {
+            if (data.getName().equalsIgnoreCase(villageName)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
