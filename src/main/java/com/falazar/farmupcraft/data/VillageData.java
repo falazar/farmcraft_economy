@@ -36,10 +36,8 @@ public class VillageData {
     private final boolean bought;
     /**
      * Constructs a new ChunkData object.
-     *
      * @param id       unique id of village
      * @param name     the mame of village
-     * @param coins    the coins of village
      * @param level    the level of village
      * @param position the 3d position of village
      */

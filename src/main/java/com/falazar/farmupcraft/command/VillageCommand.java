@@ -146,14 +146,14 @@ public class VillageCommand {
 
             // Step 8: Create Village object and save it
             String villageId = UUID.randomUUID().toString();
-            VillageData villageData = new VillageData(villageId, villageName, 1, villageChunks, true);
+            VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks, true);
             villageDatabase.putData(villageId, villageData);
             LOGGER.info("Village " + villageName + " created with id " + villageId +
                     " saved with " + villageChunks.size() + " chunks around " +  player.blockPosition());
 
             // STEP 9: Buy plot and mark to db.
             // TODO1 this doesnt buy the plot does it?
-            // TODO1 THESE villageid TO USE UUIDS
+            // TODO1 THESE villageId TO USE UUIDS
 //            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
             ChunkData newPlot = new ChunkData("village", player.getId(), 1234); // hack test.
             dataBase.putData(chunkPos, newPlot);
