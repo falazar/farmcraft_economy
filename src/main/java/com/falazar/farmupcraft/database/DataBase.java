@@ -232,6 +232,10 @@ public class DataBase<M, V> extends SavedData {
         }
     }
 
+    public V getOrDefault(M key, V defaultValue) {
+        V value = getData(key);
+        return value != null ? value : defaultValue;
+    }
 
 
 
