@@ -237,7 +237,19 @@ public class DataBase<M, V> extends SavedData {
         return value != null ? value : defaultValue;
     }
 
-
+    public V getOrCreate(M key, Supplier<V> creator) {
+        readWriteLock.writeLock().lock();
+        try {
+            V value = data.get(key);
+            if (value == null) {
+                value = creator.get();
+                putData(key, value);
+            }
+            return value;
+        } finally {
+            readWriteLock.writeLock().unlock();
+        }
+    }
 
     public M getKeyByValue(V value) {
         readWriteLock.readLock().lock();
