@@ -31,6 +31,7 @@ import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -50,8 +51,10 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -205,27 +208,38 @@ public class CropsManager {
     // Check anytime a player enters a new chunk.
     // Tell if they have entered a village or not.
     @SubscribeEvent
-    public static void onPlayerEnterChunk(TickEvent.PlayerTickEvent event) {
+    public static void onPlayerEnterChunk(EntityEvent.EnteringSection event) {
         // Leave if on client side.
-        if (event.side.isClient()) {
-            return;
-        }
+//        if (event.isClientSide) {
+//            return;
+//        }
 
         // Get the player and their current chunk position.
-        Player player = event.player;
+        Entity entity = event.getEntity();
+        if (entity == null) {
+            return;
+        }
+        if (!(entity instanceof Player)) {
+            return;
+        }
+        Player player = (Player) event.getEntity();
+
         BlockPos pos = player.blockPosition();
         ChunkPos chunkPos = new ChunkPos(pos);
         DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData data = dataBase.getData(chunkPos);
-
+        ChunkData chunkData = dataBase.getData(chunkPos);
+        // TODO Save a lastChunkVillage String to compare against.
+        String lastChunkVillageName = ""; // TODO MOVE ME
+        if (chunkData == null) {
+            LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
+            lastChunkVillageName = "";
+            return;
+        }
         // Get village we are in...
-        int villageId = data.getVillageId(); // TODO scout needs to be uuid now?
+        int villageId = chunkData.getVillageId(); // TODO scout needs to be uuid now?
 //        String villageId = data.getVillageId(); // TODO scout needs to be uuid now?
 //        VillageData villageData = ModEvents.getVillageDatabase().getData(villageId);
         VillageData villageData = getClosestVillage(pos); // TODO CHANGE
-
-        // TODO Save a lastChunkVillage String to compare against.
-        String lastChunkVillageName = ""; // TODO MOVE ME
         if (villageData != null) {
             String villageName = villageData.getName();
             LOGGER.info("DEBUG: Player is in a village at " + chunkPos + " with name " + villageName);
