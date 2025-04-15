@@ -23,6 +23,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
 
@@ -128,7 +129,7 @@ public class BorderRenderer {
         int z = (int) zIn >> 4;
         Level level = Minecraft.getInstance().level;
         boolean nearClaim = false;
-        DataBase<String, VillageData> villageDataDataBase = ModEvents.getVillageDatabase(level);
+        DataBase<UUID, VillageData> villageDataDataBase = ModEvents.getVillageDatabase(level);
         Optional<VillageData> villageData = villageDataDataBase.getValues().stream().findAny();
         if (villageData.isEmpty()) return false;
         for (int chunkX = -range; (chunkX < range) && !nearClaim; chunkX++) {
@@ -141,7 +142,7 @@ public class BorderRenderer {
 
     private static boolean hasClaim(int chunkX, int chunkZ) {
         Level level = Minecraft.getInstance().level;
-        DataBase<String, VillageData> villageDataDataBase = ModEvents.getVillageDatabase(level);
+        DataBase<UUID, VillageData> villageDataDataBase = ModEvents.getVillageDatabase(level);
         Optional<VillageData> villageData = villageDataDataBase.getValues().stream().findAny();
         if (villageData.isEmpty()) return false;
         return villageData.get().getClaimedChunkSet().contains(ChunkPos.asLong(chunkX, chunkZ));

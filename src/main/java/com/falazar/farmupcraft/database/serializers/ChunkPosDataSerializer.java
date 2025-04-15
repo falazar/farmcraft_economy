@@ -20,7 +20,7 @@ public class ChunkPosDataSerializer implements DataBase.DataSerializer<ChunkPos>
         tag.putInt(X_TAG, value.x);
         tag.putInt(Z_TAG, value.z);
 
-        LOGGER.debug("Serialization complete for ChunkPos: ({}, {})", value.x, value.z);
+        //LOGGER.debug("Serialization complete for ChunkPos: ({}, {})", value.x, value.z);
         return tag;
     }
 
@@ -31,7 +31,7 @@ public class ChunkPosDataSerializer implements DataBase.DataSerializer<ChunkPos>
         String databaseName = tag.getString(DATABASE_NAME_TAG);
         ChunkPos chunkPos = new ChunkPos(x, z);
 
-        LOGGER.debug("[{}] Deserialization complete for ChunkPos: ({}, {})", databaseName,chunkPos.x, chunkPos.z);
+       // LOGGER.debug("[{}] Deserialization complete for ChunkPos: ({}, {})", databaseName,chunkPos.x, chunkPos.z);
         return chunkPos;
     }
 }

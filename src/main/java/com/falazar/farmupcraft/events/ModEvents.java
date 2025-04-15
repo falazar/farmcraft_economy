@@ -45,14 +45,14 @@ public class ModEvents {
             .setValueSerializer(new CodecDataSerializer<>(ChunkData.CODEC))
             .build();
 
-    private static final DataBaseAccess<String, VillageData> VILLAGE_DATABASE = new DataBaseBuilder<String, VillageData>(prefix("village_database"))
-            .setKeySerializer(new StringDataSerializer())
+    private static final DataBaseAccess<UUID, VillageData> VILLAGE_DATABASE = new DataBaseBuilder<UUID, VillageData>(prefix("village_database"))
+            .setKeySerializer(new UUIDDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(VillageData.CODEC))
             .autoSync()
             .build();
 
 
-    public static DataBase<String, VillageData> getVillageDatabase() {
+    public static DataBase<UUID, VillageData> getVillageDatabase() {
         return getDatabase(VILLAGE_DATABASE);
     }
 
@@ -72,7 +72,7 @@ public class ModEvents {
         return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
 
-    public static DataBase<String, VillageData> getVillageDatabase(Level level) {
+    public static DataBase<UUID, VillageData> getVillageDatabase(Level level) {
         return getDatabase(VILLAGE_DATABASE, level);
     }
 
