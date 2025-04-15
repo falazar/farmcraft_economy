@@ -3,6 +3,7 @@ package com.falazar.farmupcraft;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
+import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.DataBaseAccess;
 import com.falazar.farmupcraft.database.DataBaseManager;
@@ -59,6 +60,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
+import static com.falazar.farmupcraft.command.VillageCommand.getClosestVillage;
 import static org.apache.commons.lang3.StringUtils.replace;
 
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -199,13 +201,53 @@ public class CropsManager {
         }
     }
 
+
+    // Check anytime a player enters a new chunk.
+    // Tell if they have entered a village or not.
+    @SubscribeEvent
+    public static void onPlayerEnterChunk(TickEvent.PlayerTickEvent event) {
+        // Leave if on client side.
+        if (event.side.isClient()) {
+            return;
+        }
+
+        // Get the player and their current chunk position.
+        Player player = event.player;
+        BlockPos pos = player.blockPosition();
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData data = dataBase.getData(chunkPos);
+
+        // Get village we are in...
+        int villageId = data.getVillageId(); // TODO scout needs to be uuid now?
+//        String villageId = data.getVillageId(); // TODO scout needs to be uuid now?
+//        VillageData villageData = ModEvents.getVillageDatabase().getData(villageId);
+        VillageData villageData = getClosestVillage(pos); // TODO CHANGE
+
+        // TODO Save a lastChunkVillage String to compare against.
+        String lastChunkVillageName = ""; // TODO MOVE ME
+        if (villageData != null) {
+            String villageName = villageData.getName();
+            LOGGER.info("DEBUG: Player is in a village at " + chunkPos + " with name " + villageName);
+            if (!lastChunkVillageName.equals(villageName)) {
+                // Send message to player about village name.
+                player.displayClientMessage(Component.literal("You have entered the village of " + villageName), false);
+            }
+            lastChunkVillageName = villageName;
+        } else {
+            LOGGER.info("DEBUG: Player is NOT in a village at " + chunkPos);
+            lastChunkVillageName = "";
+        }
+    }
+
     // TODO Move to proper object home.
     // Check plot type pos is on now.
     public static String getPlotType(BlockPos pos, Level level) {
         try {
             // TODO: can we get level somehow easier? internal.
             ChunkPos chunkPos = new ChunkPos(pos);
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            ;
             ChunkData data = dataBase.getData(chunkPos);
             if (data == null) {
                 LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
@@ -220,6 +262,25 @@ public class CropsManager {
         }
     }
 
+    // Get the current plot we are on now.
+    public static ChunkData getPlot(BlockPos pos) {
+        try {
+            ChunkPos chunkPos = new ChunkPos(pos);
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            ;
+            ChunkData data = dataBase.getData(chunkPos);
+            if (data == null) {
+                LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
+                return null;
+            }
+            LOGGER.info("DEBUG4: getplot: found data for chunk at " + chunkPos);
+
+            return data;
+        } catch (Exception e) {
+            LOGGER.info("DEBUG4: getplot: error " + e.getMessage());
+            return null;
+        }
+    }
 
 
     // NOTE: Is about 3 hours now with 400 growth.
@@ -721,8 +782,8 @@ public class CropsManager {
 //                baseSuccessRate += player.getRoleLevel("miner") * 4;
 //            }
 //            else {
-            // CHECK 2: Add basic smaller skill percent now for non miners.
-                baseSuccessRate += player.experienceLevel * 2;
+        // CHECK 2: Add basic smaller skill percent now for non miners.
+        baseSuccessRate += player.experienceLevel * 2;
 //            }
 
         int successRate = baseSuccessRate;
