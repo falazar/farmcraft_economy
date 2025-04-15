@@ -28,11 +28,14 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+
+import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
@@ -98,8 +101,8 @@ public class PlotCommand {
             Level level = summoner.level();
 
             ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ChunkData data = dataBase.getData(chunkPos);
+            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            ChunkData data = dataBase.getData(chunkPos.toLong());
             if (data == null) {
                 context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
                 // todo show closest village still though.
@@ -144,8 +147,8 @@ public class PlotCommand {
 
             Level level = player.level();
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
-            ChunkData data = dataBase.getData(chunkPos);
+            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
+            ChunkData data = dataBase.getData(chunkPos.toLong());
 
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
@@ -185,8 +188,17 @@ public class PlotCommand {
 //            data.setPlayerId(summoner.getId());
 //            data.setType("farm"); // TODO set to type.
             // TODO get village id.
-            ChunkData newPlot = new ChunkData(plotType, player.getId(), 1234); // hack test.
-            dataBase.putData(chunkPos, newPlot);
+
+            UUID id = playerData.getHomeVillageUUID();
+
+            ChunkData newPlot = new ChunkData(plotType, player.getId(), id); // hack test.
+
+            if(plotType.equalsIgnoreCase("farm")) {
+                ForgeChunkManager.forceChunk((ServerLevel) level, MODID, player.getUUID(), chunkPos.x, chunkPos.z,true, true);
+            }
+
+
+            dataBase.putData(chunkPos.toLong(), newPlot);
             LOGGER.info("Plot bought at " + chunkPos);
 
             // STEP 5: Subtract money out of player.
@@ -215,8 +227,8 @@ public class PlotCommand {
 
 //            Level level = player.level();
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ChunkData data = dataBase.getData(chunkPos);
+            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            ChunkData data = dataBase.getData(chunkPos.toLong());
             if (data == null) {
                 source.sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
                 return;

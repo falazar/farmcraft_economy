@@ -59,7 +59,7 @@ public class VillageCommand {
                 .then(Commands.argument("villageName", StringArgumentType.string())
                         .executes(context -> {
                             String villageName = StringArgumentType.getString(context, "villageName");
-                            return deleteVillage(context.getSource(), villageName);
+                            return deleteVillage(context, villageName);
                         }))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
@@ -91,9 +91,9 @@ public class VillageCommand {
             Level level = player.level();
 
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ;
-            ChunkData data = dataBase.getData(chunkPos);
+            ChunkData data = dataBase.getData(chunkPos.toLong());
             // TODO can we hide all this inside???
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
@@ -184,8 +184,8 @@ public class VillageCommand {
             // TODO1 this doesnt buy the plot does it?
             // TODO1 THESE villageId TO USE UUIDS
 //            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
-            ChunkData newPlot = new ChunkData("village", player.getId(), 1234); // hack test.
-            dataBase.putData(chunkPos, newPlot);
+            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
+            dataBase.putData(chunkPos.toLong(), newPlot);
             LOGGER.info("Plot bought at " + chunkPos);
             // TODO1 call a set plot method, separate this out.
             // TODO1 add plot to city.
@@ -197,6 +197,8 @@ public class VillageCommand {
             // STEP 11: Add village to player.
             playerData.setHomeVillageId(villageId);
 
+            //We have to put it back in there otherwise it wont sync to client
+            playerDataDataBase.putData(player.getUUID(), playerData);
 
             // STEP 12: Build a response message and send.
             MutableComponent response = Component.literal("Village bought at " + chunkPos);

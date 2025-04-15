@@ -5,6 +5,7 @@ import com.falazar.farmupcraft.database.fileformats.ExportFormatStrategy;
 import com.falazar.farmupcraft.database.fileformats.FileFormat;
 import com.falazar.farmupcraft.database.fileformats.ImportFormatStrategy;
 import com.falazar.farmupcraft.database.message.DataBaseEntryS2C;
+import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
 import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.mojang.logging.LogUtils;
 import net.minecraft.nbt.*;
@@ -825,6 +826,7 @@ public class DataBase<M, V> extends SavedData {
     }
 
     public void clearDataBase(boolean setDirty) {
+
         LOGGER.info("[{}] Clearing database!", databaseName);
         data.clear();
         index.clear();
@@ -833,6 +835,11 @@ public class DataBase<M, V> extends SavedData {
         if (setDirty) {
             setDirty();
         }
+
+        if(autoSync) {
+            EDBMessages.sendToClients(new DataBaseFullS2C<>(new CompoundTag(), databaseName));
+        }
+
     }
 
     public String getDatabaseName() {

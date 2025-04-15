@@ -38,11 +38,13 @@ public class ModEvents {
     private static final DataBaseAccess<UUID, PlayerData> PLAYER_DATABASE = new DataBaseBuilder<UUID, PlayerData>(prefix("player_database"))
             .setKeySerializer(new UUIDDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(PlayerData.CODEC))
+            .autoSync()
             .build();
 
-    private static final DataBaseAccess<ChunkPos, ChunkData> CHUNK_DATA_DATABASE = new DataBaseBuilder<ChunkPos, ChunkData>(prefix("chunk_data_database"))
-            .setKeySerializer(new ChunkPosDataSerializer())
+    private static final DataBaseAccess<Long, ChunkData> CHUNK_DATA_DATABASE = new DataBaseBuilder<Long, ChunkData>(prefix("chunk_data_database"))
+            .setKeySerializer(new LongDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(ChunkData.CODEC))
+            .autoSync()
             .build();
 
     private static final DataBaseAccess<UUID, VillageData> VILLAGE_DATABASE = new DataBaseBuilder<UUID, VillageData>(prefix("village_database"))
@@ -52,16 +54,26 @@ public class ModEvents {
             .build();
 
 
+
+
     public static DataBase<UUID, VillageData> getVillageDatabase() {
         return getDatabase(VILLAGE_DATABASE);
     }
 
-    public static DataBase<ChunkPos, ChunkData> getChunkDataDatabase() {
+    public static DataBase<Long, ChunkData> getChunkDataDatabase(Level level) {
+        return getDatabase(CHUNK_DATA_DATABASE, level);
+    }
+
+    public static DataBase<Long, ChunkData> getChunkDataDatabase() {
         return getDatabase(CHUNK_DATA_DATABASE);
     }
 
     public static DataBase<UUID, PlayerData> getPlayerDatabase() {
         return getDatabase(PLAYER_DATABASE);
+    }
+
+    public static DataBase<UUID, PlayerData> getPlayerDatabase(Level level) {
+        return getDatabase(PLAYER_DATABASE, level);
     }
 
     public static DataBase<Holder<Biome>, BiomeRulesInstance> getBiomeRulesDatabase() {

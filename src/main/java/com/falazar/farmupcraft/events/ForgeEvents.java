@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.currency.CoinStack;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
@@ -9,6 +10,7 @@ import com.falazar.farmupcraft.database.DataBaseAccess;
 import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
 import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.ResourceLocation;
@@ -112,7 +114,10 @@ public class ForgeEvents {
             DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             UUID uuid = ((ServerPlayer) event.getEntity()).getUUID();
             if(!playerDatabase.containsKey(uuid)) {
-                playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), UUID.randomUUID(), new Wallet(List.of())));
+
+
+                CoinStack bronzeStack = new CoinStack(CoinRegistry.getCoin(CoinRegistry.BRONZE_COIN), 10);
+                playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), UUID.randomUUID(), new Wallet(List.of(bronzeStack))));
             }
 
             for (ResourceLocation dataBaseName : DataBaseManager.getDataBasesToSync()) {
