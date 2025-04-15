@@ -295,7 +295,7 @@ public class VillageCommand {
     }
 
     public static VillageData findVillageByName(String villageName) {
-        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
         Collection<VillageData> dataList = dataBase.getValues();
         if (dataList == null || dataList.isEmpty()) {
             return null;
@@ -321,8 +321,8 @@ public class VillageCommand {
             }
 //            Level level = player.level();
 
-            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
-            VillageData villageData = dataBase.getData(villageName);
+            DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
+            VillageData villageData = findVillageByName(villageName);
             if (villageData == null) {
                 context.getSource().sendFailure(Component.literal("No village data found."));
                 return 0;
