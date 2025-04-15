@@ -311,12 +311,12 @@ public class VillageCommand {
     }
 
     // Delete a village from db.
-    public static int deleteVillage(CommandContext<CommandSourceStack> context, String villageName) {
+    public static int deleteVillage(CommandSourceStack source, String villageName) {
         try {
-            Entity nullableSummoner = context.getSource().getEntity();
+            Entity nullableSummoner = source.getEntity();
             Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             if (player == null) {
-                context.getSource().sendFailure(Component.literal("Player not found."));
+                source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
 //            Level level = player.level();
@@ -324,7 +324,7 @@ public class VillageCommand {
             DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
             VillageData villageData = findVillageByName(villageName);
             if (villageData == null) {
-                context.getSource().sendFailure(Component.literal("No village data found."));
+                source.sendFailure(Component.literal("No village data found."));
                 return 0;
             }
 
@@ -336,9 +336,9 @@ public class VillageCommand {
             // Build a response message
             MutableComponent response = Component.literal("Village deleted: " + villageData.getName());
             MutableComponent finalResponse = response;
-            context.getSource().sendSuccess(() -> finalResponse, false);
+            source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
-            context.getSource().sendFailure(Component.literal("Exception thrown - see log"));
+            source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
         }
         return 0;
