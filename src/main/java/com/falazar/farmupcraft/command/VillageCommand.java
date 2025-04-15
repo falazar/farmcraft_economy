@@ -328,8 +328,8 @@ public class VillageCommand {
                 return 0;
             }
 
-            // TODO remove from player data.
-            // TODO remove from chunk data.
+            // TODO remove from player datas.
+            // TODO remove chunk data.
 
 //            villageData.delete(); todo scout.
 

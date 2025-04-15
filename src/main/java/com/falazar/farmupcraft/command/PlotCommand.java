@@ -65,7 +65,15 @@ public class PlotCommand {
                         }));
 
 
-        // Define the "delete" sub-command - For admins only!
+        // Define the "delete" sub-command - For ADMIN only!
+        LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
+                .executes(context -> {
+                    deletePlot(context.getSource());
+                    return 0;
+                })
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+        builder.then(deleteBuilder);
+
 //        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
 //                .executes(c -> buyPlot(c))
 //                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
@@ -195,6 +203,40 @@ public class PlotCommand {
         return 0;
     }
 
+    // Delete a plot from DB right now, admin method.
+    public static void deletePlot(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return;
+            }
+
+//            Level level = player.level();
+            ChunkPos chunkPos = new ChunkPos(player.blockPosition());
+            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            ChunkData data = dataBase.getData(chunkPos);
+            if (data == null) {
+                source.sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
+                return;
+            }
+
+            // TODO remove from DB.
+//            dataBase.removeData(chunkPos);
+            LOGGER.info("Plot deleted at " + chunkPos);
+
+            // TODO MAYBE REMOVE FROM VILLAGE LIST.
+
+            // Build a response message
+            MutableComponent response = Component.literal("Plot deleted at " + chunkPos);
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
 
     private static int calculatePlotCost(String village, String player, String plotType) {
         // TODO implement cost calculation logic here.
