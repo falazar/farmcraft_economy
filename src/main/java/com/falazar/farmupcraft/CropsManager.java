@@ -5,8 +5,6 @@ import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
-import com.falazar.farmupcraft.database.DataBaseAccess;
-import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
@@ -14,7 +12,6 @@ import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -225,18 +222,21 @@ public class CropsManager {
         Player player = (Player) event.getEntity();
 
         BlockPos pos = player.blockPosition();
-        ChunkPos chunkPos = new ChunkPos(pos);
-        DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData chunkData = dataBase.getData(chunkPos);
+
         // TODO Save a lastChunkVillage String to compare against.
         String lastChunkVillageName = ""; // TODO MOVE ME
+        long chunkPos = ChunkPos.asLong(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = dataBase.getData(chunkPos);
         if (chunkData == null) {
             LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
             lastChunkVillageName = "";
             return;
         }
+
         // Get village we are in...
-        int villageId = chunkData.getVillageId(); // TODO scout needs to be uuid now?
+        UUID villageId = chunkData.getVillageId();
+
 //        String villageId = data.getVillageId(); // TODO scout needs to be uuid now?
 //        VillageData villageData = ModEvents.getVillageDatabase().getData(villageId);
         VillageData villageData = getClosestVillage(pos); // TODO CHANGE
@@ -260,9 +260,9 @@ public class CropsManager {
         try {
             // TODO: can we get level somehow easier? internal.
             ChunkPos chunkPos = new ChunkPos(pos);
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ;
-            ChunkData data = dataBase.getData(chunkPos);
+            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
+            ChunkData data = dataBase.getData(chunkPos.toLong());
+
             if (data == null) {
                 LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
                 return "";
@@ -280,9 +280,9 @@ public class CropsManager {
     public static ChunkData getPlot(BlockPos pos) {
         try {
             ChunkPos chunkPos = new ChunkPos(pos);
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ;
-            ChunkData data = dataBase.getData(chunkPos);
+            ChunkData data = dataBase.getData(chunkPos.toLong());
             if (data == null) {
                 LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
                 return null;

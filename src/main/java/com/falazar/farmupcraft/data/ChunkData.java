@@ -1,10 +1,14 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+
+import java.util.UUID;
 
 public class ChunkData {
 
@@ -12,13 +16,13 @@ public class ChunkData {
             instance.group(
                     Codec.STRING.fieldOf("type").forGetter(ChunkData::getType),
                     Codec.INT.fieldOf("player_id").forGetter(ChunkData::getPlayerId),
-                    Codec.INT.fieldOf("village_id").forGetter(ChunkData::getVillageId)
+                    UUIDUtil.STRING_CODEC.fieldOf("village_id").forGetter(ChunkData::getVillageId)
             ).apply(instance, ChunkData::new)
     );
 
     private final String type;
     private final int playerId;
-    private final int villageId;
+    private final UUID villageId;
 
     /**
      * Constructs a new ChunkData object.
@@ -27,7 +31,7 @@ public class ChunkData {
      * @param playerId   the integer ID representing the player entity, NOT the player's UUID
      * @param villageId  the integer ID representing the village associated with this chunk
      */
-    public ChunkData(String type, int playerId, int villageId) {
+    public ChunkData(String type, int playerId, UUID villageId) {
         this.type = type;
         this.playerId = playerId;
         this.villageId = villageId;
@@ -60,7 +64,7 @@ public class ChunkData {
      *
      * @return the village's integer ID
      */
-    public int getVillageId() {
+    public UUID getVillageId() {
         return villageId;
     }
 
