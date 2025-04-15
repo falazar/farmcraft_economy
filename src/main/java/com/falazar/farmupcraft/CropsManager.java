@@ -664,11 +664,11 @@ public class CropsManager {
     // NOTICE: Event methods cannot be static.
     @SubscribeEvent
     public static void onBreakStone(BlockEvent.BreakEvent event) {
-//        Player player = event.getPlayer();
+        Player player = event.getPlayer();
 //        Player player = Player.getByName(player.getScoreboardName());
-//        if (player == null) {
-//            return;
-//        }
+        if (player == null) {
+            return;
+        }
         String string = "";
         //StringBuilder builder = new StringBuilder();
 //
@@ -720,15 +720,15 @@ public class CropsManager {
 //            if (player.hasSkill("moreStoneDrops")) {
 //                baseSuccessRate += player.getRoleLevel("miner") * 4;
 //            }
-//            // CHECK 2: Add basic smaller skill percent now for non miners.
 //            else {
-//                baseSuccessRate += player.getLevel() * 2;
+            // CHECK 2: Add basic smaller skill percent now for non miners.
+                baseSuccessRate += player.experienceLevel * 2;
 //            }
 
         int successRate = baseSuccessRate;
 
-        // For falazar now, increase as faking a skill......
-        successRate = 100;
+        // For Falazar now, increase as faking a skill...
+//        successRate = 100;
 
 
         // STEP 2: Roll and check for success.
@@ -739,7 +739,8 @@ public class CropsManager {
         if (randomNum >= successRate) {
             LOGGER.info("DEBUG: DESTROYING stone block, no drops...");
             event.getLevel().destroyBlock(event.getPos(), false);
-            event.setCanceled(true);  // this works fine, prevents drops, must have or it replaces it!
+            event.setCanceled(true);
+            // This works fine, prevents drops, must have or it replaces it!
             return;
         }
 //        LOGGER.info("DEBUG3: ALLOWING stone block drops...");

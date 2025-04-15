@@ -54,6 +54,16 @@ public class VillageCommand {
                         }));
         builder.then(buyBuilder);
 
+        // Define the delete sub-command. ADMIN ONLY!
+        LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
+                .then(Commands.argument("villageName", StringArgumentType.string())
+                        .executes(context -> {
+                            String villageName = StringArgumentType.getString(context, "villageName");
+                            return deleteVillage(context.getSource(), villageName);
+                        }))
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+        builder.then(deleteBuilder);
+
         // TODO Add subcommand for nearest village
         // /village info nearest
 
@@ -120,7 +130,7 @@ public class VillageCommand {
 
             // Step 3: Check if village name is unique.
             if (!isVillageNameUnique(villageName)) {
-                source.sendFailure(Component.literal("Village name "+villageName+" is not unique, please choose another."));
+                source.sendFailure(Component.literal("Village name " + villageName + " is not unique, please choose another."));
                 return 0;
             }
 
@@ -219,7 +229,7 @@ public class VillageCommand {
             String villageId = "TEST12345"; // TODO get from player data.
 
             DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
-            ;
+
             VillageData villageData = dataBase.getData(villageId);
             if (villageData == null) {
                 // TODO
@@ -275,6 +285,56 @@ public class VillageCommand {
                 response = response.append(Component.literal(index++ + ". " + data.getName() +
                         " at " + data.getClaimedChunks().stream().findFirst().toString() + ", \n"));
             }
+            MutableComponent finalResponse = response;
+            context.getSource().sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            context.getSource().sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static VillageData findVillageByName(String villageName) {
+        DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+        Collection<VillageData> dataList = dataBase.getValues();
+        if (dataList == null || dataList.isEmpty()) {
+            return null;
+        }
+
+        // Loop and find the village.
+        for (VillageData data : dataList) {
+            if (data.getName().equalsIgnoreCase(villageName)) {
+                return data;
+            }
+        }
+        return null;
+    }
+
+    // Delete a village from db.
+    public static int deleteVillage(CommandContext<CommandSourceStack> context, String villageName) {
+        try {
+            Entity nullableSummoner = context.getSource().getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                context.getSource().sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+//            Level level = player.level();
+
+            DataBase<String, VillageData> dataBase = ModEvents.getVillageDatabase();
+            VillageData villageData = dataBase.getData(villageName);
+            if (villageData == null) {
+                context.getSource().sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // TODO remove from player data.
+            // TODO remove from chunk data.
+
+//            villageData.delete(); todo scout.
+
+            // Build a response message
+            MutableComponent response = Component.literal("Village deleted: " + villageData.getName());
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {

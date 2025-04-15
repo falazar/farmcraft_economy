@@ -78,7 +78,6 @@ public class PlotCommand {
         pDispatcher.register(builder);
     }
 
-
     public static int showPlotInfo(CommandContext<CommandSourceStack> context) {
         try {
             Entity nullableSummoner = context.getSource().getEntity();
@@ -119,7 +118,6 @@ public class PlotCommand {
         }
         return 0;
     }
-
 
     // Buy with an optional type, farm, village, etc.
     public static int buyPlot(CommandSourceStack source, String plotType) {
