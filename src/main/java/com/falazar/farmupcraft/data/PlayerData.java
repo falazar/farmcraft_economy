@@ -27,6 +27,7 @@ public class PlayerData {
     private UUID homeVillageUUID;
     private final Wallet wallet;
     // todo add lastChunkVillageName
+    // todo add level
 
     /**
      * Constructs a new PlayerData object.
@@ -71,6 +72,7 @@ public class PlayerData {
         return homeVillageUUID;
     }
 
+    // TODO DELETE ME?
     public void setHomeVillageId(UUID homeVillageId) {
         this.homeVillageUUID = homeVillageId;
     }

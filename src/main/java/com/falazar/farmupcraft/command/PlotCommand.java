@@ -152,61 +152,43 @@ public class PlotCommand {
             Level level = player.level();
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
-            ChunkData data = dataBase.getData(chunkPos.toLong());
-
+            ChunkData chunkData = dataBase.getData(chunkPos.toLong());
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
-//            Wallet wallet =  playerData.getWallet();
-//            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-//            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-//            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+            // TODO start using shorter village and player naming conventions.
+            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+            // TODO fail if not in village!!!
 
-//             if (currencyCost.canAfford(wallet)) {
-//                 //do something
-//             }
 
+            // Step 1: Check who owns, if already owned, just show info.
             // TEMP REMOVE FOR TESTING.
 //            if (data != null) {
 //                source.sendFailure(Component.literal("Plot is already owned."));
 //                return 0;
 //            }
 
-            // TODO implement plot buying logic here.
-            // Step 1: Check who owns, if already owned, just show info.
-
-            // TODO get player village id
-            String village = "testobj";
-
-            // STEP 3: Calc cost to buy plot.
-//            String player = "testobj";  // TODO not needed?
-//            int cost = calculatePlotCost(village, player, plotType);
-            int cost = 100; // TODO get from village Object.
-
-            // TODO check if player has enough money.
-//            if (player.checkPlayerMoney(cost)) {
-//                context.getSource().sendFailure(Component.literal("Player does not have enough money."));
-//                return 0;
-//            }
-
-            // STEP 4: Buy plot and mark to db.
-//            data.setPlayerId(summoner.getId());
-//            data.setType("farm"); // TODO set to type.
-            // TODO get village id.
-
-            UUID id = playerData.getHomeVillageUUID();
-
-            ChunkData newPlot = new ChunkData(plotType, player.getId(), id); // hack test.
-
-            if(plotType.equalsIgnoreCase("farm")) {
-                ForgeChunkManager.forceChunk((ServerLevel) level, MODID, player.getUUID(), chunkPos.x, chunkPos.z,true, true);
+            // STEP 3: Calc cost to buy plot and check players total.
+            int cost = calculatePlotCost(playerData, villageData, plotType);
+            // TODO TEST
+            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+            if (playerData.getWallet().hasEnough(bronzeCoin, cost)) {
+                source.sendFailure(Component.literal("Player does not have enough money."));
+                return 0;
             }
 
-
+            // STEP 4: Buy plot and mark to db., amd village.
+            ChunkData newPlot = new ChunkData(plotType, player.getId(), villageData.getUUID());
+            if (plotType.equalsIgnoreCase("farm")) {
+                LOGGER.info("DEBUG1: Farming plot for " + chunkPos + ": " + villageData.getName());
+                ForgeChunkManager.forceChunk((ServerLevel) level, MODID, player.getUUID(), chunkPos.x, chunkPos.z,true, true);
+            }
             dataBase.putData(chunkPos.toLong(), newPlot);
             LOGGER.info("Plot bought at " + chunkPos);
 
             // STEP 5: Subtract money out of player.
-//            player.subtractMoney(cost);
+           playerData.getWallet().remove(bronzeCoin, cost);
 
             // Build a response message
             MutableComponent response = Component.literal("Plot bought at " + chunkPos + " as " + plotType);
@@ -254,14 +236,17 @@ public class PlotCommand {
         }
     }
 
-    private static int calculatePlotCost(String village, String player, String plotType) {
+    private static int calculatePlotCost(PlayerData playerData, VillageData villageData, String plotType) {
         // TODO implement cost calculation logic here.
         int baseCost = 100;
         // 100 + 100 for each plot.... whatevers.
 
+        // TODO count plots existing scouter
+
         int plotCount = 1; // TODO get from village Object.
         int totalCost = baseCost + (plotCount-1) * 100;
 
+        LOGGER.info("DEBUG: Plot cost for " + plotType + ": " + totalCost+" plotCount = "+plotCount);
         return totalCost;
     }
 }
