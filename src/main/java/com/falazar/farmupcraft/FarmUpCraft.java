@@ -96,6 +96,7 @@ public class FarmUpCraft {
         ShowBiomesCommand.register(e.getDispatcher());
         ManagersCommand.register(e.getDispatcher());
         DataBaseCommand.register(e.getDispatcher());
+        PlayerCommand.register(e.getDispatcher());
         PlotCommand.register(e.getDispatcher());
         VillageCommand.register(e.getDispatcher());
     }
