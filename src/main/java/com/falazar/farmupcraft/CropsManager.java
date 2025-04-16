@@ -257,50 +257,41 @@ public class CropsManager {
     // TODO Move to proper object home.
     // Check plot type pos is on now.
     public static String getPlotType(BlockPos pos, Level level) {
-        try {
-            // TODO: can we get level somehow easier? internal.
-            ChunkPos chunkPos = new ChunkPos(pos);
-            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
-            ChunkData data = dataBase.getData(chunkPos.toLong());
+        // TODO: can we get level somehow easier? internal.
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ;
+        ChunkData data = dataBase.getData(chunkPos.toLong());
 
-            if (data == null) {
-                LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
-                return "";
-            }
-
-            LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
-            return data.getType();
-        } catch (Exception e) {
-            LOGGER.info("DEBUG3: checkPlotType: error " + e.getMessage());
+        if (data == null) {
+            LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
             return "";
         }
+
+        LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
+        return data.getType();
     }
 
     // Get the current plot we are on now.
     public static ChunkData getPlot(BlockPos pos) {
-        try {
-            ChunkPos chunkPos = new ChunkPos(pos);
-            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ;
-            ChunkData data = dataBase.getData(chunkPos.toLong());
-            if (data == null) {
-                LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
-                return null;
-            }
-            LOGGER.info("DEBUG4: getplot: found data for chunk at " + chunkPos);
-
-            return data;
-        } catch (Exception e) {
-            LOGGER.info("DEBUG4: getplot: error " + e.getMessage());
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ;
+        ChunkData data = dataBase.getData(chunkPos.toLong());
+        if (data == null) {
+            LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
             return null;
         }
+        LOGGER.info("DEBUG4: getplot: found data for chunk at " + chunkPos);
+
+        return data;
     }
 
 
     // NOTE: Is about 3 hours now with 400 growth.
-    // Now based on actual growth stat instead?  onGrow event
-    // Slow down crop growth, tooooo fast!!!
-    // TODO make a config var for base?
+// Now based on actual growth stat instead?  onGrow event
+// Slow down crop growth, tooooo fast!!!
+// TODO make a config var for base?
     @SubscribeEvent
     public static void slowCropsEvent(BlockEvent.CropGrowEvent.Pre event) {
         BlockPos blockPos = event.getPos();
@@ -477,7 +468,7 @@ public class CropsManager {
     private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unknown"));
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
-    // Show crop info data if not allowed.
+// Show crop info data if not allowed.
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // This crop is allowed here in this biome, return now and allow planting.  Else show some crop biome info.
         if (instance.biomeHasCrops(stack)) {
@@ -572,11 +563,11 @@ public class CropsManager {
     }
 
     // TODO move to a player class.
-    // Make a player use food faster always!
-    // REF: https://minecraft.fandom.com/wiki/Hunger
-    // TODO make configurable.
-    // but then also how do we handle bonuses for player?  just check with that math?
-    // NOTICE: Event methods cannot be static.
+// Make a player use food faster always!
+// REF: https://minecraft.fandom.com/wiki/Hunger
+// TODO make configurable.
+// but then also how do we handle bonuses for player?  just check with that math?
+// NOTICE: Event methods cannot be static.
     @SubscribeEvent
     public static void hunger(TickEvent.PlayerTickEvent event) {
         // Leave if on client side.
@@ -612,9 +603,9 @@ public class CropsManager {
 
 
     // TODO cooking stuffs testing next.
-    // Get a list of all cooked items for market!
-    // Generic method to get a list of items...
-    // notice was static
+// Get a list of all cooked items for market!
+// Generic method to get a list of items...
+// notice was static
     public static List<String> getAllFoods(ServerLevel serverLevel, long worldSeed) {
         // Get the list of all items
         Iterable<Item> allItems = ForgeRegistries.ITEMS;
@@ -733,10 +724,10 @@ public class CropsManager {
     }
 
     // TODO: move to stone? manager class.
-    // On breaking stone, sometimes it will fail and you will not get back any items.
-    // You can increase the rate with skills and special items...
-    // cobblestone and deepslate drop rate here.
-    // NOTICE: Event methods cannot be static.
+// On breaking stone, sometimes it will fail and you will not get back any items.
+// You can increase the rate with skills and special items...
+// cobblestone and deepslate drop rate here.
+// NOTICE: Event methods cannot be static.
     @SubscribeEvent
     public static void onBreakStone(BlockEvent.BreakEvent event) {
         Player player = event.getPlayer();

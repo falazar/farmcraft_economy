@@ -59,7 +59,7 @@ public class VillageCommand {
                 .then(Commands.argument("villageName", StringArgumentType.string())
                         .executes(context -> {
                             String villageName = StringArgumentType.getString(context, "villageName");
-                            return deleteVillage(context, villageName);
+                            return deleteVillage(context.getSource(), villageName);
                         }))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
