@@ -47,8 +47,8 @@ public class PlayerData {
      * @param level the server level where the player is located
      * @return the player's name, or an empty string if the entity is not a player or cannot be found
      */
-    public String getNameForPlayer(ServerLevel level) {
-        Entity entity = level.getEntity(id);
+    public String getNameForPlayer(ServerLevel level, UUID playerUUID) {
+        Entity entity = level.getEntity(playerUUID);
         if (entity instanceof Player player) {
             return player.getGameProfile().getName();
         }

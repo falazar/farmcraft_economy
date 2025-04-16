@@ -70,8 +70,8 @@ public class PlayerCommand {
             LOGGER.info("DEBUG: Player info test name: " + player.getScoreboardName());
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
-            context.getSource().sendSuccess(() -> Component.literal("Player: " + playerData.getNameForPlayer(serverLevel)), false);
             // TODO scout name is empty above
+            context.getSource().sendSuccess(() ->Component.literal("Player: " + playerData.getNameForPlayer(serverLevel, player.getUUID())), false);
 
             // STEP 2: TODO Pull money from wallet.
             // TODO helper method.
