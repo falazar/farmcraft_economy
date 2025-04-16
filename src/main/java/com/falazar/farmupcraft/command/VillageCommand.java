@@ -184,8 +184,11 @@ public class VillageCommand {
             // TODO1 this doesnt buy the plot does it?
             // TODO1 THESE villageId TO USE UUIDS
 //            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
-            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
-            dataBase.putData(chunkPos.toLong(), newPlot);
+            for(ChunkPos pos : villageChunks) {
+                ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
+                dataBase.putData(pos.toLong(), newPlot);
+            }
+
             LOGGER.info("Plot bought at " + chunkPos);
             // TODO1 call a set plot method, separate this out.
             // TODO1 add plot to city.
