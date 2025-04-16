@@ -3,16 +3,19 @@ package com.falazar.farmupcraft.data;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+
+import java.util.UUID;
 
 public class PlayerData {
 
     public static final Codec<PlayerData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     Codec.INT.fieldOf("id").forGetter(PlayerData::getId),
-                    Codec.STRING.optionalFieldOf("home_village_id", "").forGetter(PlayerData::getHomeVillageId),
+                    UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID()).forGetter(PlayerData::getHomeVillageUUID),
                     Wallet.CODEC.fieldOf("wallet").forGetter(PlayerData::getWallet)
             ).apply(instance, PlayerData::new)
             // DOES ABOVE WORK EASIER?
@@ -21,18 +24,19 @@ public class PlayerData {
 
     // TODO change to string.
     private final int id;
-    private final String homeVillageId;
+    private UUID homeVillageUUID;
     private final Wallet wallet;
+    // todo add lastChunkVillageName
 
     /**
      * Constructs a new PlayerData object.
      * @param id            the integer ID representing the player entity, NOT the player's UUID
-     * @param homeVillageId String uuid value for village id.
+     * @param homeVillageUUID uuid value for village id.
      * @param wallet         the wallet with coins the player has
      */
-    public PlayerData(int id, String homeVillageId, Wallet wallet) {
+    public PlayerData(int id, UUID homeVillageUUID, Wallet wallet) {
         this.id = id;
-        this.homeVillageId = homeVillageId;
+        this.homeVillageUUID = homeVillageUUID;
         this.wallet = wallet;
     }
 
@@ -63,8 +67,12 @@ public class PlayerData {
      * Gets the home village id of the player.
      * @return the player's home village id
      */
-    public String getHomeVillageId() {
-        return homeVillageId;
+    public UUID getHomeVillageUUID() {
+        return homeVillageUUID;
+    }
+
+    public void setHomeVillageId(UUID homeVillageId) {
+        this.homeVillageUUID = homeVillageId;
     }
 
     /**

@@ -49,7 +49,7 @@ public class CodecDataSerializer<T> implements DataBase.DataSerializer<T> {
         CompoundTag objectTag = tag.getCompound(CODEC_VALUE_TAG);
         DataResult<T> result = codec.parse(NbtOps.INSTANCE, objectTag);
 
-        return result.resultOrPartial(err -> LOGGER.error("[{}] Failed to deserialize object due to: {}", databaseName, err))
+        return result.resultOrPartial(err -> LOGGER.error("[{}] Failed to deserialize object due to: {}, with tag {}", databaseName, err, tag))
                 .orElse(null);
     }
 }

@@ -5,6 +5,7 @@ import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
@@ -14,37 +15,39 @@ import net.minecraft.world.level.ChunkPos;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 public class VillageData {
 
     public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance ->
                     instance.group(
-                            Codec.STRING.fieldOf("id").forGetter(VillageData::getId),
+                            UUIDUtil.STRING_CODEC.fieldOf("uuid").forGetter(VillageData::getUUID),
                             Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
+                            CodecUtils.CHUNK_POS_CODEC.fieldOf("position").forGetter(VillageData::getPosition),
                             Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
                             CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
                             Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought)
                     ).apply(instance, VillageData::new)
     );
 
-    private final String id;
+    private final UUID uuid;
     private final String name;
+    private final ChunkPos position;
     private final int level;
     private final List<ChunkPos> claimedChunks;
     private final Set<Long> claimedChunkSet = new HashSet<>();
-    private final boolean bought;
+    private final boolean bought;  // TODO what is
     /**
      * Constructs a new ChunkData object.
-     *
-     * @param id       unique id of village
+     * @param uuid       unique id of village
      * @param name     the mame of village
-     * @param coins    the coins of village
      * @param level    the level of village
      * @param position the 3d position of village
      */
-    public VillageData(String id, String name, int level, List<ChunkPos> claimedChunks, boolean bought) {
-        this.id = id;
+    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks, boolean bought) {
+        this.uuid = uuid;
         this.name = name;
+        this.position = position;
         this.level = level;
         this.claimedChunks = claimedChunks;
         this.bought = bought;
@@ -57,8 +60,8 @@ public class VillageData {
      * Gets the village's unique id.
      * @return the village's unique id
      */
-    public String getId() {
-        return id;
+    public UUID getUUID() {
+        return uuid;
     }
 
     /**
@@ -67,6 +70,14 @@ public class VillageData {
      */
     public String getName() {
         return name;
+    }
+
+    /**
+     * Gets the village's position.
+     * @return the village's position
+     */
+    public ChunkPos getPosition() {
+        return position;
     }
 
     /**
@@ -91,7 +102,7 @@ public class VillageData {
 
     @Override
     public String toString() {
-        return "Village ID: " + id + ", Owner: " + name + ", Chunks: " + claimedChunks;
+        return "Village ID: " + uuid + ", Owner: " + name + ", Chunks: " + claimedChunks;
     }
 
 }

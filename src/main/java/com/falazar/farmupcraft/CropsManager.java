@@ -3,9 +3,8 @@ package com.falazar.farmupcraft;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
+import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
-import com.falazar.farmupcraft.database.DataBaseAccess;
-import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
@@ -13,7 +12,6 @@ import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
@@ -30,6 +28,7 @@ import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -49,8 +48,10 @@ import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -59,6 +60,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
+import static com.falazar.farmupcraft.command.VillageCommand.getClosestVillage;
 import static org.apache.commons.lang3.StringUtils.replace;
 
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -199,33 +201,97 @@ public class CropsManager {
         }
     }
 
-    // TODO Move to proper object home.
-    // Check plot type pos is on now.
-    public static String getPlotType(BlockPos pos, Level level) {
-        try {
-            // TODO: can we get level somehow easier? internal.
-            ChunkPos chunkPos = new ChunkPos(pos);
-            DataBase<ChunkPos, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
-            ChunkData data = dataBase.getData(chunkPos);
-            if (data == null) {
-                LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
-                return "";
-            }
 
-            LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
-            return data.getType();
-        } catch (Exception e) {
-            LOGGER.info("DEBUG3: checkPlotType: error " + e.getMessage());
-            return "";
+    // Check anytime a player enters a new chunk.
+    // Tell if they have entered a village or not.
+    @SubscribeEvent
+    public static void onPlayerEnterChunk(EntityEvent.EnteringSection event) {
+        // Leave if on client side.
+//        if (event.isClientSide) {
+//            return;
+//        }
+
+        // Get the player and their current chunk position.
+        Entity entity = event.getEntity();
+        if (entity == null) {
+            return;
+        }
+        if (!(entity instanceof Player)) {
+            return;
+        }
+        Player player = (Player) event.getEntity();
+
+        BlockPos pos = player.blockPosition();
+
+        // TODO Save a lastChunkVillage String to compare against.
+        String lastChunkVillageName = ""; // TODO MOVE ME
+        long chunkPos = ChunkPos.asLong(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = dataBase.getData(chunkPos);
+        // TODO change this to claimed chunks instead  scouter.
+        if (chunkData == null) {
+//            LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
+            lastChunkVillageName = "";
+            return;
+        }
+
+        // Get village we are in...
+        UUID villageId = chunkData.getVillageId();
+        // TODO MAKE THIS A HELPER METHOD.
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+        VillageData villageData = villageDataDB.getData(villageId);
+        if (villageData != null) {
+            String villageName = villageData.getName();
+            LOGGER.info("DEBUG: Player is in a village at " + chunkPos + " with name " + villageName);
+            if (!lastChunkVillageName.equals(villageName)) {
+                // Send message to player about village name.
+                player.displayClientMessage(Component.literal("You have entered the village of " + villageName), false);
+            }
+            lastChunkVillageName = villageName;
+        } else {
+            LOGGER.info("DEBUG: Player is NOT in a village at " + chunkPos);
+            lastChunkVillageName = "";
         }
     }
 
+    // TODO Move to proper object home.
+    // Check plot type pos is on now.
+    public static String getPlotType(BlockPos pos, Level level) {
+        // TODO: can we get level somehow easier? internal.
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ;
+        ChunkData data = dataBase.getData(chunkPos.toLong());
+
+        if (data == null) {
+            LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
+            return "";
+        }
+
+        LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
+        return data.getType();
+    }
+
+    // Get the current plot we are on now.
+    public static ChunkData getPlot(BlockPos pos) {
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ;
+        ChunkData data = dataBase.getData(chunkPos.toLong());
+        if (data == null) {
+            LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
+            return null;
+        }
+        LOGGER.info("DEBUG4: getplot: found data for chunk at " + chunkPos);
+
+        return data;
+    }
 
 
     // NOTE: Is about 3 hours now with 400 growth.
-    // Now based on actual growth stat instead?  onGrow event
-    // Slow down crop growth, tooooo fast!!!
-    // TODO make a config var for base?
+// Now based on actual growth stat instead?  onGrow event
+// Slow down crop growth, tooooo fast!!!
+// TODO make a config var for base?
     @SubscribeEvent
     public static void slowCropsEvent(BlockEvent.CropGrowEvent.Pre event) {
         BlockPos blockPos = event.getPos();
@@ -402,7 +468,7 @@ public class CropsManager {
     private static final ResourceKey<Biome> UKNOWN_RK = ResourceKey.create(Registries.BIOME, new ResourceLocation("unknown"));
 
     // Given a crop stack item, and biome, check if it is allowed to be planted here.
-    // Show crop info data if not allowed.
+// Show crop info data if not allowed.
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack, Holder<Biome> biome, PlayerInteractEvent event) {
         // This crop is allowed here in this biome, return now and allow planting.  Else show some crop biome info.
         if (instance.biomeHasCrops(stack)) {
@@ -497,11 +563,11 @@ public class CropsManager {
     }
 
     // TODO move to a player class.
-    // Make a player use food faster always!
-    // REF: https://minecraft.fandom.com/wiki/Hunger
-    // TODO make configurable.
-    // but then also how do we handle bonuses for player?  just check with that math?
-    // NOTICE: Event methods cannot be static.
+// Make a player use food faster always!
+// REF: https://minecraft.fandom.com/wiki/Hunger
+// TODO make configurable.
+// but then also how do we handle bonuses for player?  just check with that math?
+// NOTICE: Event methods cannot be static.
     @SubscribeEvent
     public static void hunger(TickEvent.PlayerTickEvent event) {
         // Leave if on client side.
@@ -537,9 +603,9 @@ public class CropsManager {
 
 
     // TODO cooking stuffs testing next.
-    // Get a list of all cooked items for market!
-    // Generic method to get a list of items...
-    // notice was static
+// Get a list of all cooked items for market!
+// Generic method to get a list of items...
+// notice was static
     public static List<String> getAllFoods(ServerLevel serverLevel, long worldSeed) {
         // Get the list of all items
         Iterable<Item> allItems = ForgeRegistries.ITEMS;
@@ -658,17 +724,17 @@ public class CropsManager {
     }
 
     // TODO: move to stone? manager class.
-    // On breaking stone, sometimes it will fail and you will not get back any items.
-    // You can increase the rate with skills and special items...
-    // cobblestone and deepslate drop rate here.
-    // NOTICE: Event methods cannot be static.
+// On breaking stone, sometimes it will fail and you will not get back any items.
+// You can increase the rate with skills and special items...
+// cobblestone and deepslate drop rate here.
+// NOTICE: Event methods cannot be static.
     @SubscribeEvent
     public static void onBreakStone(BlockEvent.BreakEvent event) {
-//        Player player = event.getPlayer();
+        Player player = event.getPlayer();
 //        Player player = Player.getByName(player.getScoreboardName());
-//        if (player == null) {
-//            return;
-//        }
+        if (player == null) {
+            return;
+        }
         String string = "";
         //StringBuilder builder = new StringBuilder();
 //
@@ -720,15 +786,15 @@ public class CropsManager {
 //            if (player.hasSkill("moreStoneDrops")) {
 //                baseSuccessRate += player.getRoleLevel("miner") * 4;
 //            }
-//            // CHECK 2: Add basic smaller skill percent now for non miners.
 //            else {
-//                baseSuccessRate += player.getLevel() * 2;
+        // CHECK 2: Add basic smaller skill percent now for non miners.
+        baseSuccessRate += player.experienceLevel * 2;
 //            }
 
         int successRate = baseSuccessRate;
 
-        // For falazar now, increase as faking a skill......
-        successRate = 100;
+        // For Falazar now, increase as faking a skill...
+//        successRate = 100;
 
 
         // STEP 2: Roll and check for success.
@@ -737,9 +803,10 @@ public class CropsManager {
         int randomNum = rand.nextInt(100); // 100% 0-99
 //        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING stone block, no drops...");
+            LOGGER.info("DEBUG: DESTROYING stone block, no drops..."+successRate);
             event.getLevel().destroyBlock(event.getPos(), false);
-            event.setCanceled(true);  // this works fine, prevents drops, must have or it replaces it!
+            event.setCanceled(true);
+            // This works fine, prevents drops, must have or it replaces it!
             return;
         }
 //        LOGGER.info("DEBUG3: ALLOWING stone block drops...");

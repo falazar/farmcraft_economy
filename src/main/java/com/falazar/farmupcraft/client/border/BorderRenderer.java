@@ -1,5 +1,7 @@
 package com.falazar.farmupcraft.client.border;
 
+import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
@@ -23,6 +25,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
 
@@ -57,6 +60,7 @@ public class BorderRenderer {
         Tesselator tesselator = Tesselator.getInstance();
         BufferBuilder buffer = tesselator.getBuilder();
         buffer.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.PARTICLE);
+        DataBase<Long, ChunkData> chunkDataDataBase = ModEvents.getChunkDataDatabase(level);
 
         //Vec3 camera = new Vec3(camX, camY, camZ);
         int camChunkX = Mth.floor(camX) >> 4;
@@ -73,8 +77,35 @@ public class BorderRenderer {
                 double yMax = level.getMaxBuildHeight(); // Or a fixed height, like 256
 
                 float alpha = 0.5f;
+
+                long longKey = ChunkPos.asLong(chunkX, chunkZ);
+                //boolean containsKey = chunkDataDataBase.containsKey(ChunkPos.asLong(chunkX, chunkZ));
+//
+                //boolean isFarmType = containsKey && chunkDataDataBase.getData(longKey).getType().equalsIgnoreCase("farm");
+                //String type = chunkDataDataBase.getData(longKey).getType().toLowerCase();
+
+
                 float[] color = getClaimColor();
                 float red = color[0], green = color[1], blue = color[2];
+
+                //Temporary for now
+                //if (containsKey) {
+                //    switch (type) {
+                //        case "farm":
+                //            red = 0.2f; green = 0.6f; blue = 1.0f; // Light blue
+                //            break;
+                //        case "nursery":
+                //            red = 0.8f; green = 0.4f; blue = 0.0f; // Orange
+                //            break;
+                //        case "village":
+                //            red = 0.4f; green = 0.8f; blue = 0.4f; // Green
+                //            break;
+                //        default:
+                //            red = 0.7f; green = 0.7f; blue = 0.7f; // Gray for unknown types
+                //            break;
+                //    }
+                //}
+
 
                 float time = renderer.getTicks() + partialTick;
                 float scrollSpeed = 0.05f;
@@ -121,31 +152,75 @@ public class BorderRenderer {
         buffer.vertex(x1 - camX, yMin - camY, z1 - camZ).uv(0, vMax).color(r, g, b, a).uv2(light).endVertex();
     }
 
-
     private static boolean isNearClaim(double xIn, double zIn) {
         final int range = 5;
         int x = (int) xIn >> 4;
         int z = (int) zIn >> 4;
+
         Level level = Minecraft.getInstance().level;
+        Player player = ClientUtils.getClientPlayer();
+        if (level == null || player == null) return false;
+
+        UUID playerUUID = player.getUUID();
+
+        DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase(level);
+        if (!playerDataDataBase.containsKey(playerUUID)) return false;
+        UUID villageId = playerDataDataBase.getData(playerUUID).getHomeVillageUUID();
+
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(level);
+        if (!villageDataDB.containsKey(villageId)) return false;
         boolean nearClaim = false;
-        DataBase<String, VillageData> villageDataDataBase = ModEvents.getVillageDatabase(level);
-        Optional<VillageData> villageData = villageDataDataBase.getValues().stream().findAny();
-        if (villageData.isEmpty()) return false;
+
+        VillageData villageData = villageDataDB.getData(villageId);
+
         for (int chunkX = -range; (chunkX < range) && !nearClaim; chunkX++) {
             for (int chunkZ = -range; (chunkZ < range) && !nearClaim; chunkZ++) {
-                nearClaim = villageData.get().getClaimedChunkSet().contains(ChunkPos.asLong(x + chunkX, z + chunkZ));
+                long claimLong = ChunkPos.asLong(x + chunkX, z + chunkZ);
+                nearClaim = villageData.getClaimedChunkSet().contains(claimLong);
             }
         }
+
+
+
         return nearClaim;
+    }
+
+
+    //todo move these lookups to before for loop
+    private static boolean isClaimedWithSameType(int chunkX, int chunkZ, String currentType) {
+        if (!hasClaim(chunkX, chunkZ)) return false;
+
+        Level level = Minecraft.getInstance().level;
+        if (level == null) return false;
+
+        DataBase<Long, ChunkData> chunkDataDB = ModEvents.getChunkDataDatabase(level);
+        long key = ChunkPos.asLong(chunkX, chunkZ);
+
+        if (!chunkDataDB.containsKey(key)) return false;
+
+        String neighborType = chunkDataDB.getData(key).getType();
+        return neighborType.equalsIgnoreCase(currentType);
     }
 
     private static boolean hasClaim(int chunkX, int chunkZ) {
         Level level = Minecraft.getInstance().level;
-        DataBase<String, VillageData> villageDataDataBase = ModEvents.getVillageDatabase(level);
-        Optional<VillageData> villageData = villageDataDataBase.getValues().stream().findAny();
-        if (villageData.isEmpty()) return false;
-        return villageData.get().getClaimedChunkSet().contains(ChunkPos.asLong(chunkX, chunkZ));
+        Player player = ClientUtils.getClientPlayer();
+        if (level == null || player == null) return false;
+
+        UUID playerUUID = player.getUUID();
+
+        DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase(level);
+        if (!playerDataDataBase.containsKey(playerUUID)) return false;
+        UUID villageId = playerDataDataBase.getData(playerUUID).getHomeVillageUUID();
+
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(level);
+
+        if (!villageDataDB.containsKey(villageId)) return false;
+
+        VillageData village = villageDataDB.getData(villageId);
+        return village.getClaimedChunkSet().contains(ChunkPos.asLong(chunkX, chunkZ));
     }
+
 
     //todo put this color in village data
     private static float[] getClaimColor() {
