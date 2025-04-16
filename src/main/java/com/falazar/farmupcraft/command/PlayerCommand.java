@@ -10,6 +10,7 @@ import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
@@ -34,10 +35,19 @@ public class PlayerCommand {
         // Define the base command "player"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("player");
 
-        // Define the "info" sub-commands
+        // Define the "info" sub-command
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(PlayerCommand::showPlayerInfo);
         builder.then(infoBuilder);
+
+        // TODO MAKE ADMIN
+        // Define the "givecoins" and amount sub-command for admin only.
+        LiteralArgumentBuilder<CommandSourceStack> giveCoinsAmountBuilder = Commands.literal("givecoins")
+                .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                        .executes(context -> {
+                            int amount = IntegerArgumentType.getInteger(context, "amount");
+                            return givePlayerCoins(context, amount);
+                        }));
 
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
@@ -52,7 +62,6 @@ public class PlayerCommand {
                 return 0;
             }
 
-//            Level level = player.level(); todo not needed.
             ServerLevel serverLevel = context.getSource().getLevel();
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
@@ -60,7 +69,8 @@ public class PlayerCommand {
             LOGGER.info("DEBUG: Player info test name: " + player.getScoreboardName());
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
-            context.getSource().sendSuccess(() ->Component.literal("Player: " + playerData.getNameForPlayer(serverLevel)), false);
+            context.getSource().sendSuccess(() -> Component.literal("Player: " + playerData.getNameForPlayer(serverLevel)), false);
+            // TODO scout name is emty above
 
             // STEP 2: TODO Pull money from wallet.
             // TODO helper method.
@@ -68,7 +78,7 @@ public class PlayerCommand {
             Registry<Coin> coinRegistry = serverLevel.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
             int bronzeCoins = wallet.get(bronzeCoin);
-            context.getSource().sendSuccess(() ->Component.literal("Coins: " + bronzeCoins), false);
+            context.getSource().sendSuccess(() -> Component.literal("Coins: " + bronzeCoins), false);
 
 
             // STEP 3: Pull home village info if set.
@@ -77,7 +87,7 @@ public class PlayerCommand {
                 DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
                 VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
                 if (villageData != null) {
-                    context.getSource().sendSuccess(() ->Component.literal("Home village: " + villageData.getName()), false);
+                    context.getSource().sendSuccess(() -> Component.literal("Home village: " + villageData.getName()), false);
                 } else {
                     context.getSource().sendFailure(Component.literal("Home village not found."));
                 }
@@ -89,5 +99,32 @@ public class PlayerCommand {
         }
         return 0;
     }
+
+    // Give player coins method
+    public static int givePlayerCoins(CommandContext<CommandSourceStack> context, int amount) {
+        try {
+            Entity nullableSummoner = context.getSource().getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                context.getSource().sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Add money to wallet.
+            Wallet wallet = ModEvents.getPlayerDatabase().getData(player.getUUID()).getWallet();
+            Registry<Coin> coinRegistry = player.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+
+            wallet.add(bronzeCoin, amount);
+            int bronzeCoins = wallet.get(bronzeCoin);
+            context.getSource().sendSuccess(() -> Component.literal("Player: "
+                    + player.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+        } catch (Exception ex) {
+            context.getSource().sendFailure(Component.literal("give coins Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
 
 }

@@ -173,7 +173,7 @@ public class PlotCommand {
             // TODO TEST
             Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (playerData.getWallet().hasEnough(bronzeCoin, cost)) {
+            if (!playerData.getWallet().hasEnough(bronzeCoin, cost)) {
                 source.sendFailure(Component.literal("Player does not have enough money."));
                 return 0;
             }
