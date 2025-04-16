@@ -163,18 +163,21 @@ public class PlotCommand {
 
             // Step 1: Check who owns, if already owned, just show info.
             // TEMP REMOVE FOR TESTING.
-//            if (data != null) {
-//                source.sendFailure(Component.literal("Plot is already owned."));
-//                return 0;
-//            }
+            if (chunkData != null) {
+                source.sendFailure(Component.literal("Plot is already owned."));
+                // todo show info.
+                return 0;
+            }
 
             // STEP 3: Calc cost to buy plot and check players total.
             int cost = calculatePlotCost(playerData, villageData, plotType);
-            // TODO TEST
             Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
             if (!playerData.getWallet().hasEnough(bronzeCoin, cost)) {
                 source.sendFailure(Component.literal("Player does not have enough money."));
+                // Show cost and coins
+                source.sendFailure(Component.literal("Cost: " + cost));
+                source.sendFailure(Component.literal("Player Coins: " + playerData.getWallet().get(bronzeCoin)));
                 return 0;
             }
 

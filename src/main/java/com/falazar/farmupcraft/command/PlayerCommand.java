@@ -42,12 +42,13 @@ public class PlayerCommand {
 
         // TODO MAKE ADMIN
         // Define the "givecoins" and amount sub-command for admin only.
-        LiteralArgumentBuilder<CommandSourceStack> giveCoinsAmountBuilder = Commands.literal("givecoins")
+        LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
                 .then(Commands.argument("amount", IntegerArgumentType.integer(0))
                         .executes(context -> {
                             int amount = IntegerArgumentType.getInteger(context, "amount");
                             return givePlayerCoins(context, amount);
                         }));
+        builder.then(giveCoinsBuilder);
 
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
@@ -70,7 +71,7 @@ public class PlayerCommand {
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
             context.getSource().sendSuccess(() -> Component.literal("Player: " + playerData.getNameForPlayer(serverLevel)), false);
-            // TODO scout name is emty above
+            // TODO scout name is empty above
 
             // STEP 2: TODO Pull money from wallet.
             // TODO helper method.
