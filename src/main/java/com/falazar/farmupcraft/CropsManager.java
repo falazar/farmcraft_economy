@@ -228,6 +228,7 @@ public class CropsManager {
         long chunkPos = ChunkPos.asLong(pos);
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
         ChunkData chunkData = dataBase.getData(chunkPos);
+        // TODO change this to claimed chunks instead  scouter.
         if (chunkData == null) {
 //            LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
             lastChunkVillageName = "";
@@ -236,10 +237,9 @@ public class CropsManager {
 
         // Get village we are in...
         UUID villageId = chunkData.getVillageId();
-
-//        String villageId = data.getVillageId(); // TODO scout needs to be uuid now?
-//        VillageData villageData = ModEvents.getVillageDatabase().getData(villageId);
-        VillageData villageData = getClosestVillage(pos); // TODO CHANGE
+        // TODO MAKE THIS A HELPER METHOD.
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+        VillageData villageData = villageDataDB.getData(villageId);
         if (villageData != null) {
             String villageName = villageData.getName();
             LOGGER.info("DEBUG: Player is in a village at " + chunkPos + " with name " + villageName);

@@ -26,6 +26,7 @@ public class PlayerData {
     private final int id;
     private UUID homeVillageUUID;
     private final Wallet wallet;
+    // todo add lastChunkVillageName
 
     /**
      * Constructs a new PlayerData object.
