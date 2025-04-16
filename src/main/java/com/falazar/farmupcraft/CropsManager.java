@@ -229,7 +229,7 @@ public class CropsManager {
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
         ChunkData chunkData = dataBase.getData(chunkPos);
         if (chunkData == null) {
-            LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
+//            LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
             lastChunkVillageName = "";
             return;
         }
@@ -812,7 +812,7 @@ public class CropsManager {
         int randomNum = rand.nextInt(100); // 100% 0-99
 //        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING stone block, no drops...");
+            LOGGER.info("DEBUG: DESTROYING stone block, no drops..."+successRate);
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);
             // This works fine, prevents drops, must have or it replaces it!

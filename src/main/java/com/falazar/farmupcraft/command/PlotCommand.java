@@ -98,12 +98,12 @@ public class PlotCommand {
                 return 0;
             }
 
-            Level level = summoner.level();
+//            Level level = summoner.level();
 
             ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ChunkData data = dataBase.getData(chunkPos.toLong());
-            if (data == null) {
+            ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+            if (chunkData == null) {
                 context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
                 // todo show closest village still though.
                 return 0;
@@ -112,15 +112,19 @@ public class PlotCommand {
             // Pull out plot info and owner and village.
             ServerLevel serverLevel = context.getSource().getLevel();
 
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
+            VillageData villageData = villageDataDB.getData(chunkData.getVillageId());
+
             // BUG here maybe. update playerid to uuid string.
-            LOGGER.info("Plot info for " + chunkPos + ": player id = " + data.getPlayerId() + ", village id = " + data.getVillageId() + ", type = " + data.getType());
-            LOGGER.info("Player name: " + data.getNameForPlayer(serverLevel));
+            LOGGER.info("Plot info for " + chunkPos + ": player id = " + chunkData.getPlayerId()
+                    + ", village id = " + chunkData.getVillageId() + ", type = " + chunkData.getType());
+            LOGGER.info("Player name: " + chunkData.getNameForPlayer(serverLevel));
 
             // Build a response message
             MutableComponent response = Component.literal("Plot info for " + chunkPos + ": ");
-            response = response.append(Component.literal("Owned by: " + data.getNameForPlayer(serverLevel) + ", "));
-            response = response.append(Component.literal("Village: " + data.getVillageId() + ", "));
-            response = response.append(Component.literal("Type: " + data.getType()));
+            response = response.append(Component.literal("Owned by: " + chunkData.getNameForPlayer(serverLevel) + ", "));
+            response = response.append(Component.literal("Village: " + villageData.getName() + ", "));
+            response = response.append(Component.literal("Type: " + chunkData.getType()));
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
