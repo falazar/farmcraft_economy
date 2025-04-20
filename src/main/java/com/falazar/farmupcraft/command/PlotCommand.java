@@ -161,13 +161,17 @@ public class PlotCommand {
             // TODO fail if not in village!!!
 
 
+            // TODO check if player is in village and it matches the chunk village!!!
+
+
             // Step 1: Check who owns, if already owned, just show info.
             // TEMP REMOVE FOR TESTING.
-            if (chunkData != null) {
-                source.sendFailure(Component.literal("Plot is already owned."));
-                // todo show info.
-                return 0;
-            }
+//            if (chunkData != null) {
+//                source.sendFailure(Component.literal("Plot is already owned."));
+//                // todo show info.
+//                return 0;
+//            }
+            // redo this one doesnt work anymore.
 
             // STEP 3: Calc cost to buy plot and check players total.
             int cost = calculatePlotCost(playerData, villageData, plotType);

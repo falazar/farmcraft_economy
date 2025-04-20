@@ -29,22 +29,15 @@ public class PlayerDataOverlay {
         UUID playerUUID = mc.player.getUUID();
         var level = mc.level;
         PlayerData playerData = ModEvents.getPlayerDatabase(level).getData(playerUUID);
-        if (playerData == null) return;
-
-        List<CoinStack> coins = playerData.getWallet().getAllStacks();
-        VillageData homeVillage = null;
-        if (playerData.getHomeVillageUUID() != null) {
-            homeVillage = ModEvents.getVillageDatabase(level).getData(playerData.getHomeVillageUUID());
-        }
+        if (playerData == null) return;  // log error?
 
         // Get current chunk and village info
+        // TODO helper method.
         BlockPos playerPos = mc.player.blockPosition();
         ChunkPos chunkPos = new ChunkPos(playerPos);
         long chunkKey = chunkPos.toLong();
         DataBase<Long, ChunkData> chunkDataDataBase = ModEvents.getChunkDataDatabase(level);
         ChunkData chunkData = chunkDataDataBase.getData(chunkKey);
-
-
         String currentPlotType = "None";
         String currentVillage = "None";
         if (chunkData != null) {
@@ -58,29 +51,36 @@ public class PlayerDataOverlay {
             }
         }
 
+        // Show 4 lines of text in the top left corner of the screen.
         // Top-left position
         int paddingLeft = 6;
         int paddingTop = 6;
         int lineSpacing = 10;
         int currentY = paddingTop;
 
-        // Coin stack display
-        for (CoinStack stack : coins) {
-            String line = stack.getCoin().getDisplayName() + ": " + stack.getAmount();
-            guiGraphics.drawString(mc.font, Component.literal(line), paddingLeft, currentY, 0xFFD700, true);
-            currentY += lineSpacing;
-        }
-
-        // Home village
-        String homeVillageText = homeVillage != null ? "Village: " + homeVillage.getName() : "No Village";
-        guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFFFFF, true);
+        // Show Current village/location player is standing in.
+        guiGraphics.drawString(mc.font, Component.literal("Location: " + currentVillage), paddingLeft, currentY, 0xAAAAAA, true);
         currentY += lineSpacing;
 
-        // Plot type
+        // Show Plot type.
         guiGraphics.drawString(mc.font, Component.literal("Plot: " + currentPlotType), paddingLeft, currentY, 0xCCCCCC, true);
         currentY += lineSpacing;
 
-        // Current village player is standing in
-        guiGraphics.drawString(mc.font, Component.literal("Here: " + currentVillage), paddingLeft, currentY, 0xAAAAAA, true);
+        // Show Home village.
+        VillageData homeVillage = null;
+        if (playerData.getHomeVillageUUID() != null) {
+            homeVillage = ModEvents.getVillageDatabase(level).getData(playerData.getHomeVillageUUID());
+        }
+        String homeVillageText = homeVillage != null ? "Home: " + homeVillage.getName() : "No Village";
+        guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFFFFF, true);
+        currentY += lineSpacing;
+
+        // TODO1 scouter not showing up now???
+        // Show Coin stack display
+        List<CoinStack> coins = playerData.getWallet().getAllStacks();
+        for (CoinStack stack : coins) {
+            String line = stack.getCoin().getDisplayName() + ": " + stack.getAmount();
+            guiGraphics.drawString(mc.font, Component.literal(line), paddingLeft, currentY, 0xFFD700, true);
+        }
     };
 }
