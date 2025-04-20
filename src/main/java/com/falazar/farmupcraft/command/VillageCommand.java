@@ -244,7 +244,8 @@ public class VillageCommand {
 
             // Build a response message
             MutableComponent response = Component.literal("Village info for VILLAGE NAME: " + villageData.getName()
-                    + " at " + villageData.getClaimedChunks().stream().findFirst().toString() + " with id = " + villageData.getUUID().toString());
+                    + " at " + villageData.getPosition().toString()
+                    + " with claimed chunks count=xx = " + villageData.getClaimedChunks().size())
 //            response = response.append(Component.literal("Owned by: " + data.getNameForPlayer(serverLevel) + ", "));
 //            response = response.append(Component.literal("Village: " + data.getVillageId() + ", "));
 //            response = response.append(Component.literal("Type: " + data.getType()));
@@ -286,9 +287,11 @@ public class VillageCommand {
                                 + ". " + village.getName() +
                                 " at " + village.getPosition().getWorldPosition().toShortString()
                                 + " with " + village.getClaimedChunks().size() + " chunks, \n"));
+                // TODO1 bug size is not getting right here, or claim got too many.
                 LOGGER.info("DEBUG TODO Village info for: village = " + village.getName()
-                        + ", chunks = " + village.getClaimedChunks()
-                        +" claimedChunkSet = " + village.getClaimedChunkSet());
+                        + ", chunks = " + village.getClaimedChunks().stream().count()
+                        +" claimedChunkSet = " + village.getClaimedChunkSet().size()
+                );
             }
 
             // TODO1 claimed chunks is wayyyyyy too large.
