@@ -245,7 +245,7 @@ public class VillageCommand {
             // Build a response message
             MutableComponent response = Component.literal("Village info for VILLAGE NAME: " + villageData.getName()
                     + " at " + villageData.getPosition().toString()
-                    + " with claimed chunks count=xx = " + villageData.getClaimedChunks().size())
+                    + " with claimed chunks count=xx = " + villageData.getClaimedChunks().size());
 //            response = response.append(Component.literal("Owned by: " + data.getNameForPlayer(serverLevel) + ", "));
 //            response = response.append(Component.literal("Village: " + data.getVillageId() + ", "));
 //            response = response.append(Component.literal("Type: " + data.getType()));
