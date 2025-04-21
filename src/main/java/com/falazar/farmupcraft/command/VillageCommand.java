@@ -147,11 +147,11 @@ public class VillageCommand {
             UUID homeVillageId = playerData.getHomeVillageUUID();
             DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
             if (homeVillageId != null) {
-                VillageData homeVillage = villageDatabase.getData(homeVillageId);
-                if (homeVillage != null) {
-                    source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
-                    return 0;
-                }
+                //  VillageData homeVillage = villageDatabase.getData(homeVillageId);
+                //  if (homeVillage != null) {
+                //      source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
+                //      return 0;
+                //  }
             }
 
 
