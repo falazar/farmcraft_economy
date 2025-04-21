@@ -84,7 +84,6 @@ public class CropsManager {
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
 
 
 
@@ -93,9 +92,7 @@ public class CropsManager {
         BlockState clickedState = level.getBlockState(clickedPos);
 
         // Return if clicked block is not farmland
-        if (!clickedState.is(FUCTags.FARMLAND)) {
-            return;
-        }
+        boolean isFarmBelow = false;
 
         // Return if the placement would be on top of farmland (if face is known)
         if (event.getFace() != null) {
@@ -103,11 +100,14 @@ public class CropsManager {
             BlockPos blockBelow = placementPos.below();
             BlockState stateBelow = level.getBlockState(blockBelow);
 
-            if (!stateBelow.is(FUCTags.FARMLAND)) {
-                return;
+            if (stateBelow.is(FUCTags.FARMLAND)) {
+                isFarmBelow = true;
             }
         }
 
+        if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
+            return;
+        }
 
         // TODO sugarcane and sweetberries.
 
