@@ -29,12 +29,13 @@ public class VillageData {
     );
 
     private final UUID uuid;
-    private final String name;
+    private String name;
     private final ChunkPos position;
-    private final int level;
+    private int level;
     private final List<ChunkPos> claimedChunks;
     private final Set<Long> claimedChunkSet = new HashSet<>();
     private final boolean bought;  // TODO what is this one?
+
     /**
      * Constructs a new ChunkData object.
      * @param uuid       unique id of village
@@ -70,6 +71,11 @@ public class VillageData {
         return name;
     }
 
+    // Set village name
+    public void setName(String name) {
+        this.name = name;
+    }
+
     /**
      * Gets the village's position.
      * @return the village's position
@@ -84,6 +90,11 @@ public class VillageData {
      */
     public int getLevel() {
         return level;
+    }
+
+    // Set level
+    public void setLevel(int level) {
+        this.level = level;
     }
 
     public List<ChunkPos> getClaimedChunks() {
