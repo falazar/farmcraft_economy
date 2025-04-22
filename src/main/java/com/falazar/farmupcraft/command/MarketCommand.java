@@ -79,7 +79,7 @@ public class MarketCommand {
             response = response.append(Component.literal("/market show misc "));
             response = response.append(Component.literal("/market show stone "));
             response = response.append(Component.literal("/market show food"));
-            response = response.append(Component.literal("/market show wood");
+            response = response.append(Component.literal("/market show wood"));
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
