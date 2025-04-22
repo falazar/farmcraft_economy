@@ -81,6 +81,7 @@ public class PlayerDataOverlay {
         for (CoinStack stack : coins) {
             String line = stack.getCoin().getDisplayName() + ": " + stack.getAmount();
             guiGraphics.drawString(mc.font, Component.literal(line), paddingLeft, currentY, 0xFFD700, true);
+            currentY += lineSpacing;
         }
     };
 }
