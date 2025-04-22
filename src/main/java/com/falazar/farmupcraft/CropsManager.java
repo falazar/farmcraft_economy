@@ -84,8 +84,28 @@ public class CropsManager {
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        if (!blockState.is(FUCTags.FARMLAND)) {
+
+
+
+        Level level = event.getLevel();
+        BlockPos clickedPos = event.getPos();
+        BlockState clickedState = level.getBlockState(clickedPos);
+
+        // Return if clicked block is not farmland
+        boolean isFarmBelow = false;
+
+        // Return if the placement would be on top of farmland (if face is known)
+        if (event.getFace() != null) {
+            BlockPos placementPos = clickedPos.relative(event.getFace());
+            BlockPos blockBelow = placementPos.below();
+            BlockState stateBelow = level.getBlockState(blockBelow);
+
+            if (stateBelow.is(FUCTags.FARMLAND)) {
+                isFarmBelow = true;
+            }
+        }
+
+        if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
             return;
         }
 

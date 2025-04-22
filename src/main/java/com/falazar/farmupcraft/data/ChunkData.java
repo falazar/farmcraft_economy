@@ -18,7 +18,7 @@ public class ChunkData {
                     UUIDUtil.STRING_CODEC.fieldOf("village_id").forGetter(ChunkData::getVillageId)
             ).apply(instance, ChunkData::new)
     );
-
+    //TODO remove playerId from chunkdata, not needed only village, should be nullable tho
     private final String type;
     private final int playerId;
     private final UUID villageId;

@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 
+import javax.annotation.Nonnull;
 import java.util.UUID;
 
 public class PlayerData {
@@ -23,8 +24,11 @@ public class PlayerData {
     );
 
     // TODO change to string.
+    @Nonnull
     private final int id;
+    @Nonnull
     private UUID homeVillageUUID;
+    @Nonnull
     private final Wallet wallet;
     // todo add level
     // todo add experience
@@ -73,6 +77,7 @@ public class PlayerData {
         return homeVillageUUID;
     }
 
+    @Nonnull
     public void setHomeVillageId(UUID homeVillageId) {
         this.homeVillageUUID = homeVillageId;
     }
