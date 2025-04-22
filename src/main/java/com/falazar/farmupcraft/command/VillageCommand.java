@@ -392,6 +392,8 @@ public class VillageCommand {
 
             // Update name in db.
             villageData.setName(villageName);
+            villageDatabase.putData(villageData.getUUID(), villageData);
+            // TODO TEST
 
             // Build a response message
             MutableComponent response = Component.literal("Village renamed to: " + villageData.getName());
