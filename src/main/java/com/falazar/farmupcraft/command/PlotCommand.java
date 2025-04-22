@@ -152,7 +152,7 @@ public class PlotCommand {
             Level level = player.level();
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
-            ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+            ChunkData chunk = dataBase.getData(chunkPos.toLong());
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
@@ -165,8 +165,8 @@ public class PlotCommand {
 
 
             // Step 1: Check who owns, if already owned, just show info.
-            // TEMP REMOVE FOR TESTING.
-//            if (chunkData != null) {
+            // TEMP REMOVE FOR TESTING.  depends on type now
+//            if (chunk != null) {
 //                source.sendFailure(Component.literal("Plot is already owned."));
 //                // todo show info.
 //                return 0;
@@ -186,12 +186,17 @@ public class PlotCommand {
             }
 
             // STEP 4: Buy plot and mark to db., amd village.
-            ChunkData newPlot = new ChunkData(plotType, player.getId(), villageData.getUUID());
+            // Get chunk data from database.
+            if (chunk == null) {
+                source.sendFailure(Component.literal("chunk not found."));
+                return 0;
+            }
+            chunk.setType(plotType);
+
             if (plotType.equalsIgnoreCase("farm")) {
                 LOGGER.info("DEBUG1: Farming plot for " + chunkPos + ": " + villageData.getName());
                 ForgeChunkManager.forceChunk((ServerLevel) level, MODID, player.getUUID(), chunkPos.x, chunkPos.z,true, true);
             }
-            dataBase.putData(chunkPos.toLong(), newPlot);
             LOGGER.info("Plot bought at " + chunkPos);
 
             // STEP 5: Subtract money out of player.

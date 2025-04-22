@@ -281,9 +281,7 @@ public class CropsManager {
         // TODO: can we get level somehow easier? internal.
         ChunkPos chunkPos = new ChunkPos(pos);
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ;
         ChunkData data = dataBase.getData(chunkPos.toLong());
-
         if (data == null) {
             LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
             return "";

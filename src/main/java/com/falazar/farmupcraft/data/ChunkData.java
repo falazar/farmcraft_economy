@@ -19,9 +19,9 @@ public class ChunkData {
             ).apply(instance, ChunkData::new)
     );
     //TODO remove playerId from chunkdata, not needed only village, should be nullable tho
-    private final String type;
-    private final int playerId;
-    private final UUID villageId;
+    private String type;
+    private int playerId;
+    private UUID villageId;
 
     /**
      * Constructs a new ChunkData object.
@@ -46,6 +46,12 @@ public class ChunkData {
     public String getType() {
         return type;
     }
+
+    // Set type now.
+    public void setType(String type) {
+        this.type = type;
+    }
+
 
     /**
      * Gets the player's integer entity ID associated with this chunk.
