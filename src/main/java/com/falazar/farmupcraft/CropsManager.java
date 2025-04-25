@@ -72,6 +72,7 @@ public class CropsManager {
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
     // NOTE: Planting IS allowed on non-farm plots - villager created plots. Only can hoe on farms though.
+    // TODO BUG can plant outside farm outside village area scouter.
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
@@ -84,7 +85,6 @@ public class CropsManager {
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
-
 
 
         Level level = event.getLevel();
@@ -208,7 +208,7 @@ public class CropsManager {
 
         // STEP 3: Test if target block is dirt.
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        if (!blockState.is(Blocks.DIRT)) {
+        if (!blockState.is(Blocks.DIRT) && !blockState.is(Blocks.GRASS_BLOCK) && !blockState.is(Blocks.PODZOL) && !blockState.is(Blocks.COARSE_DIRT)) {
             return;
         }
 
@@ -822,7 +822,7 @@ public class CropsManager {
         int randomNum = rand.nextInt(100); // 100% 0-99
 //        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING stone block, no drops..."+successRate);
+            LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);
             // This works fine, prevents drops, must have or it replaces it!
