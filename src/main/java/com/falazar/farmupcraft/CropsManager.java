@@ -69,6 +69,8 @@ import static org.apache.commons.lang3.StringUtils.replace;
 public class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
+    // TODO bonemeal recipe too easy powerful, make it make 1 instead of three.
+
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
     // NOTE: Planting IS allowed on non-farm plots - villager created plots. Only can hoe on farms though.

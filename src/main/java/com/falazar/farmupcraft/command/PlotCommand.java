@@ -163,7 +163,7 @@ public class PlotCommand {
                 return 0;
             }
             // TODO TEST
-            if (!Objects.equals(chunk.getType(), "village")) {
+            if (!Objects.equals(chunk.getType(), "village") && !Objects.equals(chunk.getType(), "plot")) {
                 source.sendFailure(Component.literal("Plot has already been purchased."));
                 return 0;
             }

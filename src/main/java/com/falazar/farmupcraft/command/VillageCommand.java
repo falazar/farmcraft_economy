@@ -233,7 +233,6 @@ public class VillageCommand {
             }
 
             // TODO MAKE METHOD.
-            // TODO load village from db.
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
             VillageData villageData = null;
@@ -249,9 +248,14 @@ public class VillageCommand {
                 return 0;
             }
 
+            // TODO show level
+            // TODO show plots
+            // TODO show plot counts
+            // TODO show next plot cost.
+
             // Build a response message
             MutableComponent response = Component.literal("Village info: "
-                    + "Name: "+ villageData.getName() +" \n"
+                    + "Name: " + villageData.getName() + " \n"
                     + " at " + villageData.getPosition().getWorldPosition().toShortString() + " \n"
                     + " with claimed chunks = " + villageData.getClaimedChunks().size());
 //            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
@@ -290,13 +294,13 @@ public class VillageCommand {
             // What order here?  TODO Make alpha.
             for (VillageData village : villageList) {
                 response = response.append(Component.literal(index++
-                                + ". " + village.getName() +
-                                " at " + village.getPosition().getWorldPosition().toShortString()
-                                + " with " + village.getClaimedChunks().size() + " chunks, \n"));
+                        + ". " + village.getName() +
+                        " at " + village.getPosition().getWorldPosition().toShortString()
+                        + " with " + village.getClaimedChunks().size() + " chunks, \n"));
                 // TODO1 bug size is not getting right here, or claim got too many.
                 LOGGER.info("DEBUG TODO Village info for: village = " + village.getName()
                         + ", chunks = " + village.getClaimedChunks().stream().count()
-                        +" claimedChunkSet = " + village.getClaimedChunkSet().size()
+                        + " claimedChunkSet = " + village.getClaimedChunkSet().size()
                 );
             }
 
@@ -330,14 +334,13 @@ public class VillageCommand {
     public static int deleteVillage(CommandSourceStack source, String villageName) {
         try {
             Entity nullableSummoner = source.getEntity();
-            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (player == null) {
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
                 source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-//            Level level = player.level();
 
-            DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
             VillageData villageData = findVillageByName(villageName);
             if (villageData == null) {
                 source.sendFailure(Component.literal("No village data found."));
@@ -345,10 +348,33 @@ public class VillageCommand {
             }
 
             // TODO remove from player data.
+            // TODO NEED player data to get uuid dont have, save to db!!!
+            // Loop over all players, if home village is this one, remove it.
+//            DataBase<UUID, PlayerData> playerDataDatabase = ModEvents.getPlayerDatabase();
+//            Collection<PlayerData> playerDataList = playerDataDatabase.getValues();
+//            if (playerDataList != null && !playerDataList.isEmpty()) {
+//                for (PlayerData playerData : playerDataList) {
+//                    if (playerData.getHomeVillageUUID() != null && playerData.getHomeVillageUUID().equals(villageData.getUUID())) {
+//                        playerData.setHomeVillageId(null);
+//                        playerDataDatabase.putData(player.getUUID(), playerData);
+//                    }
+//                }
+//            }
 
-            // TODO remove chunk data.
+            // TODO remove chunks data. test
+            DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
+            for (ChunkPos pos : villageData.getClaimedChunks()) {
+                ChunkData chunkData = chunkDataDatabase.getData(pos.toLong());
+                if (chunkData != null) {
+                    chunkDataDatabase.removeDataAsync(pos.toLong(), null);
+                }
+            }
 
 //            villageData.delete(); todo scouter.
+            // TODO remove from db. test
+            villageDatabase.removeDataAsync(villageData.getUUID(), null);
+            villageDatabase.setDirty();
+
 
             // Build a response message
             MutableComponent response = Component.literal("Village deleted: " + villageData.getName());
