@@ -15,6 +15,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -60,6 +61,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
+import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
 import static com.falazar.farmupcraft.command.VillageCommand.getClosestVillage;
 import static org.apache.commons.lang3.StringUtils.replace;
 
@@ -67,9 +69,12 @@ import static org.apache.commons.lang3.StringUtils.replace;
 public class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
+    // TODO bonemeal recipe too easy powerful, make it make 1 instead of three.
+
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
     // NOTE: Planting IS allowed on non-farm plots - villager created plots. Only can hoe on farms though.
+    // TODO BUG can plant outside farm outside village area scouter.
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
@@ -82,8 +87,27 @@ public class CropsManager {
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        if (!blockState.is(FUCTags.FARMLAND)) {
+
+
+        Level level = event.getLevel();
+        BlockPos clickedPos = event.getPos();
+        BlockState clickedState = level.getBlockState(clickedPos);
+
+        // Return if clicked block is not farmland
+        boolean isFarmBelow = false;
+
+        // Return if the placement would be on top of farmland (if face is known)
+        if (event.getFace() != null) {
+            BlockPos placementPos = clickedPos.relative(event.getFace());
+            BlockPos blockBelow = placementPos.below();
+            BlockState stateBelow = level.getBlockState(blockBelow);
+
+            if (stateBelow.is(FUCTags.FARMLAND)) {
+                isFarmBelow = true;
+            }
+        }
+
+        if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
             return;
         }
 
@@ -186,7 +210,7 @@ public class CropsManager {
 
         // STEP 3: Test if target block is dirt.
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        if (!blockState.is(Blocks.DIRT)) {
+        if (!blockState.is(Blocks.DIRT) && !blockState.is(Blocks.GRASS_BLOCK) && !blockState.is(Blocks.PODZOL) && !blockState.is(Blocks.COARSE_DIRT)) {
             return;
         }
 
@@ -206,51 +230,50 @@ public class CropsManager {
     // Tell if they have entered a village or not.
     @SubscribeEvent
     public static void onPlayerEnterChunk(EntityEvent.EnteringSection event) {
-        // Leave if on client side.
-//        if (event.isClientSide) {
-//            return;
-//        }
-
-        // Get the player and their current chunk position.
-        Entity entity = event.getEntity();
-        if (entity == null) {
-            return;
-        }
-        if (!(entity instanceof Player)) {
-            return;
-        }
-        Player player = (Player) event.getEntity();
-
-        BlockPos pos = player.blockPosition();
-
-        // TODO Save a lastChunkVillage String to compare against.
-        String lastChunkVillageName = ""; // TODO MOVE ME
-        long chunkPos = ChunkPos.asLong(pos);
-        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData chunkData = dataBase.getData(chunkPos);
-        // TODO change this to claimed chunks instead  scouter.
-        if (chunkData == null) {
-//            LOGGER.info("DEBUG: ChunkData not in a village at " + chunkPos);
-            lastChunkVillageName = "";
-            return;
-        }
-
-        // Get village we are in...
-        UUID villageId = chunkData.getVillageId();
-        // TODO MAKE THIS A HELPER METHOD.
-        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
-        VillageData villageData = villageDataDB.getData(villageId);
-        if (villageData != null) {
-            String villageName = villageData.getName();
-            LOGGER.info("DEBUG: Player is in a village at " + chunkPos + " with name " + villageName);
-            if (!lastChunkVillageName.equals(villageName)) {
-                // Send message to player about village name.
-                player.displayClientMessage(Component.literal("You have entered the village of " + villageName), false);
+        try {
+            // Check if the event is on client side, then skip.
+            if (event.getEntity().level().isClientSide) {
+                return;
             }
-            lastChunkVillageName = villageName;
-        } else {
-            LOGGER.info("DEBUG: Player is NOT in a village at " + chunkPos);
-            lastChunkVillageName = "";
+
+            // Get the player and their current chunk position.
+            Entity entity = event.getEntity();
+            if (entity == null) {
+                return;
+            }
+            if (!(entity instanceof Player)) {
+                return;
+            }
+            Player player = (Player) event.getEntity();
+            BlockPos pos = player.blockPosition();
+
+            // If changed only y level, skip this notice!!! jumping in a farm triggers a ton of these.
+            // Change this later for dungeon areas.
+            // What is SectionPos object? Is this a chunk, plus y and others.
+            SectionPos oldPos = event.getOldPos();
+            SectionPos newPos = event.getNewPos();
+            // Log for debugging help.
+//            LOGGER.info("DEBUG: onPlayerEnterChunk triggered at position " + pos.toShortString() + " from old position " + oldPos.toShortString() + " to new position " + newPos.toShortString());
+
+            // Get village name from old position, and new position, compare, show if different.
+            String lastChunkVillageName = findVillageByChunkPos(oldPos.chunk());
+            String currChunkVillageName = findVillageByChunkPos(newPos.chunk());
+            if (currChunkVillageName == null && lastChunkVillageName != null) {
+                // Send leaving village message.
+                player.displayClientMessage(Component.literal("You left the village of " + lastChunkVillageName), false);
+                return;
+            } else if (currChunkVillageName != null && lastChunkVillageName == null) {
+                // Send entering village message.
+                player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName), false);
+                return;
+            } else {
+                // No change in village locations.
+                return;
+            }
+
+        } catch (Exception ex) {
+            LOGGER.error("Error in onPlayerEnterChunk: " + ex.getMessage());
+            ex.printStackTrace();
         }
     }
 
@@ -260,9 +283,7 @@ public class CropsManager {
         // TODO: can we get level somehow easier? internal.
         ChunkPos chunkPos = new ChunkPos(pos);
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ;
         ChunkData data = dataBase.getData(chunkPos.toLong());
-
         if (data == null) {
             LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
             return "";
@@ -803,7 +824,7 @@ public class CropsManager {
         int randomNum = rand.nextInt(100); // 100% 0-99
 //        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING stone block, no drops..."+successRate);
+            LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);
             // This works fine, prevents drops, must have or it replaces it!

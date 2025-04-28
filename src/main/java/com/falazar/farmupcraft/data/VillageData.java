@@ -1,6 +1,5 @@
 package com.falazar.farmupcraft.data;
 
-import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
@@ -18,7 +17,6 @@ import java.util.Set;
 import java.util.UUID;
 
 public class VillageData {
-
     public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance ->
                     instance.group(
                             UUIDUtil.STRING_CODEC.fieldOf("uuid").forGetter(VillageData::getUUID),
@@ -31,12 +29,13 @@ public class VillageData {
     );
 
     private final UUID uuid;
-    private final String name;
+    private String name;
     private final ChunkPos position;
-    private final int level;
+    private int level;
     private final List<ChunkPos> claimedChunks;
     private final Set<Long> claimedChunkSet = new HashSet<>();
-    private final boolean bought;  // TODO what is
+    private final boolean bought;  // TODO what is this one?
+
     /**
      * Constructs a new ChunkData object.
      * @param uuid       unique id of village
@@ -72,6 +71,11 @@ public class VillageData {
         return name;
     }
 
+    // Set village name
+    public void setName(String name) {
+        this.name = name;
+    }
+
     /**
      * Gets the village's position.
      * @return the village's position
@@ -86,6 +90,11 @@ public class VillageData {
      */
     public int getLevel() {
         return level;
+    }
+
+    // Set level
+    public void setLevel(int level) {
+        this.level = level;
     }
 
     public List<ChunkPos> getClaimedChunks() {

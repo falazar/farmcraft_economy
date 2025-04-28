@@ -36,8 +36,18 @@ public class VillageCommand {
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("village");
 
         // Define the "info" sub-commands
+        // If user doesnt add a name, then show their village, else show the named village.
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
-                .executes(VillageCommand::showVillageInfo);
+                .executes(context -> {
+                    // Default behavior when no villageName is provided
+                    return showVillageInfo(context.getSource(), null);
+                })
+                .then(Commands.argument("villageName", StringArgumentType.string())
+                        .executes(context -> {
+                            String villageName = StringArgumentType.getString(context, "villageName");
+                            // Behavior when villageName is provided
+                            return showVillageInfo(context.getSource(), villageName);
+                        }));
         builder.then(infoBuilder);
 
         // Define the list subcommand:
@@ -54,6 +64,15 @@ public class VillageCommand {
                         }));
         builder.then(buyBuilder);
 
+        // Define the "rename" sub-command
+        LiteralArgumentBuilder<CommandSourceStack> renameBuilder = Commands.literal("rename")
+                .then(Commands.argument("villageName", StringArgumentType.string())
+                        .executes(context -> {
+                            String villageName = StringArgumentType.getString(context, "villageName");
+                            return renameVillage(context.getSource(), villageName);
+                        }));
+        builder.then(renameBuilder);
+
         // Define the delete sub-command. ADMIN ONLY!
         LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
                 .then(Commands.argument("villageName", StringArgumentType.string())
@@ -63,12 +82,6 @@ public class VillageCommand {
                         }))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
-
-        // TODO Add subcommand for nearest village
-        // /village info nearest
-
-        // TODO And per village name:
-        // /village info <village name>
 
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
@@ -88,12 +101,11 @@ public class VillageCommand {
                 return 0;
             }
 
-            Level level = player.level();
+//            Level level = player.level();
 
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ;
-            ChunkData data = dataBase.getData(chunkPos.toLong());
+            ChunkData chunkData = dataBase.getData(chunkPos.toLong());
             // TODO can we hide all this inside???
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
@@ -103,18 +115,12 @@ public class VillageCommand {
             }
             LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageUUID());
 
-//            Wallet wallet =  playerData.getWallet();
-//            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-//            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-//            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
-
-
             // Step 1: Check if chunk is owned. (Inside another village)
-            // TEMP REMOVE FOR TESTING.  TODO add in, make method.
-//            if (data != null) {
-//                source.sendFailure(Component.literal("Chunk is already owned."));
-//                return 0;
-//            }
+            // TODO add in, make method.
+            if (chunkData != null) {
+                source.sendFailure(Component.literal("Chunk is already owned."));
+                return 0;
+            }
 
             // Step 2: Check if too close to nearest village
             VillageData closestVillage = getClosestVillage(player.blockPosition());
@@ -154,11 +160,11 @@ public class VillageCommand {
             UUID homeVillageId = playerData.getHomeVillageUUID();
             DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
             if (homeVillageId != null) {
-                VillageData homeVillage = villageDatabase.getData(homeVillageId);
-                if (homeVillage != null) {
-                    source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
-                    return 0;
-                }
+                //  VillageData homeVillage = villageDatabase.getData(homeVillageId);
+                //  if (homeVillage != null) {
+                //      source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
+                //      return 0;
+                //  }
             }
 
 
@@ -183,9 +189,13 @@ public class VillageCommand {
             // STEP 9: Buy plot and mark to db.
             // TODO1 this doesnt buy the plot does it?
             // TODO1 THESE villageId TO USE UUIDS
-//            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
-            ChunkData newPlot = new ChunkData("village", player.getId(), villageId); // hack test.
-            dataBase.putData(chunkPos.toLong(), newPlot);
+
+            // Mark chunks to village.
+            for (ChunkPos pos : villageChunks) {
+                ChunkData chunk = new ChunkData("village", player.getId(), villageId); // hack test.
+                dataBase.putData(pos.toLong(), chunk);
+            }
+
             LOGGER.info("Plot bought at " + chunkPos);
             // TODO1 call a set plot method, separate this out.
             // TODO1 add plot to city.
@@ -197,7 +207,7 @@ public class VillageCommand {
             // STEP 11: Add village to player.
             playerData.setHomeVillageId(villageId);
 
-            //We have to put it back in there otherwise it wont sync to client
+            // We have to put it back in there otherwise it wont sync to client
             playerDataDataBase.putData(player.getUUID(), playerData);
 
             // STEP 12: Build a response message and send.
@@ -213,48 +223,46 @@ public class VillageCommand {
     }
 
     // Show the village that current player is in.
-    public static int showVillageInfo(CommandContext<CommandSourceStack> context) {
+    public static int showVillageInfo(CommandSourceStack source, String villageName) {
         try {
-            Entity nullableSummoner = context.getSource().getEntity();
-            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (summoner == null) {
-                context.getSource().sendFailure(Component.literal("Player not found."));
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-
-            Level level = summoner.level();
-
-            // TODO check player for their village.
 
             // TODO MAKE METHOD.
-            // TODO load village from db.
-
-            DataBase<UUID,PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDataBase.getData(summoner.getUUID());
-            UUID villageId = playerData.getHomeVillageUUID();
-            DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
-            VillageData villageData = dataBase.getData(villageId);
+            DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
+            VillageData villageData = null;
+            if (villageName == null) {
+                UUID villageId = playerData.getHomeVillageUUID();
+                DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
+                villageData = dataBase.getData(villageId);
+            } else {
+                villageData = findVillageByName(villageName);
+            }
             if (villageData == null) {
-                // TODO
-                context.getSource().sendFailure(Component.literal("No village data found."));
+                source.sendFailure(Component.literal("No village data found."));
                 return 0;
             }
 
-            // Pull out plot info and owner and village.
-            LOGGER.info("DEBUG TODO Village info for: player id = xxx ");
-            //+ ", village id = " + data.getVillageId() + ", type = " + data.getType());
-//            LOGGER.info("Player name: " + data.getNameForPlayer(serverLevel));
+            // TODO show level
+            // TODO show plots
+            // TODO show plot counts
+            // TODO show next plot cost.
 
             // Build a response message
-            MutableComponent response = Component.literal("Village info for VILLAGE NAME: " + villageData.getName()
-                    + " at " + villageData.getClaimedChunks() + " with id = " + villageData.getUUID().toString());
-//            response = response.append(Component.literal("Owned by: " + data.getNameForPlayer(serverLevel) + ", "));
-//            response = response.append(Component.literal("Village: " + data.getVillageId() + ", "));
-//            response = response.append(Component.literal("Type: " + data.getType()));
+            MutableComponent response = Component.literal("Village info: "
+                    + "Name: " + villageData.getName() + " \n"
+                    + " at " + villageData.getPosition().getWorldPosition().toShortString() + " \n"
+                    + " with claimed chunks = " + villageData.getClaimedChunks().size());
+//            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
             MutableComponent finalResponse = response;
-            context.getSource().sendSuccess(() -> finalResponse, false);
+            source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
-            context.getSource().sendFailure(Component.literal("Exception thrown - see log"));
+            source.sendFailure(Component.literal("Exception  in show village info - see logs"));
             ex.printStackTrace();
         }
         return 0;
@@ -269,24 +277,34 @@ public class VillageCommand {
                 context.getSource().sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-            Level level = summoner.level();
+//            Level level = summoner.level();
 
             // TODO load all village from db.
             // TODO MAKE METHOD.
             DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
-            Collection<VillageData> dataList = dataBase.getValues();
-            if (dataList == null || dataList.isEmpty()) {
+            Collection<VillageData> villageList = dataBase.getValues();
+            if (villageList == null || villageList.isEmpty()) {
                 context.getSource().sendFailure(Component.literal("No villages data found."));
                 return 0;
             }
 
             // Build a response message
-            MutableComponent response = Component.literal("Village list: ");
+            MutableComponent response = Component.literal("Village list: \n");
             int index = 1;
-            for (VillageData data : dataList) {
-                response = response.append(Component.literal(index++ + ". " + data.getName() +
-                        " at " + data.getClaimedChunks().stream().findFirst().toString() + ", \n"));
+            // What order here?  TODO Make alpha.
+            for (VillageData village : villageList) {
+                response = response.append(Component.literal(index++
+                        + ". " + village.getName() +
+                        " at " + village.getPosition().getWorldPosition().toShortString()
+                        + " with " + village.getClaimedChunks().size() + " chunks, \n"));
+                // TODO1 bug size is not getting right here, or claim got too many.
+                LOGGER.info("DEBUG TODO Village info for: village = " + village.getName()
+                        + ", chunks = " + village.getClaimedChunks().stream().count()
+                        + " claimedChunkSet = " + village.getClaimedChunkSet().size()
+                );
             }
+
+            // TODO1 claimed chunks is wayyyyyy too large.
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -312,31 +330,99 @@ public class VillageCommand {
         return null;
     }
 
-    // Delete a village from db.
+    // TODO Delete a village from db.
     public static int deleteVillage(CommandSourceStack source, String villageName) {
         try {
             Entity nullableSummoner = source.getEntity();
-            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (player == null) {
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
                 source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-//            Level level = player.level();
 
-            DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
             VillageData villageData = findVillageByName(villageName);
             if (villageData == null) {
                 source.sendFailure(Component.literal("No village data found."));
                 return 0;
             }
 
-            // TODO remove from player datas.
-            // TODO remove chunk data.
+            // TODO remove from player data.
+            // TODO NEED player data to get uuid dont have, save to db!!!
+            // Loop over all players, if home village is this one, remove it.
+//            DataBase<UUID, PlayerData> playerDataDatabase = ModEvents.getPlayerDatabase();
+//            Collection<PlayerData> playerDataList = playerDataDatabase.getValues();
+//            if (playerDataList != null && !playerDataList.isEmpty()) {
+//                for (PlayerData playerData : playerDataList) {
+//                    if (playerData.getHomeVillageUUID() != null && playerData.getHomeVillageUUID().equals(villageData.getUUID())) {
+//                        playerData.setHomeVillageId(null);
+//                        playerDataDatabase.putData(player.getUUID(), playerData);
+//                    }
+//                }
+//            }
 
-//            villageData.delete(); todo scout.
+            // TODO remove chunks data. test
+            DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
+            for (ChunkPos pos : villageData.getClaimedChunks()) {
+                ChunkData chunkData = chunkDataDatabase.getData(pos.toLong());
+                if (chunkData != null) {
+                    chunkDataDatabase.removeDataAsync(pos.toLong(), null);
+                }
+            }
+
+//            villageData.delete(); todo scouter.
+            // TODO remove from db. test
+            villageDatabase.removeDataAsync(villageData.getUUID(), null);
+            villageDatabase.setDirty();
+
 
             // Build a response message
             MutableComponent response = Component.literal("Village deleted: " + villageData.getName());
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Rename a village.
+    public static int renameVillage(CommandSourceStack source, String villageName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+            if (villageName == null || villageName.isEmpty()) {
+                source.sendFailure(Component.literal("Village name is required for village plot type."));
+                return 0;
+            }
+
+            // Load village from db that villager is in.
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData villageData = villageDatabase.getData(player.getHomeVillageUUID());
+            if (villageData == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // Check if name is unique.
+            if (!isVillageNameUnique(villageName)) {
+                source.sendFailure(Component.literal("Village name " + villageName + " is not unique, please choose another."));
+                return 0;
+            }
+
+            // Update name in db.
+            villageData.setName(villageName);
+            villageDatabase.putData(villageData.getUUID(), villageData);
+            // TODO TEST
+
+            // Build a response message
+            MutableComponent response = Component.literal("Village renamed to: " + villageData.getName());
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -373,8 +459,6 @@ public class VillageCommand {
 
     // Check if village name is unique.
 
-
-    //todo maybe check UUIDS instead of village names
     public static boolean isVillageNameUnique(String villageName) {
         DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
         Collection<VillageData> dataList = dataBase.getValues();
@@ -389,5 +473,17 @@ public class VillageCommand {
             }
         }
         return true;
+    }
+
+    public static String findVillageByChunkPos(ChunkPos chunkPos) {
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+        if (chunkData == null) {
+            return null;
+        }
+//        return chunkData.getType();
+
+        VillageData village = ModEvents.getVillageDatabase().getData(chunkData.getVillageId());
+        return village != null ? village.getName() : null;
     }
 }

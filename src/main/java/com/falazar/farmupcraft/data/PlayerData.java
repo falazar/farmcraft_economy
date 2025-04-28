@@ -8,6 +8,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 
+import javax.annotation.Nonnull;
 import java.util.UUID;
 
 public class PlayerData {
@@ -23,10 +24,15 @@ public class PlayerData {
     );
 
     // TODO change to string.
+    @Nonnull
     private final int id;
+    @Nonnull
     private UUID homeVillageUUID;
+    @Nonnull
     private final Wallet wallet;
-    // todo add lastChunkVillageName
+    // todo add level
+    // todo add experience
+    // todo add lastPos
 
     /**
      * Constructs a new PlayerData object.
@@ -46,8 +52,8 @@ public class PlayerData {
      * @param level the server level where the player is located
      * @return the player's name, or an empty string if the entity is not a player or cannot be found
      */
-    public String getNameForPlayer(ServerLevel level) {
-        Entity entity = level.getEntity(id);
+    public String getNameForPlayer(ServerLevel level, UUID playerUUID) {
+        Entity entity = level.getEntity(playerUUID);
         if (entity instanceof Player player) {
             return player.getGameProfile().getName();
         }
@@ -71,6 +77,7 @@ public class PlayerData {
         return homeVillageUUID;
     }
 
+    @Nonnull
     public void setHomeVillageId(UUID homeVillageId) {
         this.homeVillageUUID = homeVillageId;
     }

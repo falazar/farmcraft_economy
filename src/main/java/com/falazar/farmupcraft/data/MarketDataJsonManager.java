@@ -19,11 +19,7 @@ public class MarketDataJsonManager extends SimpleJsonResourceReloadListener {
     private final String folderName;
     public static final CustomLogger LOGGER = new CustomLogger(MarketDataJsonManager.class.getSimpleName());
 
-
     protected static Map<ResourceLocation, MarketData> marketEntries = new HashMap<>();
-
-
-
 
     public static void clearEntries() {
         marketEntries.clear();

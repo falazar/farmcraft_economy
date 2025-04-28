@@ -5,7 +5,9 @@ import com.falazar.farmupcraft.datagen.custom.BiomeRulesDataDataGenerator;
 import com.falazar.farmupcraft.datagen.custom.CropBlockDataDataGenerator;
 import com.falazar.farmupcraft.datagen.custom.CropItemDataDataGenerator;
 import com.falazar.farmupcraft.datagen.custom.MarketDataDataGenerator;
+import com.falazar.farmupcraft.registry.FUCRegistries;
 import net.minecraft.core.HolderLookup;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.data.DataGenerator;
 import net.minecraft.data.PackOutput;
 import net.minecraftforge.common.data.ExistingFileHelper;
@@ -23,18 +25,18 @@ public class DataGenerators {
         PackOutput packOutput = generator.getPackOutput();
         ExistingFileHelper existingFileHelper = event.getExistingFileHelper();
         CompletableFuture<HolderLookup.Provider> lookupProvider = event.getLookupProvider();
-
         BlockTagsGenerator blockTagGenerator = generator.addProvider(event.includeServer(),
                 new BlockTagsGenerator(packOutput, lookupProvider, existingFileHelper));
         generator.addProvider(event.includeServer(), new ItemTagsGenerator(packOutput, lookupProvider, blockTagGenerator.contentsGetter(), existingFileHelper));
         generator.addProvider(event.includeServer(), new CropBlockDataDataGenerator(packOutput, FarmUpCraft.MODID));
         generator.addProvider(event.includeServer(), new CropItemDataDataGenerator(packOutput, FarmUpCraft.MODID));
-        generator.addProvider(event.includeServer(), new MarketDataDataGenerator(packOutput, FarmUpCraft.MODID));
         generator.addProvider(event.includeServer(), new BiomeRulesDataDataGenerator(packOutput, FarmUpCraft.MODID));
         generator.addProvider(true,new BiomeTagsProvider(packOutput, lookupProvider, existingFileHelper));
 
         FUCDatapackBuiltinEntriesProvider datapackEntries = new FUCDatapackBuiltinEntriesProvider(packOutput, lookupProvider);
         generator.addProvider(event.includeServer(), datapackEntries);
+        generator.addProvider(event.includeServer(), new MarketDataDataGenerator(packOutput, FarmUpCraft.MODID, datapackEntries.getRegistryProvider()));
+
     }
 
 }

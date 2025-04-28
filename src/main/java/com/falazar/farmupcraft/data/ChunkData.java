@@ -1,6 +1,5 @@
 package com.falazar.farmupcraft.data;
 
-import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.UUIDUtil;
@@ -19,10 +18,10 @@ public class ChunkData {
                     UUIDUtil.STRING_CODEC.fieldOf("village_id").forGetter(ChunkData::getVillageId)
             ).apply(instance, ChunkData::new)
     );
-
-    private final String type;
-    private final int playerId;
-    private final UUID villageId;
+    //TODO remove playerId from chunkdata, not needed only village, should be nullable tho
+    private String type;
+    private int playerId;
+    private UUID villageId;
 
     /**
      * Constructs a new ChunkData object.
@@ -47,6 +46,12 @@ public class ChunkData {
     public String getType() {
         return type;
     }
+
+    // Set type now.
+    public void setType(String type) {
+        this.type = type;
+    }
+
 
     /**
      * Gets the player's integer entity ID associated with this chunk.

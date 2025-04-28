@@ -30,16 +30,13 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
-    private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery");
+    private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen", "restaurant", "house");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -55,14 +52,18 @@ public class PlotCommand {
                         .suggests((context, builder2) -> {
                             builder2.suggest("farm");
                             builder2.suggest("plot");
+                            builder2.suggest("nursery");
+                            builder2.suggest("kitchen");
+                            builder2.suggest("restaurant");
+                            builder2.suggest("house");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
                             String plotType = StringArgumentType.getString(context, "type");
-                            if ("farm".equals(plotType) || "plot".equals(plotType)) {
+                            if (VALID_PLOT_TYPES.contains(plotType)) {
                                 return buyPlot(context.getSource(), plotType);
                             } else {
-                                context.getSource().sendFailure(Component.literal("Invalid plot type. Must be 'farm' or 'plot'."));
+                                context.getSource().sendFailure(Component.literal("Invalid plot type. Must be plot, farm, nursery, kitchen, restaurant, house."));
                                 return 0;
                             }
                         }));
@@ -138,75 +139,111 @@ public class PlotCommand {
     public static int buyPlot(CommandSourceStack source, String plotType) {
         try {
             Entity nullableSummoner = source.getEntity();
-            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (player == null) {
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
                 source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-
             if (!VALID_PLOT_TYPES.contains(plotType)) {
                 source.sendFailure(Component.literal("Invalid plot type. Must be plot, farm, or nursery."));
                 return 0;
             }
 
-            Level level = player.level();
-            ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();;
-            ChunkData data = dataBase.getData(chunkPos.toLong());
-
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
+            ;
+            ChunkData chunk = chunkDataDatabase.getData(chunkPos.toLong());
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDataBase.getData(player.getUUID());
-//            Wallet wallet =  playerData.getWallet();
-//            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-//            Coin coin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-//            CurrencyCost currencyCost = new CurrencyCost(coin, 10);
+            PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
 
-//             if (currencyCost.canAfford(wallet)) {
-//                 //do something
-//             }
+            // STEP 1: Check if it is in a village and not already bought.
+            // TODO TEST
+            if (chunk == null) {
+                source.sendFailure(Component.literal("Plot is not in a village."));
+                return 0;
+            }
+            // TODO TEST
+            if (!Objects.equals(chunk.getType(), "village") && !Objects.equals(chunk.getType(), "plot")) {
+                source.sendFailure(Component.literal("Plot has already been purchased."));
+                return 0;
+            }
 
-            // TEMP REMOVE FOR TESTING.
-//            if (data != null) {
-//                source.sendFailure(Component.literal("Plot is already owned."));
-//                return 0;
-//            }
+            // STEP 2: Check if the player is in the village that matches the chunk.
+            // TODO TEST
+            if (!chunk.getVillageId().equals(playerData.getHomeVillageUUID())) {
+                source.sendFailure(Component.literal("Plot is not in your village."));
+                return 0;
+            }
+            // TODO BUG can buy plots OUTSIDE of village.
 
-            // TODO implement plot buying logic here.
-            // Step 1: Check who owns, if already owned, just show info.
-
-            // TODO get player village id
-            String village = "testobj";
-
-            // STEP 3: Calc cost to buy plot.
-//            String player = "testobj";  // TODO not needed?
-//            int cost = calculatePlotCost(village, player, plotType);
-            int cost = 100; // TODO get from village Object.
-
-            // TODO check if player has enough money.
-//            if (player.checkPlayerMoney(cost)) {
-//                context.getSource().sendFailure(Component.literal("Player does not have enough money."));
-//                return 0;
-//            }
-
-            // STEP 4: Buy plot and mark to db.
-//            data.setPlayerId(summoner.getId());
-//            data.setType("farm"); // TODO set to type.
-            // TODO get village id.
-
-            UUID id = playerData.getHomeVillageUUID();
-
-            ChunkData newPlot = new ChunkData(plotType, player.getId(), id); // hack test.
-
-            if(plotType.equalsIgnoreCase("farm")) {
-                ForgeChunkManager.forceChunk((ServerLevel) level, MODID, player.getUUID(), chunkPos.x, chunkPos.z,true, true);
+            // STEP 2.5: Check if it is touching another plot (that isn't marked village).
+            // TODO make a method.
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+            VillageData village = villageDataDB.getData(playerData.getHomeVillageUUID());
+            // TODO make optional rule maybe, for scout.
+            // Get all four adjacent chunks.
+            // TODO TEST
+            ChunkPos[] adjacentChunks = {
+                    new ChunkPos(chunkPos.x + 1, chunkPos.z),
+                    new ChunkPos(chunkPos.x - 1, chunkPos.z),
+                    new ChunkPos(chunkPos.x, chunkPos.z + 1),
+                    new ChunkPos(chunkPos.x, chunkPos.z - 1)
+            };
+            boolean passed = false;
+            for (ChunkPos adjacentChunk : adjacentChunks) {
+                ChunkData adjacentChunkData = chunkDataDatabase.getData(adjacentChunk.toLong());
+                if (adjacentChunkData != null && !Objects.equals(adjacentChunkData.getType(), "village")) {
+                    passed = true;
+                }
+            }
+            // TODO OR TOUCHING CENTER PLOT!!!
+            // TODO test
+            if (!passed) {
+                // Check if the chunk is touching the center plot.
+                // compare chunk to village position
+                ChunkPos villagePos = village.getPosition();
+                if (chunkPos.x == villagePos.x + 1 && chunkPos.z == villagePos.z) {
+                    passed = true;
+                } else if (chunkPos.x == villagePos.x - 1 && chunkPos.z == villagePos.z) {
+                    passed = true;
+                } else if (chunkPos.x == villagePos.x && chunkPos.z == villagePos.z + 1) {
+                    passed = true;
+                } else if (chunkPos.x == villagePos.x && chunkPos.z == villagePos.z - 1) {
+                    passed = true;
+                }
+            }
+            if (!passed) {
+                source.sendFailure(Component.literal("Plot is not touching another plot."));
+                return 0;
             }
 
 
-            dataBase.putData(chunkPos.toLong(), newPlot);
+            // STEP 3: Calc cost to buy plot and check players total.
+            int cost = calculatePlotCost(playerData, village, plotType);
+            Level level = playerSource.level();
+            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+            if (!playerData.getWallet().hasEnough(bronzeCoin, cost)) {
+                source.sendFailure(Component.literal("Player does not have enough money."));
+                // Show cost and coins
+                source.sendFailure(Component.literal("Cost: " + cost));
+                source.sendFailure(Component.literal("Player Coins: " + playerData.getWallet().get(bronzeCoin)));
+                return 0;
+            }
+
+            // STEP 4: Buy plot and mark to db, and village.
+            chunk.setType(plotType);
+            chunkDataDatabase.putData(chunkPos.toLong(), chunk);
+
+            // Extra farm step, force chunk to stay loaded!
+            if (plotType.equalsIgnoreCase("farm")) {
+                LOGGER.info("DEBUG1: Farming plot for " + chunkPos + ": " + village.getName());
+                ForgeChunkManager.forceChunk((ServerLevel) level, MODID, playerSource.getUUID(), chunkPos.x, chunkPos.z, true, true);
+            }
             LOGGER.info("Plot bought at " + chunkPos);
 
             // STEP 5: Subtract money out of player.
-//            player.subtractMoney(cost);
+            playerData.getWallet().remove(bronzeCoin, cost);
 
             // Build a response message
             MutableComponent response = Component.literal("Plot bought at " + chunkPos + " as " + plotType);
@@ -254,14 +291,17 @@ public class PlotCommand {
         }
     }
 
-    private static int calculatePlotCost(String village, String player, String plotType) {
+    private static int calculatePlotCost(PlayerData playerData, VillageData villageData, String plotType) {
         // TODO implement cost calculation logic here.
         int baseCost = 100;
         // 100 + 100 for each plot.... whatevers.
 
-        int plotCount = 1; // TODO get from village Object.
-        int totalCost = baseCost + (plotCount-1) * 100;
+        // TODO count plots existing scouter
 
+        int plotCount = 1; // TODO get from village Object.
+        int totalCost = baseCost + (plotCount - 1) * 100;
+
+        LOGGER.info("DEBUG: Plot cost for " + plotType + ": " + totalCost + " plotCount = " + plotCount);
         return totalCost;
     }
 }

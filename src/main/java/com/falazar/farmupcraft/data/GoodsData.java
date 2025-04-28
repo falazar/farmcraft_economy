@@ -1,5 +1,7 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.currency.CoinStack;
+import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -10,14 +12,14 @@ public class GoodsData {
     public static final Codec<GoodsData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     BuiltInRegistries.ITEM.byNameCodec().fieldOf("item").forGetter(GoodsData::getItem),
-                    Codec.INT.fieldOf("cost").forGetter(GoodsData::getCost)
+                    CurrencyCost.CODEC.fieldOf("cost").forGetter(GoodsData::getCost)
             ).apply(instance, GoodsData::new)
     );
 
     private final Item item;
-    private final int cost;
+    private final CurrencyCost cost;
 
-    public GoodsData(Item item, int cost) {
+    public GoodsData(Item item, CurrencyCost cost) {
         this.item = item;
         this.cost = cost;
     }
@@ -26,7 +28,7 @@ public class GoodsData {
         return item;
     }
 
-    public int getCost() {
+    public CurrencyCost getCost() {
         return cost;
     }
 }
