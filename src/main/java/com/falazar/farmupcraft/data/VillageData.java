@@ -36,6 +36,9 @@ public class VillageData {
     private final Set<Long> claimedChunkSet = new HashSet<>();
     private final boolean bought;  // TODO what is this one?
 
+    // TODO add coins to see if we have any or are in debt.
+    // TODO add player commands to add coins and subtract
+
     /**
      * Constructs a new ChunkData object.
      * @param uuid       unique id of village

@@ -42,9 +42,10 @@ public class PlotCommand {
         // Define the base command "show"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("plot");
 
-        // Define the "plots" sub-commands
+        // Define the "info" sub-commands
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(PlotCommand::showPlotInfo);
+        builder.then(infoBuilder);
 
         // Define the "buy" sub-command
         LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
@@ -67,7 +68,7 @@ public class PlotCommand {
                                 return 0;
                             }
                         }));
-
+        builder.then(buyBuilder);
 
         // Define the "delete" sub-command - For ADMIN only!
         LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
@@ -78,13 +79,6 @@ public class PlotCommand {
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
 
-//        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
-//                .executes(c -> buyPlot(c))
-//                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
-
-        // Add the sub-commands to the "plot" command
-        builder.then(infoBuilder);
-        builder.then(buyBuilder);
 
         // Register the main "plot" command with the dispatcher
         pDispatcher.register(builder);

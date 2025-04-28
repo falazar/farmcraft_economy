@@ -76,7 +76,6 @@ public class ShowBiomesCommand {
                                 if (distance <= radius * radius) {
                                     Biome biome = level.getBiome(blockPos).value();
                                     ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-
                                     if (biomeName != null) {
                                         biomesInRadius.add(biomeName);
                                     }
