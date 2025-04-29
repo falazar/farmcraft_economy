@@ -121,17 +121,24 @@ public class PlayerCommand {
     public static int givePlayerCoins(CommandSourceStack source, int amount) {
         try {
             Entity nullableSummoner = source.getEntity();
-            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
             // Add money to wallet.
-            Wallet wallet = ModEvents.getPlayerDatabase().getData(player.getUUID()).getWallet();
-            Registry<Coin> coinRegistry = player.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+
+            Wallet wallet = ModEvents.getPlayerDatabase().getData(playerSource.getUUID()).getWallet();
+            Registry<Coin> coinRegistry = playerSource.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
 
             wallet.add(bronzeCoin, amount);
+
+            // TODO THIS IS ALL THATS NEEDED?
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
+            playerDatabase.putData(playerSource.getUUID(), playerData);
+
             int bronzeCoins = wallet.get(bronzeCoin);
             source.sendSuccess(() -> Component.literal("Player: "
-                    + player.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+                    + playerSource.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();

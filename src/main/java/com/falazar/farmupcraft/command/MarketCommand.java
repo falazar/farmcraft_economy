@@ -13,21 +13,25 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.NonNullList;
 import net.minecraft.core.Registry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
@@ -50,18 +54,38 @@ public class MarketCommand {
         // with four options: misc, stone, food, wood
         LiteralArgumentBuilder<CommandSourceStack> showBuilder = Commands.literal("show")
                 .then(Commands.literal("general").executes(context -> {
-                    return showMarketList(context, "general");
+                    return showMarketList(context.getSource(), "general");
                 }))
                 .then(Commands.literal("food").executes(context -> {
-                    return showMarketList(context, "food");
+                    return showMarketList(context.getSource(), "food");
                 }))
                 .then(Commands.literal("wood").executes(context -> {
-                    return showMarketList(context, "wood");
+                    return showMarketList(context.getSource(), "wood");
                 }))
                 .then(Commands.literal("stone").executes(context -> {
-                    return showMarketList(context, "stone");
+                    return showMarketList(context.getSource(), "stone");
                 }));
         builder.then(showBuilder);
+
+        // Define a "sell" sub-command, to sell all items of that type
+        LiteralArgumentBuilder<CommandSourceStack> sellBuilder = Commands.literal("sell")
+                .then(Commands.literal("general").executes(context -> {
+                    sellMarketItems(context.getSource(), "general");
+                    return 0;
+                }))
+                .then(Commands.literal("food").executes(context -> {
+                    sellMarketItems(context.getSource(), "food");
+                    return 0;
+                }))
+                .then(Commands.literal("wood").executes(context -> {
+                    sellMarketItems(context.getSource(), "wood");
+                    return 0;
+                }))
+                .then(Commands.literal("stone").executes(context -> {
+                    sellMarketItems(context.getSource(), "stone");
+                    return 0;
+                }));
+        builder.then(sellBuilder);
 
         // Define a "find" sub-command for Admin only, to look for items by keyword
         LiteralArgumentBuilder<CommandSourceStack> findBuilder = Commands.literal("find")
@@ -108,8 +132,8 @@ public class MarketCommand {
             // Build a response message
             MutableComponent response = Component.literal("Market info options: \n");
             response = response.append(Component.literal("  /market show general \n"));
-            response = response.append(Component.literal("  /market show food\n"));
-            response = response.append(Component.literal("  /market show wood"));
+            response = response.append(Component.literal("  /market show food \n"));
+            response = response.append(Component.literal("  /market show wood \n"));
             response = response.append(Component.literal("  /market show stone \n"));
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
@@ -120,29 +144,182 @@ public class MarketCommand {
         return 0;
     }
 
-    public static int showMarketList(CommandContext<CommandSourceStack> context, String type) {
+    public static int showMarketList(CommandSourceStack source, String type) {
         try {
-            Entity nullableSummoner = context.getSource().getEntity();
+            Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             if (playerSource == null) {
-                context.getSource().sendFailure(Component.literal("Player not found."));
+                source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
 
-            // TODO loop over all items and prices in text.
+            Map<String, Integer> items = getMarketBuyItems(type);
+            // Loop over all items and prices to chat.
+            MutableComponent response = Component.literal("Market " + type + " items: \n").withStyle(ChatFormatting.YELLOW);
+            for (Map.Entry<String, Integer> entry : items.entrySet()) {
+                // Based on key get the item display name from the registry.
+                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+                // Highlight ones in your inventory now.
+                boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
 
-            MutableComponent response = Component.literal("Market " + type + " items: \n");
-            response = response.append(Component.literal("item1: 10 coins\n"));
-            response = response.append(Component.literal("item2: 10 coins\n"));
-            response = response.append(Component.literal("item3: 10 coins\n"));
-            response = response.append(Component.literal("item4: 10 coins\n"));
+                if (item != null) {
+                    // Get the display name of the item
+                    String itemName = item.getDescription().getString();
+                    if (!inInventory) {
+                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    } else {
+                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.GREEN));
+                    }
+                } else {
+                    response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                }
+            }
             MutableComponent finalResponse = response;
-            context.getSource().sendSuccess(() -> finalResponse, false);
+            source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
-            context.getSource().sendFailure(Component.literal("Show Market List Exception thrown - see log"));
+            source.sendFailure(Component.literal("Show Market List Exception thrown - see log"));
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    // Given a market type sell all items sellable from inventory.
+    public static void sellMarketItems(CommandSourceStack source, String type) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return;
+            }
+
+            Map<String, Integer> items = getMarketBuyItems(type);
+            int totalCoins = 0;
+
+            // Loop over all items and prices to chat.
+            MutableComponent response = Component.literal("Selling Market items: \n").withStyle(ChatFormatting.YELLOW); // TODO TEST
+            for (Map.Entry<String, Integer> entry : items.entrySet()) {
+                // Based on key get the item display name from the registry.
+                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+                // Highlight ones in your inventory now.
+                boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
+                if (!inInventory) {
+                    continue;
+                }
+
+                if (item != null) {
+//                    String itemName = item.getDescription().getString();
+                    int coins = sellAllItemInInventory(source, playerSource, item, entry.getValue());
+                    totalCoins += coins;
+//                    response = response.append(Component.literal(" - " + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.GREEN));
+                } else {
+                    response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                }
+            }
+            // Add the total coins given to the player
+//            response = response.append(Component.literal("Total coins given: " + totalCoins + "\n").withStyle(ChatFormatting.GREEN));
+
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+
+            // TODO TEST playerData and coins.
+            PlayerCommand.givePlayerCoins(source, totalCoins);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Show Market List Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static int sellAllItemInInventory(CommandSourceStack source, Player playerSource, Item item, int coins) {
+        // Find all items matching in inventory and sell them.
+
+        // Look over player inventory now and count items.
+        int count = playerSource.getInventory().countItem(item);
+        int coinsTotal = count * coins;
+
+        // Remove all items.
+        ItemStack itemStack = item.getDefaultInstance();
+//        playerSource.getInventory().removeItem(itemStack, count); // TODO TEST. not working.
+        removeItem(playerSource.getInventory(), itemStack, count); // TODO TESTING
+//        playerSource.getInventory().clearOrCountMatchingItems(playerSource.getInventory(), itemStack, count); // TODO TESTING
+//        playerSource.getInventory().clearOrCountMatchingItems(playerSource.getInventory(), itemStack, count); // TODO TESTING
+
+        // Send chat to player.
+        String itemName = item.getDescription().getString();
+        MutableComponent response = Component.literal(" - Sold " + count + " of " + itemName + " for " + coinsTotal + " coins\n").withStyle(ChatFormatting.GREEN);
+        MutableComponent finalResponse = response;
+        source.sendSuccess(() -> finalResponse, false);
+
+        // Return coins earned.
+        return coinsTotal;
+    }
+
+    // Remove all items from inventory that match item.
+    public static void removeItem(Inventory inventory, ItemStack pStack, Integer count) {
+        // Regular inventory
+        for (ItemStack itemStack : inventory.items) { // 36 items here.
+            if (itemStack.isEmpty()) {
+                continue;
+            }
+            // Check if the itemStack matches the pStack
+            LOGGER.info("DEBUG comparing items: " + itemStack.getItem() + " == " + pStack.getItem());
+            if (itemStack.getItem() == pStack.getItem()) {
+                LOGGER.info("FOUND, removing now!");
+                itemStack.setCount(0); // Set to 0 to remove it
+                continue;
+            }
+        }
+
+        // Check offhand also.
+        ItemStack itemStack = inventory.offhand.get(0);
+        if (itemStack.isEmpty()) {
+            return;
+        }
+        // Check if the itemStack matches the pStack
+        LOGGER.info("DEBUG comparing items: " + itemStack.getItem() + " == " + pStack.getItem());
+        if (itemStack.getItem() == pStack.getItem()) {
+            LOGGER.info("FOUND, removing now!");
+            // Remove the item from the inventory
+            itemStack.setCount(0); // Set to 0 to remove it
+        }
+    }
+
+    // We will hard code a list here now to play with.
+    public static Map<String, Integer> getMarketBuyItems(String type) {
+        if (type.equals("food")) {
+            Map<String, Integer> items = new HashMap<>();
+            items.put("pamhc2foodextended:schnitzelitem", 5);
+            items.put("pamhc2foodextended:ramenitem", 5);
+            items.put("pamhc2foodextended:sundayhighteaitem", 5);
+            items.put("pamhc2foodextended:fairybreaditem", 5);
+            items.put("pamhc2foodextended:groiledcheesesandwichitem", 5);
+            items.put("pamhc2foodcore:boiledeggitem", 5);
+            items.put("pamhc2foodextended:chickencelerycasseroleitem", 5);
+            items.put("pamhc2foodextended:meringueitem", 5);
+            items.put("pamhc2foodextended:springfieldcashewchickenitem", 5);
+            items.put("pamhc2foodextended:guavajellysandwichitem", 5);
+            items.put("pamhc2foodextended:durianjellysandwichitem", 5);
+            items.put("pamhc2foodextended:bibimbapitem", 5);
+            items.put("pamhc2foodcore:caramelappleitem", 5);
+            items.put("pamhc2foodextended:mcpamitem", 5);
+            items.put("pamhc2foodextended:sunflowerseedsbutteritem", 5);
+            return items;
+        } else if (type.equals("wood")) {
+            Map<String, Integer> items = new HashMap<>();
+            items.put("cfm:birch_upgraded_fence", 5);
+            items.put("mcwbridges:oak_log_bridge_middle", 5);
+            items.put("macawsbridgesbop:hellbark_rail_bridge", 5);
+            items.put("valhelsia_structures:birch_post", 5);
+            items.put("valhelsia_structures:bundled_mangrove_posts", 5);
+            return items;
+        } else if (type.equals("stone")) {
+            Map<String, Integer> items = new HashMap<>();
+            items.put("cobblestone", 5);
+            items.put("stone_brick", 5);
+            items.put("granite", 5);
+            return items;
+        }
+        return new HashMap<>();
     }
 
     // General searchability method to find items, test one to play around with.

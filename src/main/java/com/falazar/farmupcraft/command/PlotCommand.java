@@ -147,8 +147,8 @@ public class PlotCommand {
             DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
             ;
             ChunkData chunk = chunkDataDatabase.getData(chunkPos.toLong());
-            DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
 
             // STEP 1: Check if it is in a village and not already bought.
             // TODO TEST
@@ -236,8 +236,9 @@ public class PlotCommand {
             }
             LOGGER.info("Plot bought at " + chunkPos);
 
-            // STEP 5: Subtract money out of player.
+            // STEP 5: Subtract money out of player.  TODO helper method hide this???
             playerData.getWallet().remove(bronzeCoin, cost);
+            playerDatabase.putData(playerSource.getUUID(), playerData);
 
             // Build a response message
             MutableComponent response = Component.literal("Plot bought at " + chunkPos + " as " + plotType);
