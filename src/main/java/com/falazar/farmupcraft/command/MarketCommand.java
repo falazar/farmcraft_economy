@@ -115,21 +115,12 @@ public class MarketCommand {
 
         // TODO make a special function to call each of the four market types to help define them.
 
-
         // Register the main "market" command with the dispatcher
         pDispatcher.register(builder);
     }
 
     public static int showMarketInfo(CommandContext<CommandSourceStack> context) {
         try {
-            Entity nullableSummoner = context.getSource().getEntity();
-            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (summoner == null) {
-                context.getSource().sendFailure(Component.literal("Player not found."));
-                return 0;
-            }
-
-            // Build a response message
             MutableComponent response = Component.literal("Market info options: \n");
             response = response.append(Component.literal("  /market show general \n"));
             response = response.append(Component.literal("  /market show food \n"));
@@ -148,16 +139,12 @@ public class MarketCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (playerSource == null) {
-                source.sendFailure(Component.literal("Player not found."));
-                return 0;
-            }
 
             Map<String, Integer> items = getMarketBuyItems(type);
+
             // Loop over all items and prices to chat.
             MutableComponent response = Component.literal("Market " + type + " items: \n").withStyle(ChatFormatting.YELLOW);
             for (Map.Entry<String, Integer> entry : items.entrySet()) {
-                // Based on key get the item display name from the registry.
                 Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
                 // Highlight ones in your inventory now.
                 boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
@@ -188,44 +175,34 @@ public class MarketCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (playerSource == null) {
-                source.sendFailure(Component.literal("Player not found."));
-                return;
-            }
 
             Map<String, Integer> items = getMarketBuyItems(type);
-            int totalCoins = 0;
 
-            // Loop over all items and prices to chat.
+            int totalCoins = 0;
+            // Loop over all items and sell all we have.
             MutableComponent response = Component.literal("Selling Market items: \n").withStyle(ChatFormatting.YELLOW); // TODO TEST
             for (Map.Entry<String, Integer> entry : items.entrySet()) {
-                // Based on key get the item display name from the registry.
                 Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
-                // Highlight ones in your inventory now.
                 boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
                 if (!inInventory) {
                     continue;
                 }
 
                 if (item != null) {
-//                    String itemName = item.getDescription().getString();
                     int coins = sellAllItemInInventory(source, playerSource, item, entry.getValue());
                     totalCoins += coins;
-//                    response = response.append(Component.literal(" - " + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.GREEN));
                 } else {
                     response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
                 }
             }
-            // Add the total coins given to the player
-//            response = response.append(Component.literal("Total coins given: " + totalCoins + "\n").withStyle(ChatFormatting.GREEN));
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
 
-            // TODO TEST playerData and coins.
+            // TODO TEST playerData and coins. - failing on save
             PlayerCommand.givePlayerCoins(source, totalCoins);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("Show Market List Exception thrown - see log"));
+            source.sendFailure(Component.literal("Sell Market List Exception thrown - see log"));
             ex.printStackTrace();
         }
     }
@@ -239,10 +216,7 @@ public class MarketCommand {
 
         // Remove all items.
         ItemStack itemStack = item.getDefaultInstance();
-//        playerSource.getInventory().removeItem(itemStack, count); // TODO TEST. not working.
-        removeItem(playerSource.getInventory(), itemStack, count); // TODO TESTING
-//        playerSource.getInventory().clearOrCountMatchingItems(playerSource.getInventory(), itemStack, count); // TODO TESTING
-//        playerSource.getInventory().clearOrCountMatchingItems(playerSource.getInventory(), itemStack, count); // TODO TESTING
+        removeItem(playerSource.getInventory(), itemStack, count);
 
         // Send chat to player.
         String itemName = item.getDescription().getString();
@@ -254,6 +228,7 @@ public class MarketCommand {
         return coinsTotal;
     }
 
+    // TODO remove out to proper home. player maybe.
     // Remove all items from inventory that match item.
     public static void removeItem(Inventory inventory, ItemStack pStack, Integer count) {
         // Regular inventory
@@ -276,9 +251,7 @@ public class MarketCommand {
             return;
         }
         // Check if the itemStack matches the pStack
-        LOGGER.info("DEBUG comparing items: " + itemStack.getItem() + " == " + pStack.getItem());
         if (itemStack.getItem() == pStack.getItem()) {
-            LOGGER.info("FOUND, removing now!");
             // Remove the item from the inventory
             itemStack.setCount(0); // Set to 0 to remove it
         }
@@ -460,7 +433,6 @@ public class MarketCommand {
 
             // Search for items containing the keyword
             String logNames = "dead_,fir_,hellbark_,jacaranda_,magic_,mahogany_,palm_,redwood_,umbran_,willow_,acacia_,birch_,cherry_,dark_oak_,jungle_,mangrove_,oak_,spruce_";
-//            List<String> keywords = Arrays.asList("oak_", "jungle_", "spruce_");
             List<String> keywords = Arrays.asList(logNames.split(","));
 
             List<String> matchingItems = ForgeRegistries.ITEMS.getValues().stream()

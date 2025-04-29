@@ -124,7 +124,6 @@ public class PlayerCommand {
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
             // Add money to wallet.
-
             Wallet wallet = ModEvents.getPlayerDatabase().getData(playerSource.getUUID()).getWallet();
             Registry<Coin> coinRegistry = playerSource.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);

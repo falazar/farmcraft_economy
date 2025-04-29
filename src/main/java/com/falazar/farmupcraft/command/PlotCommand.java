@@ -145,7 +145,7 @@ public class PlotCommand {
 
             ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
             DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
-            ;
+
             ChunkData chunk = chunkDataDatabase.getData(chunkPos.toLong());
             DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
