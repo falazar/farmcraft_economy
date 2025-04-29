@@ -1,4 +1,26 @@
 
 TODO list
 
-Add journey map to to test builder.
+DONE - Add journey map to test builder.
+
+Markets -Get them up and working.
+  --Create 4 market type files, listing all items. - JAMES TODO
+  --Pull in 4 market type files.
+  --Allow player to browser 4 markets -JAMES
+  --Allow player to sell all in inventory for a market type. -JAMES
+  --Graphical UI laters.
+  --Market updates prices daily. -JAMES
+  --Market adds new items daily. -JAMES
+
+Add a setLevel method to village
+  --Add chunks when level is grown
+  --Add chunks randomly along edges, half chance in oceans...
+  --ignore (dont shrink, if level is reduced)
+  --Add growVillage() method that adds one level.
+
+
+Get a way to show village areas on JourneyMap
+    --They had a decent integration a couple years back, should be able to use.
+    --Similar: https://www.reddit.com/r/feedthebeast/comments/gq172e/this_is_my_mod_mapfrontiers_an_addon_for/
+
+
