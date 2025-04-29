@@ -90,7 +90,6 @@ public class TesterCommand {
     }
 
     public static int findNearVillagers(CommandSourceStack source) {
-        LOGGER.info("TEST ZERO");
         // TODO later find all villagers in a village, or near the player.
         // For now just show the player name and UUID.
         Entity nullableSummoner = source.getEntity();
@@ -107,20 +106,20 @@ public class TesterCommand {
                 Villager.class,
                 playersTarget,
                 playerSource,
-                new net.minecraft.world.phys.AABB(playerPos).inflate(40)
+                new net.minecraft.world.phys.AABB(playerPos).inflate(160)
         );
+
+        int count = list.size();
+        LOGGER.info(" DEBUG: Found " + count + " villagers nearby.");
 
         // Loop over all villagers, give name and UUID and position.
         for (LivingEntity v : list) {
             LOGGER.info("\nLIST Villager found: ");
             LOGGER.info("Villager UUID: " + v.getUUID());
             LOGGER.info("Villagers found: " + v.getScoreboardName());
-            LOGGER.info("Villager name: " + v.getName().getString()); // Gives us their proper custom name! woot
+            LOGGER.info("Villager name: *" + v.getName().getString()+"*"); // Gives us their proper custom name! woot
             LOGGER.info("Villager position: " + v.blockPosition());
             LOGGER.info("Villager type: " + v.getType().toString());
-
-            // TODO how can we now tap into VillagerNames
-//            https://github.com/Serilum/Villager-Names/blob/1.21.5/Common/src/main/java/com/natamus/villagernames/events/VillagerEvent.java
 
             // Copied from their code....
             Villager villager = (Villager) v;
@@ -131,9 +130,24 @@ public class TesterCommand {
             LOGGER.info("Villager profession: " + profession);
             LOGGER.info("Villager type: " + type);
 
+            // can we change the name manually and give them a last name or something?
+            // NOTE: Name doesnt match exactly?  space or hidden char???
+            String villagerName = v.getName().getString().trim(); // Get the name and trim whitespace
+            if (villagerName.equals("Alaina Fae")) {
+                LOGGER.info( "DEBUG Found exact string Alaina Fae, Success!");
+                source.sendSystemMessage( Component.literal("DEBUG Found exact string Alaina Fae, Success!"));
+            }
+
+//            if (v.getName().toString().contains("Alaina") || v.getName().toString().contains("Liberty")) {
+//                LOGGER.info("DEBUG Found Alaina, changing name to TEST NAME");
+//                villager.setCustomName(Component.literal("Alaina Fae"));
+//                LOGGER.info("DEBUG Found her new name = " + villager.getName().getString());
+//                source.sendSystemMessage( Component.literal("DEBUG Found Alaina, changing name to TEST NAME"));
+//            }
+
+            // TODO what event triggers when we are near a villager?
+            // none create our own.
         }
-
-
 
         return 0;
     }
