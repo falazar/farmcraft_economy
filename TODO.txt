@@ -5,7 +5,7 @@ DONE - Add journey map to test builder.
 
 Markets -Get them up and working.
   --Create 4 market type files, listing all items. - JAMES TODO
-    -- 2 creates
+    -- 2 created, 2 todo
   --Pull in 4 market type files.
   --Allow player to browser 4 markets -JAMES
     -- mostly done
@@ -15,24 +15,35 @@ Markets -Get them up and working.
   --Market updates prices daily. -JAMES
   --Market adds new random items daily. -JAMES
 
-Add a setLevel method to village
-  --Add chunks when level is grown
-  --Add chunks randomly along edges, half chance in oceans...
-  --ignore (dont shrink, if level is reduced)
-  --Add growVillage() method that adds one level.
+VILLAGES:
+  --TODO Add coins to village, single value?
+  --TODO Create addCoins() method to village and subtractCoins() method.
+  --TODO Add player putCoins and takeCoins methods
+
+  --TODO Add a setLevel method to village
+  --TODO Add chunks when level is grown
+  --TODO Add chunks randomly along edges, half chance in oceans...
+  --TODO ignore (dont shrink, if level is reduced)
+  --TODO Add levelUpVillage() method that adds one level.
 
 
 Get a way to show village areas (or others) on JourneyMap
-    --They had a decent integration a couple years back, should be able to use.
+    --TODO They had a decent integration a couple years back, should be able to use.
     --Similar: https://www.reddit.com/r/feedthebeast/comments/gq172e/this_is_my_mod_mapfrontiers_an_addon_for/
 
+#############################################################
 Adventure Areas
 
 Create find islands and lakes command
-    -- Command created - DONE
+    -- Command created - MOSTLY DONE
+    -- TODO Create new area object, or use ChunkData ? need y values.
     -- TODO Save to database
 
 Find nearby structures
+    -- TODO
 
 Find nearby villagers
-    -- See if we can get their names.
+    -- TODO Locate near villagers
+    -- TODO See if we can get their names.
+    MOD: villagernames-1.20.1-7.1 updating to newest.
+    REF: https://www.curseforge.com/minecraft/mc-mods/villager-names

@@ -18,6 +18,10 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.ai.targeting.TargetingConditions;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.VillagerData;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -26,6 +30,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.AABB;
 
 import java.util.*;
 
@@ -42,10 +47,10 @@ public class TesterCommand {
 
         // Some test commands looking for....
 
-        // Find islands/lakes nearby
-        // Show biomes for single chunk (can save to plot and farm)
-        // Show all biomes in a village (move to that command)
-        // Find all villagers ina village (or near area?)
+        // MOSTLY DONE - Find islands/lakes nearby
+        // EASY - Show biomes for single chunk (can save to plot and farm)
+        // DONE - Show all biomes in a village (move to that command)
+        // TODO Find all villagers ina village (or near area?)
         // -- See if we can get a villagers name.
         // Find all nearby Structures - ruins and such.
         // Find all nearby Open caves, at surface.
@@ -72,8 +77,65 @@ public class TesterCommand {
                 );
         builder.then(islandsBuilder);
 
+        // Define the "findvillagers" sub-command
+        LiteralArgumentBuilder<CommandSourceStack> findVillagersBuilder = Commands.literal("findvillagers")
+                .executes(context -> {
+                    findNearVillagers(context.getSource());
+                    return 0;
+                });
+        builder.then(findVillagersBuilder);
+
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
+    }
+
+    public static int findNearVillagers(CommandSourceStack source) {
+        LOGGER.info("TEST ZERO");
+        // TODO later find all villagers in a village, or near the player.
+        // For now just show the player name and UUID.
+        Entity nullableSummoner = source.getEntity();
+        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+        // Get player location
+        BlockPos playerPos = playerSource.blockPosition();
+        Level level = source.getLevel();
+
+        // Scan for any villager in 10 chunk radius
+        LOGGER.info("TEST ONE");
+        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting().ignoreLineOfSight();
+        List<? extends LivingEntity> list = level.getNearbyEntities(
+                Villager.class,
+                playersTarget,
+                playerSource,
+                new net.minecraft.world.phys.AABB(playerPos).inflate(40)
+        );
+
+        // Loop over all villagers, give name and UUID and position.
+        for (LivingEntity v : list) {
+            LOGGER.info("\nLIST Villager found: ");
+            LOGGER.info("Villager UUID: " + v.getUUID());
+            LOGGER.info("Villagers found: " + v.getScoreboardName());
+            LOGGER.info("Villager name: " + v.getName().getString()); // Gives us their proper custom name! woot
+            LOGGER.info("Villager position: " + v.blockPosition());
+            LOGGER.info("Villager type: " + v.getType().toString());
+
+            // TODO how can we now tap into VillagerNames
+//            https://github.com/Serilum/Villager-Names/blob/1.21.5/Common/src/main/java/com/natamus/villagernames/events/VillagerEvent.java
+
+            // Copied from their code....
+            Villager villager = (Villager) v;
+            VillagerData d = villager.getVillagerData();
+//            String rawProfession = d.profession.value().toString();
+            String profession = d.getProfession().toString();
+            String type = d.getType().toString();
+            LOGGER.info("Villager profession: " + profession);
+            LOGGER.info("Villager type: " + type);
+
+        }
+
+
+
+        return 0;
     }
 
     public static int showIslandsAndLakes(CommandSourceStack source, int distance) {
@@ -92,7 +154,7 @@ public class TesterCommand {
         // STEP 2: Loop in a square around the player X distance.
         for (int z = -distance; z <= distance; z++) {
             LOGGER.info("\nDEBUG z=" + z);
-        for (int x = -distance; x <= distance; x++) {
+            for (int x = -distance; x <= distance; x++) {
                 // Get the chunk position.
                 ChunkPos chunk = new ChunkPos(chunkPos.x + x, chunkPos.z + z);
 //                LOGGER.info("DEBUG ChunkPos for player is " + chunk);
@@ -317,11 +379,11 @@ public class TesterCommand {
                     ChunkPos chunkPos = new ChunkPos(centerChunk.x + (i - distance), centerChunk.z + (j - distance));
                     if (targetValue == 0) {
                         lakeCount++;
-                        LOGGER.info("Lake #"+lakeCount+" found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
+                        LOGGER.info("Lake #" + lakeCount + " found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
                                 " with size " + result.size);
                     } else {
                         islandCount++;
-                        LOGGER.info("Island #"+islandCount+" found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
+                        LOGGER.info("Island #" + islandCount + " found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
                                 " with size " + result.size);
                     }
                 }
