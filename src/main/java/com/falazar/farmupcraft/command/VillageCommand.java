@@ -12,6 +12,7 @@ import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -27,6 +28,8 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 
 import java.util.*;
+
+import static com.falazar.farmupcraft.command.PlotCommand.calculatePlotCost;
 
 public class VillageCommand {
     public static final CustomLogger LOGGER = new CustomLogger(VillageCommand.class.getSimpleName());
@@ -83,6 +86,23 @@ public class VillageCommand {
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
 
+        // Define the "levelup" sub-command for players current village.
+        LiteralArgumentBuilder<CommandSourceStack> levelUpBuilder = Commands.literal("levelup")
+                .executes(context -> {
+                    return levelUpVillage(context.getSource());
+                });
+        builder.then(levelUpBuilder);
+
+        // Define the "setlevel" sub-command for players current village. ADMIN ONLY!
+        LiteralArgumentBuilder<CommandSourceStack> setLevelBuilder = Commands.literal("setlevel")
+                .then(Commands.argument("level", IntegerArgumentType.integer(1, 10))
+                        .executes(context -> {
+                            Integer level = IntegerArgumentType.getInteger(context, "level");
+                            return setVillageLevel(context.getSource(), level);
+                        }))
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+        builder.then(setLevelBuilder);
+
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -92,10 +112,6 @@ public class VillageCommand {
         try {
             Entity nullablePlayer = source.getEntity();
             Player player = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
-            if (player == null) {
-                source.sendFailure(Component.literal("Player not found."));
-                return 0;
-            }
             if (villageName == null || villageName.isEmpty()) {
                 source.sendFailure(Component.literal("Village name is required for village plot type."));
                 return 0;
@@ -104,15 +120,11 @@ public class VillageCommand {
 //            Level level = player.level();
 
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+            DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
+            ChunkData chunkData = chunkDataDatabase.getData(chunkPos.toLong());
             // TODO can we hide all this inside???
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(player.getUUID());
-            if (playerData == null) {
-                source.sendFailure(Component.literal("Player data not found."));
-                return 0;
-            }
             LOGGER.info("DEBUG TODO PlayerData: " + playerData.getId() + ", " + playerData.getHomeVillageUUID());
 
             // Step 1: Check if chunk is owned. (Inside another village)
@@ -192,8 +204,8 @@ public class VillageCommand {
 
             // Mark chunks to village.
             for (ChunkPos pos : villageChunks) {
-                ChunkData chunk = new ChunkData("village", player.getId(), villageId); // hack test.
-                dataBase.putData(pos.toLong(), chunk);
+                ChunkData chunk = new ChunkData("village", player.getId(), villageId);
+                chunkDataDatabase.putData(pos.toLong(), chunk);
             }
 
             LOGGER.info("Plot bought at " + chunkPos);
@@ -235,15 +247,15 @@ public class VillageCommand {
             // TODO MAKE METHOD.
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
-            VillageData villageData = null;
+            VillageData village = null;
             if (villageName == null) {
                 UUID villageId = playerData.getHomeVillageUUID();
                 DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
-                villageData = dataBase.getData(villageId);
+                village = dataBase.getData(villageId);
             } else {
-                villageData = findVillageByName(villageName);
+                village = findVillageByName(villageName);
             }
-            if (villageData == null) {
+            if (village == null) {
                 source.sendFailure(Component.literal("No village data found."));
                 return 0;
             }
@@ -255,10 +267,37 @@ public class VillageCommand {
 
             // Build a response message
             MutableComponent response = Component.literal("Village info: "
-                    + "Name: " + villageData.getName() + " \n"
-                    + " at " + villageData.getPosition().getWorldPosition().toShortString() + " \n"
-                    + " with claimed chunks = " + villageData.getClaimedChunks().size());
+                    + "Name: " + village.getName() + " \n"
+                    + "Level: " + village.getLevel() + " \n"
+                    + " at " + village.getPosition().getWorldPosition().toShortString() + " \n"
+                    + " with claimed chunks = " + village.getClaimedChunks().size() + "\n");
 //            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
+
+            // Loop over all plots and count them, and farms.
+            int plotCnt = 0;
+            int farmCnt = 0;
+            for (ChunkPos pos : village.getClaimedChunks()) {
+                ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(pos.toLong());
+                if (chunkData != null) {
+                    if (!chunkData.getType().equalsIgnoreCase("village")) {
+                        plotCnt++;
+                    }
+                    if (chunkData.getType().equalsIgnoreCase("farm")) {
+                        farmCnt++;
+                    }
+                }
+            }
+            response = response.append(Component.literal(" with " + plotCnt + " plots and " + farmCnt + " farms. \n"));
+
+            // Plot Cost: 100 + 30 * plots TODO test
+//            int plotCost = 100 + 100 * plotCnt;
+            int plotCost = PlotCommand.calculatePlotCost(village, "plot");
+            response = response.append(Component.literal(" Plot cost: " + plotCost + " coins. \n"));
+
+            // Daily Cost: villageLevel * 100 + 50 per plot? TODO test
+            int dailyCost = village.getLevel() * 100 + plotCnt * 50;
+            response = response.append(Component.literal(" Daily cost: " + dailyCost + " coins. \n"));
+
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -432,6 +471,153 @@ public class VillageCommand {
         return 0;
     }
 
+    // Sets the village level - NO CHUNK CHANGES!
+    public static int setVillageLevel(CommandSourceStack source, Integer level) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // Load village from db that villager is in.
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+
+            // Update level in db.
+            village.setLevel(level);
+            villageDatabase.putData(village.getUUID(), village);
+
+            // Build a response message
+            MutableComponent response = Component.literal("Village level set to: " + village.getLevel());
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Level up a village.
+    public static int levelUpVillage(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // Load village from db that villager is in.
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+
+            int currLevel = village.getLevel();
+
+            // STEP 2: Check if already max level.
+            if (currLevel >= 10) {
+                source.sendFailure(Component.literal("Village is already at max level 10."));
+                return 0;
+            }
+
+            // STEP 3: Check cost to level up.
+            // TODO check if can afford.
+            int levelUpCost = currLevel * 200;
+            // todo helper method.
+            Level level = playerSource.level();
+            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+            if (!player.getWallet().hasEnough(bronzeCoin, levelUpCost)) {
+                source.sendFailure(Component.literal("Not enough coins to level up village. Cost is " + levelUpCost));
+                return 0;
+            }
+            // STEP 4: Subtract money out of player.  TODO helper method hide this???
+            player.getWallet().remove(bronzeCoin, levelUpCost);
+            ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
+
+            // check any other requirements.
+
+            // Update level in db.
+            village.setLevel(currLevel + 1);
+
+            // Add in all new chunks.....
+            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+            UUID villageId = village.getUUID();
+
+            // Add extra chunks until you equal (4 + level) * 2 + 1 squared chunks.
+            int currentLevelSize = (4 + village.getLevel()) * 2 + 1;
+            int previousLevelSize = (4 + (village.getLevel() - 1)) * 2 + 1;
+            int chunksCount = (currentLevelSize * currentLevelSize) - (previousLevelSize * previousLevelSize);
+
+            LOGGER.info("Level up village: " + village.getLevel() + " chunksCount = " + chunksCount);
+            ChunkPos centerChunkPos = village.getPosition();
+            LOGGER.info("Center chunk at " + centerChunkPos.toString());
+            List<ChunkPos> newChunks = new ArrayList<>();
+            // Add them randomly along the edge of current chunks.
+            int tries = 0;
+            // Calculate the range based on the village level
+            int range = 8 + 2 * village.getLevel();
+            while (chunksCount > 0 && tries < 5000) {
+                tries++;
+
+                // Generate random x and z positions within the range, centered around the current position
+                int x = centerChunkPos.x + (int) ((Math.random() * 2 - 1) * range);
+                int z = centerChunkPos.z + (int) ((Math.random() * 2 - 1) * range);
+                ChunkPos chunkPos = new ChunkPos(x, z);
+//                LOGGER.info("DEBUG Checking from "+centerChunkPos.toString()+"  at chunkPos = " + chunkPos.toString() + ", chunksCount = " + chunksCount +
+//                        ", tries = " + tries);
+//                if (!village.getClaimedChunkSet().contains(chunkPos.toLong())
+                if (!village.getClaimedChunks().contains(chunkPos)
+                        && touchingVillageChunk(chunkPos)
+                        // or touching new chunks.... or save new chunk each time....
+                        && !newChunks.contains(chunkPos)) {
+                    LOGGER.info("DEBUG TODO Adding new chunk at: " + chunkPos.toString());
+                    newChunks.add(chunkPos); // dont need these...
+
+                    // Add now
+                    ChunkData chunk = new ChunkData("village", player.getId(), villageId);
+                    chunkDatabase.putData(chunkPos.toLong(), chunk);
+                    village.addClaimedChunk(chunkPos);
+
+                    chunksCount--;
+                }
+            }
+
+            // Draw out in text
+
+//            villageDatabase.putData(village.getUUID(), village);
+            // TODO TEST
+
+            // Build a response message
+            MutableComponent response = Component.literal("Village leveled up to: " + village.getLevel());
+            response = response.append(Component.literal(" and added " + newChunks.size() + " new chunks. \n"));
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static boolean touchingVillageChunk(ChunkPos chunkPos) {
+        // TODO check if touching village chunk.
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+
+        // Check four neighbors nearby.
+        if (dataBase.getData(new ChunkPos(chunkPos.x + 1, chunkPos.z).toLong()) != null) {
+            return true;
+        }
+        if (dataBase.getData(new ChunkPos(chunkPos.x - 1, chunkPos.z).toLong()) != null) {
+            return true;
+        }
+        if (dataBase.getData(new ChunkPos(chunkPos.x, chunkPos.z + 1).toLong()) != null) {
+            return true;
+        }
+        if (dataBase.getData(new ChunkPos(chunkPos.x, chunkPos.z - 1).toLong()) != null) {
+            return true;
+        }
+
+        return false;
+    }
+
+
     // TODO MOVE these over to a manager.
     // Get closest village to location.
     public static VillageData getClosestVillage(BlockPos pos) {
@@ -458,7 +644,6 @@ public class VillageCommand {
     }
 
     // Check if village name is unique.
-
     public static boolean isVillageNameUnique(String villageName) {
         DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
         Collection<VillageData> dataList = dataBase.getValues();

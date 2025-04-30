@@ -11,10 +11,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class VillageData {
     public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance ->
@@ -32,8 +29,8 @@ public class VillageData {
     private String name;
     private final ChunkPos position;
     private int level;
-    private final List<ChunkPos> claimedChunks;
-    private final Set<Long> claimedChunkSet = new HashSet<>();
+    private List<ChunkPos> claimedChunks;
+    private Set<Long> claimedChunkSet = new HashSet<>();
     private final boolean bought;  // TODO what is this one?
 
     // TODO add coins to see if we have any or are in debt.
@@ -51,7 +48,8 @@ public class VillageData {
         this.name = name;
         this.position = position;
         this.level = level;
-        this.claimedChunks = claimedChunks;
+//        this.claimedChunks = claimedChunks;
+        this.claimedChunks = new ArrayList<>(claimedChunks); // Convert to mutable list
         this.bought = bought;
         for (ChunkPos pos : claimedChunks) {
             claimedChunkSet.add(ChunkPos.asLong(pos.x, pos.z));
@@ -106,6 +104,11 @@ public class VillageData {
 
     public Set<Long> getClaimedChunkSet() {
         return claimedChunkSet;
+    }
+
+    public void addClaimedChunk(ChunkPos chunkPos) {
+        claimedChunks.add(chunkPos);
+        claimedChunkSet.add(ChunkPos.asLong(chunkPos.x, chunkPos.z));
     }
 
     public boolean isBought() {

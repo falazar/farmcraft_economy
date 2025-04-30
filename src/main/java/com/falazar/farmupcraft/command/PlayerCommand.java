@@ -63,7 +63,7 @@ public class PlayerCommand {
 
         // Admin: Define the "givecoins" and amount sub-command for admin only.
         LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
-                .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
                         .executes(context -> {
                             int amount = IntegerArgumentType.getInteger(context, "amount");
                             return givePlayerCoins(context.getSource(), amount);

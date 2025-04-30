@@ -29,7 +29,9 @@ VILLAGES:
 
 Get a way to show village areas (or others) on JourneyMap
     --TODO They had a decent integration a couple years back, should be able to use.
+    --REF: https://github.com/TeamJM/journeymap-api/blob/1.20.x_1.9-forge/src/main/java/example/mod/client/plugin/SamplePolygonOverlayFactory.java
     --Similar: https://www.reddit.com/r/feedthebeast/comments/gq172e/this_is_my_mod_mapfrontiers_an_addon_for/
+    -- REF: https://teamjm.github.io/journeymap-docs/5.9.x/Tools%20and%20Customisation/integration/
 
 #############################################################
 Adventure Areas
