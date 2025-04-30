@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Wallet {
-
     private final List<CoinStack> coins;
 
     public static final Codec<Wallet> CODEC = CoinStack.CODEC.listOf().fieldOf("coins").codec()
@@ -19,7 +18,7 @@ public class Wallet {
     public void add(Coin coin, int amount) {
         for (CoinStack stack : coins) {
             if (stack.getCoin() == coin) {
-                stack.increment(amount);
+                stack.increment(amount);  // TODO scouter, this isnt working or?
                 return;
             }
         }

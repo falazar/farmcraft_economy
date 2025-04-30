@@ -289,13 +289,12 @@ public class VillageCommand {
             }
             response = response.append(Component.literal(" with " + plotCnt + " plots and " + farmCnt + " farms. \n"));
 
-            // Plot Cost: 100 + 30 * plots TODO test
-//            int plotCost = 100 + 100 * plotCnt;
+            // Plot Cost: 100 + 30 * plots TODO testing
             int plotCost = PlotCommand.calculatePlotCost(village, "plot");
             response = response.append(Component.literal(" Plot cost: " + plotCost + " coins. \n"));
 
-            // Daily Cost: villageLevel * 100 + 50 per plot? TODO test
-            int dailyCost = village.getLevel() * 100 + plotCnt * 50;
+            // Daily Cost: villageLevel * 100 + 50 per plot? TODO test lowered 50>30
+            int dailyCost = village.getLevel() * 100 + plotCnt * 30;
             response = response.append(Component.literal(" Daily cost: " + dailyCost + " coins. \n"));
 
             MutableComponent finalResponse = response;
@@ -581,7 +580,7 @@ public class VillageCommand {
 
             // Draw out in text
 
-//            villageDatabase.putData(village.getUUID(), village);
+            villageDatabase.putData(village.getUUID(), village);
             // TODO TEST
 
             // Build a response message

@@ -94,7 +94,7 @@ public class PlayerCommand {
             Registry<Coin> coinRegistry = serverLevel.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
             int bronzeCoins = wallet.get(bronzeCoin);
-            source.sendSuccess(() -> Component.literal("Coins: " + bronzeCoins), false);
+            source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
 
             // STEP 3: Pull home village info if set.
             if (player.getHomeVillageUUID() == null) {

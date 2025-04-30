@@ -288,15 +288,7 @@ public class PlotCommand {
     }
 
     public static int calculatePlotCost(VillageData villageData, String plotType) {
-        // TODO implement cost calculation logic here.
-        int baseCost = 100;
-        // 100 + 100 for each plot.... whatevers.
-
-        // Plot Cost: 100 + 100 * plots TODO test
-        // Plot Cost: 100 + 30 * plots TODO test
-
         // TODO get from village Object.
-
         // TODO MAKE METHOD
         // Loop over all plots and count them, and farms.
         int plotCnt = 0;
@@ -308,9 +300,13 @@ public class PlotCommand {
                 }
             }
         }
+
+        int baseCost = 100;
+
+        // Plot Cost: 100 + 100 * plots TODO test
+        // Plot Cost: 100 + 30 * plots TODO testing lower cost.
         int totalCost = baseCost + 30 * plotCnt;
 
-        LOGGER.info("DEBUG: Plot cost for " + plotType + ": " + totalCost + " plotCnt = " + plotCnt);
         return totalCost;
     }
 }

@@ -78,10 +78,11 @@ public class PlayerDataOverlay {
         // TODO1 scouter not showing up now???
         // Show Coin stack display
         List<CoinStack> coins = playerData.getWallet().getAllStacks();
-        for (CoinStack stack : coins) {
-            String line = stack.getCoin().getDisplayName() + ": " + stack.getAmount();
-            guiGraphics.drawString(mc.font, Component.literal(line), paddingLeft, currentY, 0xFFD700, true);
-            currentY += lineSpacing;
-        }
+//        for (CoinStack stack : coins) {
+//            String line = stack.getCoin().getDisplayName() + ": " + stack.getAmount();
+//            guiGraphics.drawString(mc.font, Component.literal(line), paddingLeft, currentY, 0xFFD700, true);
+//            currentY += lineSpacing;
+//        }
+        // TEMP HIDE BROKEN
     };
 }

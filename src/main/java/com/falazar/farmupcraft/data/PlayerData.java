@@ -84,7 +84,6 @@ public class PlayerData {
 
     /**
      * Gets the number of coins the player has.
-     *
      * @return the player's coins
      */
     public Wallet getWallet() {

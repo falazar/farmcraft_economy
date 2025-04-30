@@ -260,36 +260,39 @@ public class MarketCommand {
     // We will hard code a list here now to play with.
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
+            // keep in order, make easier to paste from sheet.
             Map<String, Integer> items = new HashMap<>();
-            items.put("pamhc2foodextended:schnitzelitem", 5);
-            items.put("pamhc2foodextended:ramenitem", 5);
-            items.put("pamhc2foodextended:sundayhighteaitem", 5);
-            items.put("pamhc2foodextended:fairybreaditem", 5);
-            items.put("pamhc2foodextended:groiledcheesesandwichitem", 5);
-            items.put("pamhc2foodcore:boiledeggitem", 5);
-            items.put("pamhc2foodextended:chickencelerycasseroleitem", 5);
-            items.put("pamhc2foodextended:meringueitem", 5);
-            items.put("pamhc2foodextended:springfieldcashewchickenitem", 5);
-            items.put("pamhc2foodextended:guavajellysandwichitem", 5);
-            items.put("pamhc2foodextended:durianjellysandwichitem", 5);
-            items.put("pamhc2foodextended:bibimbapitem", 5);
-            items.put("pamhc2foodcore:caramelappleitem", 5);
-            items.put("pamhc2foodextended:mcpamitem", 5);
-            items.put("pamhc2foodextended:sunflowerseedsbutteritem", 5);
+            items.put("pamhc2foodextended:schnitzelitem", 6);
+            items.put("pamhc2foodextended:tortillaitem", 5);
+            items.put("pamhc2foodextended:sundayhighteaitem", 6);
+            items.put("pamhc2foodextended:fairybreaditem", 6);
+            items.put("pamhc2foodextended:groiledcheesesandwichitem", 6);
+            items.put("pamhc2foodcore:boiledeggitem", 6);
+            items.put("pamhc2foodextended:chickencelerycasseroleitem", 6);
+            items.put("pamhc2foodextended:meringueitem", 6);
+            items.put("pamhc2foodextended:springfieldcashewchickenitem", 6);
+            items.put("pamhc2foodextended:pawpawjellytoastitem", 5);
+            items.put("pamhc2foodextended:durianjellysandwichitem", 6);
+            items.put("pamhc2foodextended:bibimbapitem", 6);
+            items.put("pamhc2foodcore:caramelappleitem", 6);
+            items.put("pamhc2foodextended:mcpamitem", 6);
+            items.put("pamhc2foodcore:cookedgroundbeefitem", 5);
             return items;
         } else if (type.equals("wood")) {
             Map<String, Integer> items = new HashMap<>();
-            items.put("cfm:birch_upgraded_fence", 5);
-            items.put("mcwbridges:oak_log_bridge_middle", 5);
-            items.put("macawsbridgesbop:hellbark_rail_bridge", 5);
-            items.put("valhelsia_structures:birch_post", 5);
-            items.put("valhelsia_structures:bundled_mangrove_posts", 5);
+            items.put("cfm:birch_upgraded_fence", 2);
+            items.put("cfm:jungle_bedside_cabinet", 5);
+            items.put("macawsbridgesbop:hellbark_rail_bridge", 6);
+            items.put("valhelsia_structures:birch_post", 2);
+            items.put("valhelsia_structures:bundled_mangrove_posts", 6);
             return items;
         } else if (type.equals("stone")) {
             Map<String, Integer> items = new HashMap<>();
-            items.put("cobblestone", 5);
-            items.put("stone_brick", 5);
-            items.put("granite", 5);
+            items.put("minecraft:cobblestone", 1);
+            items.put("minecraft:stone_bricks", 1);
+            items.put("minecraft:granite", 1);
+            items.put("minecraft:diorite", 1);
+            items.put("minecraft:andesite", 1);
             return items;
         }
         return new HashMap<>();
