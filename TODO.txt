@@ -1,5 +1,10 @@
 
 TODO list
+BUGS: not saving player coins correctly, not showing.
+Not showing wallet correctly on overlay
+Overlay not always updating after an action, like buy plot or village?
+Diamond Border not showing.
+GIVE player a UUID field properly
 
 DONE - Add journey map to test builder.
 
@@ -26,6 +31,11 @@ VILLAGES:
   --TODO ignore (dont shrink, if level is reduced)
   --TODO Add levelUpVillage() method that adds one level.
 
+PLAYERS:
+    TODO Add level and experience fields.
+    TODO check easy access to skills, number of stone mined, number of chickens killed etc?
+    TODO add experience adder on regular things.
+    TODO add exp gain for Quests...
 
 Get a way to show village areas (or others) on JourneyMap
     --TODO They had a decent integration a couple years back, should be able to use.

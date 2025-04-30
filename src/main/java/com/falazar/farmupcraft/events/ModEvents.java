@@ -1,7 +1,6 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
-import com.falazar.farmupcraft.command.VillageCommand;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
@@ -9,11 +8,8 @@ import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.database.*;
 import com.falazar.farmupcraft.database.serializers.*;
 import com.falazar.farmupcraft.util.CustomLogger;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -21,7 +17,6 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
-import java.util.Collection;
 import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
@@ -52,8 +47,6 @@ public class ModEvents {
             .setValueSerializer(new CodecDataSerializer<>(VillageData.CODEC))
             .autoSync()
             .build();
-
-
 
 
     public static DataBase<UUID, VillageData> getVillageDatabase() {
@@ -93,12 +86,8 @@ public class ModEvents {
         return dataBaseAccess.get(level);
     }
 
-
-
-
     @SubscribeEvent
     public static void initDataBases(FMLCommonSetupEvent event) {
-
         event.enqueueWork(
                 () -> {
                     DataBaseManager.registerDataBaseAccess(BIOME_RULES_DATABASE.getDatabaseName(), BIOME_RULES_DATABASE);

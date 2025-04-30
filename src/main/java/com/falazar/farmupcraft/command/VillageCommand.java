@@ -16,6 +16,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -102,6 +103,14 @@ public class VillageCommand {
                         }))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(setLevelBuilder);
+
+        // Define the "rundailyupkeep" sub-command for players current village. ADMIN ONLY!
+        LiteralArgumentBuilder<CommandSourceStack> runDailyUpkeepBuilder = Commands.literal("rundailyupkeep")
+                .executes(context -> {
+                    return runVillageDailyUpkeep(context.getSource());
+                })
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+        builder.then(runDailyUpkeepBuilder);
 
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
@@ -193,7 +202,7 @@ public class VillageCommand {
 
             // Step 8: Create Village object and save it
             UUID villageId = UUID.randomUUID();
-            VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks, true);
+            VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks, true, 0);
             villageDatabase.putData(villageId, villageData);
             LOGGER.info("Village " + villageName + " created with id " + villageId +
                     " saved with " + villageChunks.size() + " chunks around " + player.blockPosition());
@@ -239,12 +248,8 @@ public class VillageCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (playerSource == null) {
-                source.sendFailure(Component.literal("Player not found."));
-                return 0;
-            }
 
-            // TODO MAKE METHOD.
+            // TODO MAKE HELPER METHOD.
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
             VillageData village = null;
@@ -260,28 +265,22 @@ public class VillageCommand {
                 return 0;
             }
 
-            // TODO show level
-            // TODO show plots
-            // TODO show plot counts
-            // TODO show next plot cost.
-
             // Build a response message
-            MutableComponent response = Component.literal("Village info: "
-                    + "Name: " + village.getName() + " \n"
-                    + "Level: " + village.getLevel() + " \n"
-                    + " at " + village.getPosition().getWorldPosition().toShortString() + " \n"
-                    + " with claimed chunks = " + village.getClaimedChunks().size() + "\n");
-//            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
+            MutableComponent response = Component.literal("")
+                    .append(Component.literal("Village Name: " + village.getName() + " \n").withStyle(ChatFormatting.YELLOW)) // Yellow
+                    .append(Component.literal("Level: " + village.getLevel() + " \n")) // White
+                    .append(Component.literal("Coins: " + village.getCoins() + " \n")
+                            .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if negative, white otherwise
+                    .append(Component.literal(" at " + village.getPosition().getWorldPosition().toShortString() + " \n")) // White
+                    .append(Component.literal(" with claimed chunks = " + village.getClaimedChunks().size() + "\n")); // White
+            //            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
 
             // Loop over all plots and count them, and farms.
-            int plotCnt = 0;
+            int plotCnt = getPlotCount(village);
             int farmCnt = 0;
             for (ChunkPos pos : village.getClaimedChunks()) {
                 ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(pos.toLong());
                 if (chunkData != null) {
-                    if (!chunkData.getType().equalsIgnoreCase("village")) {
-                        plotCnt++;
-                    }
                     if (chunkData.getType().equalsIgnoreCase("farm")) {
                         farmCnt++;
                     }
@@ -293,8 +292,10 @@ public class VillageCommand {
             int plotCost = PlotCommand.calculatePlotCost(village, "plot");
             response = response.append(Component.literal(" Plot cost: " + plotCost + " coins. \n"));
 
+            // TODO MAKE METHOD
             // Daily Cost: villageLevel * 100 + 50 per plot? TODO test lowered 50>30
-            int dailyCost = village.getLevel() * 100 + plotCnt * 30;
+//            int dailyCost = village.getLevel() * 100 + plotCnt * 30;
+            int dailyCost = getDailyCost(village);
             response = response.append(Component.literal(" Daily cost: " + dailyCost + " coins. \n"));
 
             MutableComponent finalResponse = response;
@@ -305,6 +306,27 @@ public class VillageCommand {
         }
         return 0;
     }
+
+    public static int getDailyCost(VillageData village) {
+         int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
+
+         return dailyCost;
+    }
+
+    public static int getPlotCount(VillageData village) {
+        int plotCnt = 0;
+        for (ChunkPos pos : village.getClaimedChunks()) {
+            ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(pos.toLong());
+            if (chunkData != null) {
+                if (!chunkData.getType().equalsIgnoreCase("village")) {
+                    plotCnt++;
+                }
+            }
+        }
+
+        return plotCnt;
+    }
+
 
     // List all villages in the world.
     public static int listVillages(CommandContext<CommandSourceStack> context) {
@@ -594,6 +616,35 @@ public class VillageCommand {
         }
         return 0;
     }
+
+    public static int runVillageDailyUpkeep(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // Load village from db that villager is in.
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+
+            // TODO run daily upkeep.
+            // TODO TEST
+            // Subtract daily upkeep cost from village coins.
+            int dailyCost = getDailyCost(village);
+            village.subtractCoins(dailyCost);
+
+            // Build a response message.
+            MutableComponent response = Component.literal("Village daily upkeep ran, charged " + dailyCost + " coins.");
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Helper methods
 
     public static boolean touchingVillageChunk(ChunkPos chunkPos) {
         // TODO check if touching village chunk.
