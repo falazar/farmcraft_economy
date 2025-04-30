@@ -1,8 +1,6 @@
 package com.falazar.farmupcraft.command;
 
 import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.CurrencyCost;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
@@ -17,12 +15,9 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
-import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -71,13 +66,24 @@ public class PlotCommand {
         builder.then(buyBuilder);
 
         // Define the "delete" sub-command - For ADMIN only!
+        // removes chunk from database, and village
         LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
                 .executes(context -> {
-                    deletePlot(context.getSource());
+                    deleteChunk(context.getSource());
                     return 0;
                 })
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
+
+
+        // Define ADMIN setvillage chunk to reclaim a single chunk.
+        LiteralArgumentBuilder <CommandSourceStack> reclaimBuilder = Commands.literal("reclaim")
+                .executes(context -> {
+                    reclaimChunk(context.getSource());
+                    return 0;
+                })
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+        builder.then(reclaimBuilder);
 
 
         // Register the main "plot" command with the dispatcher
@@ -252,33 +258,58 @@ public class PlotCommand {
         return 0;
     }
 
-    // Delete a plot from DB right now, admin method.
-    public static void deletePlot(CommandSourceStack source) {
+    // Delete a chunk sfrom DB right now, admin method.
+    public static void deleteChunk(CommandSourceStack source) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (player == null) {
-                source.sendFailure(Component.literal("Player not found."));
-                return;
-            }
 
-//            Level level = player.level();
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ChunkData data = dataBase.getData(chunkPos.toLong());
-            if (data == null) {
-                source.sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
+            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+            ChunkData chunkData = chunkDatabase.getData(chunkPos.toLong());
+            if (chunkData == null) {
+                source.sendFailure(Component.literal("Chunk at " + chunkPos + " is not owned."));
                 return;
             }
 
             // TODO remove from DB.
-//            dataBase.removeData(chunkPos);
+            // TODO TEST
+            chunkDatabase.removeDataAsync(chunkPos.toLong(), null);
+            chunkDatabase.setDirty(); // TODO DOES THIS WORK.
             LOGGER.info("Plot deleted at " + chunkPos);
 
-            // TODO MAYBE REMOVE FROM VILLAGE LIST.
+            // TODO REMOVE FROM VILLAGE LIST.
 
             // Build a response message
             MutableComponent response = Component.literal("Plot deleted at " + chunkPos);
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static void reclaimChunk(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            UUID villageId = player.getHomeVillageUUID();
+            VillageData village = ModEvents.getVillageDatabase().getData(villageId);
+
+            // Create Chunk.
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+
+            // Add to village now.
+            ChunkData chunk = new ChunkData("village", playerSource.getId(), villageId);
+            chunkDatabase.putData(chunkPos.toLong(), chunk);
+            village.addClaimedChunk(chunkPos);
+
+            // Build a response message
+            MutableComponent response = Component.literal("Chunk added at " + chunkPos);
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {

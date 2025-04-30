@@ -260,42 +260,84 @@ public class MarketCommand {
     // We will hard code a list here now to play with.
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
-            // keep in order, make easier to paste from sheet.
-            Map<String, Integer> items = new HashMap<>();
-            items.put("pamhc2foodextended:schnitzelitem", 6);
-            items.put("pamhc2foodextended:tortillaitem", 5);
-            items.put("pamhc2foodextended:sundayhighteaitem", 6);
-            items.put("pamhc2foodextended:fairybreaditem", 6);
-            items.put("pamhc2foodextended:groiledcheesesandwichitem", 6);
-            items.put("pamhc2foodcore:boiledeggitem", 6);
-            items.put("pamhc2foodextended:chickencelerycasseroleitem", 6);
-            items.put("pamhc2foodextended:meringueitem", 6);
-            items.put("pamhc2foodextended:springfieldcashewchickenitem", 6);
-            items.put("pamhc2foodextended:pawpawjellytoastitem", 5);
-            items.put("pamhc2foodextended:durianjellysandwichitem", 6);
-            items.put("pamhc2foodextended:bibimbapitem", 6);
-            items.put("pamhc2foodcore:caramelappleitem", 6);
-            items.put("pamhc2foodextended:mcpamitem", 6);
-            items.put("pamhc2foodcore:cookedgroundbeefitem", 5);
-            return items;
+            String foodString = """
+                    pamhc2foodextended:schnitzelitem\t6
+                    pamhc2foodextended:tortillaitem\t5
+                    pamhc2foodextended:sundayhighteaitem\t6
+                    pamhc2foodextended:fairybreaditem\t6
+                    pamhc2foodextended:groiledcheesesandwichitem\t6
+                    pamhc2foodcore:boiledeggitem\t6
+                    pamhc2foodextended:chickencelerycasseroleitem\t6
+                    pamhc2foodextended:meringueitem\t6
+                    pamhc2foodextended:springfieldcashewchickenitem\t6
+                    pamhc2foodextended:pawpawjellytoastitem\t5
+                    pamhc2foodextended:durianjellysandwichitem\t6
+                    pamhc2foodextended:bibimbapitem\t6
+                    pamhc2foodcore:caramelappleitem\t6
+                    pamhc2foodextended:mcpamitem\t6
+                    pamhc2foodcore:cookedgroundbeefitem\t5
+                    """;
+            return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
-            Map<String, Integer> items = new HashMap<>();
-            items.put("cfm:birch_upgraded_fence", 2);
-            items.put("cfm:jungle_bedside_cabinet", 5);
-            items.put("macawsbridgesbop:hellbark_rail_bridge", 6);
-            items.put("valhelsia_structures:birch_post", 2);
-            items.put("valhelsia_structures:bundled_mangrove_posts", 6);
-            return items;
+            // Use a text block string here:
+            String woodString = """
+                    cfm:birch_upgraded_fence	2
+                    cfm:jungle_bedside_cabinet	4
+                    macawsbridgesbop:hellbark_rail_bridge	6
+                    valhelsia_structures:birch_post	0
+                    valhelsia_structures:bundled_mangrove_posts	6
+                    """;
+            // Parse that into our items now.
+            return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
-            Map<String, Integer> items = new HashMap<>();
-            items.put("minecraft:cobblestone", 1);
-            items.put("minecraft:stone_bricks", 1);
-            items.put("minecraft:granite", 1);
-            items.put("minecraft:diorite", 1);
-            items.put("minecraft:andesite", 1);
-            return items;
+            String stoneString = """
+                    minecraft:cobblestone\t1
+                    minecraft:stone_bricks\t1
+                    minecraft:granite\t1
+                    minecraft:diorite\t1
+                    minecraft:andesite\t1
+                    """;
+            return parseItemsFromString(stoneString);
+        } else if (type.equals("general")) {
+            String generalString = """
+                    minecraft:brown_concrete_powder	5
+                    valhelsia_structures:big_magenta_glazed_jar	5
+                    minecraft:white_stained_glass	5
+                    cfm:cyan_cooler	5
+                    minecraft:waxed_weathered_cut_copper_stairs	5
+                    cfm:black_kitchen_drawer	5
+                    minecraft:sunflower	5
+                    biomesoplenty:tall_lavender	5
+                    minecraft:orange_wool	5
+                    cfm:fridge_light	5
+                    """;
+            // maybe no concrete, too annoying?  maybe no stained glass panes, or make harder?
+            // copper one is broken, odd.
+            return parseItemsFromString(generalString);
+        } else {
+            LOGGER.info("DEBUG unknown market type: " + type);
+            return new HashMap<>(); // Return an empty map if the type is unknown
         }
-        return new HashMap<>();
+    }
+
+    // Temp helper method.
+    private static Map<String, Integer> parseItemsFromString(String input) {
+        Map<String, Integer> items = new LinkedHashMap<>(); // Use LinkedHashMap to maintain order
+        String[] lines = input.split("\n");
+        for (String line : lines) {
+            LOGGER.info("DEBUG parsing line: " + line);
+            String[] parts = line.split("\t");
+            if (parts.length == 2) {
+                LOGGER.info("DEBUG part 0 = " + parts[0]);
+                LOGGER.info("DEBUG part 1 = " + parts[1]);
+                String item = parts[0].trim();
+                LOGGER.info("DEBUG item = " + item);
+                int price = Integer.parseInt(parts[1].trim());
+                items.put(item, price);
+            }
+        }
+        LOGGER.info("DEBUG items = " + items);
+        return items;
     }
 
     // General searchability method to find items, test one to play around with.

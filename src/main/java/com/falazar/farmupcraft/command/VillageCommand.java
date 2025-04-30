@@ -429,6 +429,8 @@ public class VillageCommand {
                     chunkDataDatabase.removeDataAsync(pos.toLong(), null);
                 }
             }
+            // TODO this not working, scouter???
+
 
 //            villageData.delete(); todo scouter.
             // TODO remove from db. test
@@ -586,6 +588,8 @@ public class VillageCommand {
 //                if (!village.getClaimedChunkSet().contains(chunkPos.toLong())
                 if (!village.getClaimedChunks().contains(chunkPos)
                         && touchingVillageChunk(chunkPos)
+                        // TODO TODO make sure same name as our village, for when villages get close!!!!
+
                         // or touching new chunks.... or save new chunk each time....
                         && !newChunks.contains(chunkPos)) {
                     LOGGER.info("DEBUG TODO Adding new chunk at: " + chunkPos.toString());

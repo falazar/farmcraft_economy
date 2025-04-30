@@ -45,6 +45,7 @@ Get a way to show village areas (or others) on JourneyMap
 
 #############################################################
 Adventure Areas
+Add usage for cooking tools, small amount!   like Oak Posts and axe
 
 Create find islands and lakes command
     -- Command created - MOSTLY DONE
@@ -54,8 +55,17 @@ Create find islands and lakes command
 Find nearby structures
     -- TODO
 
-Find nearby villagers
-    -- TODO Locate near villagers
-    -- TODO See if we can get their names.
-    MOD: villagernames-1.20.1-7.1 updating to newest.
-    REF: https://www.curseforge.com/minecraft/mc-mods/villager-names
+VILLAGERS:
+    -- DONE - Locate nearby villagers
+    -- DONE - See if we can get their names.
+        MOD: villagernames-1.20.1-7.1 updating to newest.
+        REF: https://www.curseforge.com/minecraft/mc-mods/villager-names
+    -- Possibly give some a description -
+        When coming close give a description of the villager.
+        but dont spam it, only show once then cache that it was shown, per server login
+    -- add extra command to show description
+    -- connect to outside db or text files?
+    -- use ai to add descriptions profiles?
+    -- Create a mayor?
+
+
