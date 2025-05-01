@@ -7,6 +7,7 @@ import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
@@ -85,13 +86,29 @@ public class TesterCommand {
                 });
         builder.then(findVillagersBuilder);
 
+        // Define the "renamevillager" sub-command, ADMIN only!
+        // Add two inputs oldName and newName strings, required
+        LiteralArgumentBuilder<CommandSourceStack> renameVillagerBuilder = Commands.literal("renamevillager")
+                .then(Commands.argument("oldName", StringArgumentType.string())
+                        .then(Commands.argument("newName", StringArgumentType.string())
+                                .executes(context -> {
+                                    // Get the old and new names from the command arguments
+                                    String oldName = StringArgumentType.getString(context, "oldName");
+                                    String newName = StringArgumentType.getString(context, "newName");
+                                    // Call the renameVillager method with the old and new names
+                                    return renameVillager(context.getSource(), oldName, newName);
+                                })
+                        )
+                );
+        builder.then(renameVillagerBuilder);
+
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
     }
 
+    // Find all villagers in a village, or near the player.
+    // For now just show the player name and profession and UUID.
     public static int findNearVillagers(CommandSourceStack source) {
-        // TODO later find all villagers in a village, or near the player.
-        // For now just show the player name and UUID.
         Entity nullableSummoner = source.getEntity();
         Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
@@ -99,36 +116,50 @@ public class TesterCommand {
         BlockPos playerPos = playerSource.blockPosition();
         Level level = source.getLevel();
 
-        // Scan for any villager in 10 chunk radius
-        LOGGER.info("TEST ONE");
+        // Scan for any villager in 20 chunk radius
         TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting().ignoreLineOfSight();
         List<? extends LivingEntity> list = level.getNearbyEntities(
                 Villager.class,
                 playersTarget,
                 playerSource,
-                new net.minecraft.world.phys.AABB(playerPos).inflate(160)
+                new net.minecraft.world.phys.AABB(playerPos).inflate(320)
         );
 
         int count = list.size();
         LOGGER.info(" DEBUG: Found " + count + " villagers nearby.");
+        MutableComponent response = Component.literal("Found " + count + " villagers nearby.");
+        MutableComponent finalResponse = response;
+        source.sendSuccess(() -> finalResponse, false);
 
         // Loop over all villagers, give name and UUID and position.
         for (LivingEntity v : list) {
             LOGGER.info("\nLIST Villager found: ");
-            LOGGER.info("Villager UUID: " + v.getUUID());
-            LOGGER.info("Villagers found: " + v.getScoreboardName());
+//            LOGGER.info("Villager UUID: " + v.getUUID());
+//            LOGGER.info("Villagers found: " + v.getScoreboardName()); uuid
             LOGGER.info("Villager name: *" + v.getName().getString()+"*"); // Gives us their proper custom name! woot
             LOGGER.info("Villager position: " + v.blockPosition());
-            LOGGER.info("Villager type: " + v.getType().toString());
+//            LOGGER.info("Villager type: " + v.getType().toString()); villager
 
-            // Copied from their code....
             Villager villager = (Villager) v;
             VillagerData d = villager.getVillagerData();
-//            String rawProfession = d.profession.value().toString();
             String profession = d.getProfession().toString();
             String type = d.getType().toString();
-            LOGGER.info("Villager profession: " + profession);
-            LOGGER.info("Villager type: " + type);
+//            LOGGER.info("Villager profession: " + profession);
+            LOGGER.info("Villager type: " + type);  // plains and ? regular people?
+
+            // Find distance from me, approx, use manhattan distance.
+            BlockPos villagerPos = v.blockPosition();
+            int distance = Math.abs(villagerPos.getX() - playerPos.getX()) + Math.abs(villagerPos.getY() - playerPos.getY()) + Math.abs(villagerPos.getZ() - playerPos.getZ());
+
+            // Send to chat now name and profession.
+            response = Component.literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance);
+            MutableComponent finalResponse1 = response;
+            source.sendSuccess(() -> finalResponse1, false);
+            // TODO say direction too?
+            // todo optional dist input
+            // todo show position.
+            // Todo can we show what village they are in, reg minecraft, then ours?
+
 
             // can we change the name manually and give them a last name or something?
             // NOTE: Name doesnt match exactly?  space or hidden char???
@@ -147,6 +178,65 @@ public class TesterCommand {
 
             // TODO what event triggers when we are near a villager?
             // none create our own.
+        }
+
+        return 0;
+    }
+
+    // Rename a villager if they are nearby.
+    public static int renameVillager(CommandSourceStack source, String oldName, String newName) {
+        Entity nullableSummoner = source.getEntity();
+        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+        // Get player location
+        BlockPos playerPos = playerSource.blockPosition();
+        Level level = source.getLevel();
+
+        // Scan for any villager in 20 chunk radius
+        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting().ignoreLineOfSight();
+        List<? extends LivingEntity> list = level.getNearbyEntities(
+                Villager.class,
+                playersTarget,
+                playerSource,
+                new net.minecraft.world.phys.AABB(playerPos).inflate(320)
+        );
+
+        int count = list.size();
+        LOGGER.info(" DEBUG: Found " + count + " villagers nearby.");
+        MutableComponent response = Component.literal("Found " + count + " villagers nearby.");
+        MutableComponent finalResponse = response;
+        source.sendSuccess(() -> finalResponse, false);
+
+        boolean found = false;
+        // Loop over all villagers, give name and UUID and position.
+        for (LivingEntity v : list) {
+            LOGGER.info("\nLIST Villager found: ");
+            LOGGER.info("Villager name: *" + v.getName().getString()+"*"); // Gives us their proper custom name! woot
+
+            Villager villager = (Villager) v;
+            VillagerData d = villager.getVillagerData();
+            String profession = d.getProfession().toString();
+            LOGGER.info("Villager profession: " + profession);
+
+            // Rename npc if found.
+            String villagerName = v.getName().getString().trim(); // Get the name and trim whitespace
+            if (villagerName.equals(oldName)) {
+                LOGGER.info( "DEBUG Found villager "+ oldName + ", Success!");
+                response = Component.literal("Found villager " + oldName + ", renamed them to " + newName);
+                MutableComponent finalResponse1 = response;
+                source.sendSuccess(() -> finalResponse1, false);
+
+                // Set the new name
+                villager.setCustomName(Component.literal(newName));
+
+                found = true;
+            }
+        }
+        if (!found) {
+            LOGGER.info( "DEBUG Villager " + oldName + " not found.");
+            response = Component.literal("Villager " + oldName + " not found.");
+            MutableComponent finalResponse1 = response;
+            source.sendSuccess(() -> finalResponse1, false);
         }
 
         return 0;

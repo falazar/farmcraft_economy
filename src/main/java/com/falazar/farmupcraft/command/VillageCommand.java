@@ -20,13 +20,16 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 
 import java.util.*;
 
@@ -575,7 +578,7 @@ public class VillageCommand {
             // Add them randomly along the edge of current chunks.
             int tries = 0;
             // Calculate the range based on the village level
-            int range = 8 + 2 * village.getLevel();
+            int range = 8 + 3 * village.getLevel();
             while (chunksCount > 0 && tries < 5000) {
                 tries++;
 
@@ -586,6 +589,19 @@ public class VillageCommand {
 //                LOGGER.info("DEBUG Checking from "+centerChunkPos.toString()+"  at chunkPos = " + chunkPos.toString() + ", chunksCount = " + chunksCount +
 //                        ", tries = " + tries);
 //                if (!village.getClaimedChunkSet().contains(chunkPos.toLong())
+
+                // If an ocean chunk 2/3 chance skip it and continue.
+                Holder<Biome> biome = playerSource.level().getBiome(chunkPos.getWorldPosition());
+                if (biome.is(BiomeTags.IS_OCEAN)) {
+                    LOGGER.info("DEBUG notice Ocean chunk at: " + chunkPos.toString());
+                    if (Math.random() < 0.66) {
+                        LOGGER.info("DEBUG SKIPPING OCEAN CHUNK ");
+                        continue;
+                    }
+                    LOGGER.info("DEBUG adding ocean chunk ");
+                }
+
+
                 if (!village.getClaimedChunks().contains(chunkPos)
                         && touchingVillageChunk(chunkPos)
                         // TODO TODO make sure same name as our village, for when villages get close!!!!

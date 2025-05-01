@@ -261,57 +261,57 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodextended:schnitzelitem\t6
-                    pamhc2foodextended:tortillaitem\t5
-                    pamhc2foodextended:sundayhighteaitem\t6
-                    pamhc2foodextended:fairybreaditem\t6
-                    pamhc2foodextended:groiledcheesesandwichitem\t6
-                    pamhc2foodcore:boiledeggitem\t6
-                    pamhc2foodextended:chickencelerycasseroleitem\t6
-                    pamhc2foodextended:meringueitem\t6
-                    pamhc2foodextended:springfieldcashewchickenitem\t6
-                    pamhc2foodextended:pawpawjellytoastitem\t5
-                    pamhc2foodextended:durianjellysandwichitem\t6
-                    pamhc2foodextended:bibimbapitem\t6
-                    pamhc2foodcore:caramelappleitem\t6
-                    pamhc2foodextended:mcpamitem\t6
-                    pamhc2foodcore:cookedgroundbeefitem\t5
+                    pamhc2foodcore:baconandeggsitem\t5
+                    pamhc2foodextended:turkishdelightitem\t5
+                    pamhc2foodextended:sundayhighteaitem\t8
+                    pamhc2foodextended:fairybreaditem\t7
+                    pamhc2foodextended:groiledcheesesandwichitem\t7
+                    pamhc2foodcore:boiledeggitem\t7
+                    pamhc2foodextended:chickencelerycasseroleitem\t7
+                    pamhc2foodextended:meringueitem\t7
+                    pamhc2foodextended:springfieldcashewchickenitem\t7
+                    pamhc2foodextended:pawpawjellytoastitem\t6
+                    pamhc2foodextended:durianjellysandwichitem\t7
+                    pamhc2foodextended:bibimbapitem\t7
+                    pamhc2foodcore:caramelappleitem\t5
+                    pamhc2foodextended:mcpamitem\t7
+                    pamhc2foodcore:cookedgroundbeefitem\t6
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    cfm:birch_upgraded_fence	2
-                    cfm:jungle_bedside_cabinet	4
-                    macawsbridgesbop:hellbark_rail_bridge	6
-                    valhelsia_structures:birch_post	0
-                    valhelsia_structures:bundled_mangrove_posts	6
+                    cfm:birch_upgraded_fence	5
+                    biomesoplenty:palm_wood	5
+                    macawsbridgesbop:hellbark_rail_bridge	8
+                    valhelsia_structures:birch_post	1
+                    valhelsia_structures:bundled_mangrove_posts	8
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    minecraft:cobblestone\t1
-                    minecraft:stone_bricks\t1
-                    minecraft:granite\t1
-                    minecraft:diorite\t1
-                    minecraft:andesite\t1
+                    minecraft:cobblestone\t4
+                    minecraft:stone_bricks\t3
+                    minecraft:andesite_stairs\t3
+                    minecraft:diorite\t2
+                    minecraft:andesite\t3
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {
             String generalString = """
-                    minecraft:brown_concrete_powder	5
-                    valhelsia_structures:big_magenta_glazed_jar	5
-                    minecraft:white_stained_glass	5
-                    cfm:cyan_cooler	5
-                    minecraft:waxed_weathered_cut_copper_stairs	5
-                    cfm:black_kitchen_drawer	5
+                    cfm:purple_picket_gate	6
+                    valhelsia_structures:big_magenta_glazed_jar	4
+                    minecraft:white_stained_glass	4
+                    cfm:cyan_cooler	6
+                    minecraft:waxed_weathered_cut_copper_stairs	6
+                    cfm:black_kitchen_drawer	7
                     minecraft:sunflower	5
-                    biomesoplenty:tall_lavender	5
-                    minecraft:orange_wool	5
-                    cfm:fridge_light	5
+                    biomesoplenty:tall_lavender	6
+                    minecraft:orange_wool	6
+                    cfm:fridge_light	6
                     """;
-            // maybe no concrete, too annoying?  maybe no stained glass panes, or make harder?
+            // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, or make harder?
             // copper one is broken, odd.
             return parseItemsFromString(generalString);
         } else {
@@ -325,13 +325,9 @@ public class MarketCommand {
         Map<String, Integer> items = new LinkedHashMap<>(); // Use LinkedHashMap to maintain order
         String[] lines = input.split("\n");
         for (String line : lines) {
-            LOGGER.info("DEBUG parsing line: " + line);
             String[] parts = line.split("\t");
             if (parts.length == 2) {
-                LOGGER.info("DEBUG part 0 = " + parts[0]);
-                LOGGER.info("DEBUG part 1 = " + parts[1]);
                 String item = parts[0].trim();
-                LOGGER.info("DEBUG item = " + item);
                 int price = Integer.parseInt(parts[1].trim());
                 items.put(item, price);
             }
