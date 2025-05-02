@@ -9,11 +9,15 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
@@ -31,6 +35,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.phys.AABB;
 
 import java.util.*;
@@ -102,8 +107,121 @@ public class TesterCommand {
                 );
         builder.then(renameVillagerBuilder);
 
+        // Define the "findStructures" sub-command, ADMIN permissions only!
+        LiteralArgumentBuilder<CommandSourceStack> findStructuresBuilder = Commands.literal("findstructures")
+                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
+                .executes(context -> {
+                    findNearbyStructures(context.getSource());
+                    return 0;
+                });
+        builder.then(findStructuresBuilder);
+
+
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
+    }
+
+    // Find nearby structures
+    // NOTE: working for mineshafts and villages and ruined portals, need to test more for new mod structures.... hmmm
+    public static int findNearbyStructures(CommandSourceStack source) {
+        // REF: https://github.com/someaddons/structureessentials/blob/1.20.1/src/main/java/com/structureessentials/command/Command.java
+
+        final ServerLevel world = source.getLevel();
+        final Map<Structure, LongSet> structures = new HashMap<>();
+
+        // STEP 1: Loop nearby area, 10x10 chunk area.
+        final ChunkPos start = new ChunkPos(BlockPos.containing(source.getPosition()));
+        for (int x = -5; x < 5; x++) {
+            for (int z = -5; z < 5; z++) {
+                for (final Map.Entry<Structure, LongSet> entry : world.structureManager()
+                        .getAllStructuresAt(new BlockPos((start.x + x) << 4, 0, (start.z + z) << 4))
+                        .entrySet()) {
+                    structures.computeIfAbsent(entry.getKey(), k -> new LongOpenHashSet(entry.getValue())).addAll(entry.getValue());
+                }
+            }
+        }
+
+        source.sendSystemMessage(Component.literal("Structures nearby: ").withStyle(ChatFormatting.GOLD));
+
+        // STEP 2: Loop over all structures found, put in our list.
+        Map<BlockPos, String> structurePositions = new HashMap<>();
+        for (Map.Entry<Structure, LongSet> structureEntry : structures.entrySet()) {
+            world.structureManager().fillStartsForStructure(structureEntry.getKey(), structureEntry.getValue(),
+                    structureStart ->
+                    {
+                        structurePositions.put(structureStart.getBoundingBox().getCenter(), source.registryAccess().registry(Registries.STRUCTURE).get()
+                                .getKey(structureEntry.getKey()).toString());
+                    }
+            );
+        }
+
+        // TODO what else can we get from this structure info?
+        // need size and desc and as much as possible
+
+        // STEP 3: Sort list by distance then add fancy clickables.
+        final List<Map.Entry<BlockPos, String>> sortedStructures = new ArrayList<>(structurePositions.entrySet());
+        sortedStructures.sort(Comparator.comparingDouble(p -> p.getKey().distSqr(BlockPos.containing(source.getPosition()))));
+
+        // Simple version with dist and tp.
+        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
+            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
+
+            source.sendSystemMessage(Component.literal(structureEntry.getValue())
+                    .append(Component.literal("a. " + structureEntry.getKey().toShortString() + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
+                                return style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                        "/tp " + structureEntry.getKey().getX() + " "
+                                                + structureEntry.getKey().getY() + " "
+                                                + structureEntry.getKey().getZ()));
+                            }
+                    )));
+        }
+
+        // we get name and key, thats it, what other call do we need to get object?
+
+        // Fancier version with bounding.
+        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
+            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
+
+            // Convert the structure name (String) to a Structure object
+            ResourceLocation structureKey = new ResourceLocation(structureEntry.getValue());
+            Optional<Structure> structureOptional = source.registryAccess()
+                    .registry(Registries.STRUCTURE)
+                    .flatMap(registry -> registry.getOptional(structureKey));
+
+            if (structureOptional.isEmpty()) {
+                source.sendSystemMessage(Component.literal("Structure not found: " + structureEntry.getValue()).withStyle(ChatFormatting.RED));
+                continue;
+            }
+
+            Structure structure = structureOptional.get();
+
+            // Retrieve the StructureStart for the structure
+            world.structureManager().fillStartsForStructure(
+                    structure, // Use the Structure object here
+                    new LongOpenHashSet(Collections.singleton(ChunkPos.asLong(structureEntry.getKey().getX() >> 4, structureEntry.getKey().getZ() >> 4))),
+                    structureStart -> {
+                        // Get the bounding box of the structure
+                        var boundingBox = structureStart.getBoundingBox();
+                        int width = boundingBox.getXSpan();
+                        int height = boundingBox.getYSpan();
+                        int depth = boundingBox.getZSpan();
+
+                        // Send the structure info to the player
+                        source.sendSystemMessage(
+                                Component.literal(structureEntry.getValue())
+                                        .append(Component.literal("b. " + structureEntry.getKey().toShortString() + " d=" + dist))
+                                        .append(Component.literal(" Size: " + width + "x" + height + "x" + depth).withStyle(ChatFormatting.GREEN))
+                                        .withStyle(ChatFormatting.YELLOW)
+                                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                                "/tp " + structureEntry.getKey().getX() + " "
+                                                        + structureEntry.getKey().getY() + " "
+                                                        + structureEntry.getKey().getZ())))
+                        );
+                    }
+            );
+        }
+
+        return 0;
     }
 
     // Find all villagers in a village, or near the player.
@@ -136,7 +254,7 @@ public class TesterCommand {
             LOGGER.info("\nLIST Villager found: ");
 //            LOGGER.info("Villager UUID: " + v.getUUID());
 //            LOGGER.info("Villagers found: " + v.getScoreboardName()); uuid
-            LOGGER.info("Villager name: *" + v.getName().getString()+"*"); // Gives us their proper custom name! woot
+            LOGGER.info("Villager name: *" + v.getName().getString() + "*"); // Gives us their proper custom name! woot
             LOGGER.info("Villager position: " + v.blockPosition());
 //            LOGGER.info("Villager type: " + v.getType().toString()); villager
 
@@ -165,8 +283,8 @@ public class TesterCommand {
             // NOTE: Name doesnt match exactly?  space or hidden char???
             String villagerName = v.getName().getString().trim(); // Get the name and trim whitespace
             if (villagerName.equals("Alaina Fae")) {
-                LOGGER.info( "DEBUG Found exact string Alaina Fae, Success!");
-                source.sendSystemMessage( Component.literal("DEBUG Found exact string Alaina Fae, Success!"));
+                LOGGER.info("DEBUG Found exact string Alaina Fae, Success!");
+                source.sendSystemMessage(Component.literal("DEBUG Found exact string Alaina Fae, Success!"));
             }
 
 //            if (v.getName().toString().contains("Alaina") || v.getName().toString().contains("Liberty")) {
@@ -211,7 +329,7 @@ public class TesterCommand {
         // Loop over all villagers, give name and UUID and position.
         for (LivingEntity v : list) {
             LOGGER.info("\nLIST Villager found: ");
-            LOGGER.info("Villager name: *" + v.getName().getString()+"*"); // Gives us their proper custom name! woot
+            LOGGER.info("Villager name: *" + v.getName().getString() + "*"); // Gives us their proper custom name! woot
 
             Villager villager = (Villager) v;
             VillagerData d = villager.getVillagerData();
@@ -221,7 +339,7 @@ public class TesterCommand {
             // Rename npc if found.
             String villagerName = v.getName().getString().trim(); // Get the name and trim whitespace
             if (villagerName.equals(oldName)) {
-                LOGGER.info( "DEBUG Found villager "+ oldName + ", Success!");
+                LOGGER.info("DEBUG Found villager " + oldName + ", Success!");
                 response = Component.literal("Found villager " + oldName + ", renamed them to " + newName);
                 MutableComponent finalResponse1 = response;
                 source.sendSuccess(() -> finalResponse1, false);
@@ -233,7 +351,7 @@ public class TesterCommand {
             }
         }
         if (!found) {
-            LOGGER.info( "DEBUG Villager " + oldName + " not found.");
+            LOGGER.info("DEBUG Villager " + oldName + " not found.");
             response = Component.literal("Villager " + oldName + " not found.");
             MutableComponent finalResponse1 = response;
             source.sendSuccess(() -> finalResponse1, false);
@@ -503,7 +621,6 @@ public class TesterCommand {
         return "Number of lakes: " + lakeCount + "\n" +
                 "Number of islands: " + islandCount;
     }
-
 
     // Method to loop over all chunks in a village, and get the center spot biome there.
     // Then unique and sort count the list.
