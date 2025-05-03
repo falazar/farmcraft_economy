@@ -23,6 +23,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.StructureTags;
@@ -63,6 +65,7 @@ import java.util.*;
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
 import static com.falazar.farmupcraft.command.VillageCommand.getClosestVillage;
+import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
 import static org.apache.commons.lang3.StringUtils.replace;
 
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -73,8 +76,6 @@ public class CropsManager {
 
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
-    // NOTE: Planting IS allowed on non-farm plots - villager created plots. Only can hoe on farms though.
-    // TODO BUG can plant outside farm outside village area scouter.
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
@@ -224,6 +225,131 @@ public class CropsManager {
             event.setCanceled(true);
         }
     }
+
+    @SubscribeEvent
+    public static void onRightHarvestTrees(PlayerInteractEvent.RightClickBlock event) {
+        // Check if the event is on client side, then skip.
+        if (event.getEntity().level().isClientSide) {
+            return;
+        }
+        // Ensure the event is only processed for the main hand
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
+        // triggering multiple times?? once with air?
+        LOGGER.info("\n TRIGGERED: onRightHarvestTrees event. ");
+
+        // Step 1: If in creative mode, skip all rules and allow.
+        Player player = (Player) event.getEntity();
+        if (player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
+        if (player.isCreative()) {
+            return;
+        }
+
+        // STEP 2: If holding bone meal skip area also!
+        ItemStack stack = event.getItemStack();
+        if (stack.is(Items.BONE_MEAL)) {
+            return;
+        }
+
+        // STEP 3: Test if target block is tree fruit, else leave.
+        Level level = event.getLevel();
+        BlockPos clickedPos = event.getPos();
+        BlockState blockState = level.getBlockState(clickedPos);
+        Block block = blockState.getBlock();
+        String blockId = block.getDescriptionId();
+        if (!blockId.contains("pamhc2trees")) {
+            return;
+        }
+
+        // STEP 4: Get age of fruit.  TODO test cinnamon
+        int age = blockState.getValue(AGE);
+        if (age < 7) {
+            return;
+        }
+
+
+        // TESTING AREA!!!
+        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
+        ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
+        // times picked up?  hmmm harvested? used? eaten?
+        // Need actual item instead??? TODO
+        // block is a tree fruit named block.pamhc2trees.pamchestnut
+        // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
+        String itemname = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";;
+        // Get item from new name.
+//        LOGGER.info( "DEBUG: itemname is " + itemname);
+        // TODO MAKE METHOD.
+        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemname));
+        LOGGER.info( "DEBUG: item is " + item);
+        // get times picked up.
+        int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
+//        LOGGER.info("DEBUG: timespickedup " + timesPickedUp + " times.");
+        // get times dropped, (maybe subtract the two would be close?
+        int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
+//        LOGGER.info("DEBUG: timesdropped " + timesDropped + " times.");
+        int timesHarvested = timesPickedUp - timesDropped;
+        LOGGER.info("DEBUG: timesharvested " + timesHarvested + " times.");
+
+
+        // STEP 6: Calc a percent chance of failure, and fruit dies.
+        // If age is 7 its ripe, break block fruit!
+        // 75% chance of success, hardcoded for now.
+        int successPercent = 50;
+        successPercent += player.experienceLevel + (timesHarvested / 100) * 2;
+        successPercent = Math.min(successPercent, 98); // max 98 percent.
+        LOGGER.info("DEBUG: successPercent is " + successPercent);
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum >= successPercent) {
+            // Cancel event and return now.
+            event.setCanceled(true);
+
+            // Break the fruit block. (set to air)
+            BlockState air = Blocks.AIR.defaultBlockState();
+            level.setBlock(clickedPos, air, 3);
+
+            // Show message to player.
+            player.displayClientMessage(Component.literal("You failed to harvest the fruit!"), false);
+            return;
+        }
+
+
+
+        // TODO calc a percent chance of double fruit,
+        // TODO Higher at high nursery and player levels.
+        // STEP 7: Extra fruit.
+        // At player level over 25, increased chance of double fruits.
+        int doubleSuccessPercent = 40;
+        if (player.experienceLevel > 20) {
+            // TODO calc a percent chance of double fruit,
+            // TODO Higher at high nursery and player levels.
+            // Add in player level
+            doubleSuccessPercent += player.experienceLevel + (timesHarvested / 100) * 2; // (50% min)
+            LOGGER.info("DEBUG: doubleSuccessPercent is " + doubleSuccessPercent);
+            randomNum = rand.nextInt(100); // 100% 0-99
+            if (randomNum <= doubleSuccessPercent) {
+                int bonusCnt = 1;
+                if (randomNum <= doubleSuccessPercent - 25) {
+                    // Add another!
+                    bonusCnt = 2;
+                }
+
+                // Give player a fruit item.
+                ItemStack itemStack = new ItemStack(item, bonusCnt);
+                player.addItem(itemStack);
+                // Only show this message 1 out of 10 times.
+                randomNum = rand.nextInt(10); // 10% 0-9
+                if (randomNum == 0) {
+                    player.displayClientMessage(Component.literal("You got "+bonusCnt+" bonus fruit!"), false);
+                }
+                LOGGER.info("DEBUG: block got bonus fruit named "+ blockId);
+            }
+        }
+
+    }
+
+
 
 
     // Check anytime a player enters a new chunk.
@@ -756,38 +882,11 @@ public class CropsManager {
         if (player == null) {
             return;
         }
-        String string = "";
-        //StringBuilder builder = new StringBuilder();
-//
-        //Iterable<Item> allItems = ForgeRegistries.ITEMS;
-//
-        //// Filter information about items from the target mod
-        //List<String> itemNames = new ArrayList<>();
-        //for (Item item : allItems) {
-        //    // TODO add in basic foods and tree foods.
-//
-        //    // Check if the item belongs to the target mod
-        //    String itemName = item.getDescriptionId();
-        //    // Example: 'pamhc2foodcore:baconcheeseburgeritem'
-        //    // rolleritem bad ones, filter out.
-        //    // Look for edible as well.
-        //    if ((itemName.contains("pamhc2foodcore") || itemName.contains("pamhc2foodextended"))
-        //            && itemName.contains("item")
-        //            && item.isEdible()) {
-//      //          LOGGER.info("DEBUG: name = " + itemName);
-        //        ResourceLocation rl = ForgeRegistries.ITEMS.getKey(item);
-        //        builder.append(".tag(new ResourceLocation(\"" + rl + "\"))");
-        //    }
-        //}
-        //builder.append(";");
-        //LOGGER.info("Final string = " + builder.toString());
-
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
         MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
         String s = component.toString();
 //        LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
-
 
         // Only do rule if base stones or dirt.
         if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD)
