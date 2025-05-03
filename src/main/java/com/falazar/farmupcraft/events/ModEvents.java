@@ -5,6 +5,7 @@ import com.falazar.farmupcraft.command.VillageCommand;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.data.WorldData;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.database.*;
 import com.falazar.farmupcraft.database.serializers.*;
@@ -53,8 +54,22 @@ public class ModEvents {
             .autoSync()
             .build();
 
+    private static final DataBaseAccess<Integer, WorldData> WORLD_DATA_DATABASE = new DataBaseBuilder<Integer, WorldData>(prefix("world_data_database"))
+            .setKeySerializer(new IntDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(WorldData.CODEC))
+            .build();
 
+    public static WorldData getWorldData() {
+        return getWorldDataDatabase().getOrCreate(0, WorldData::new);
+    }
 
+    public static DataBase<Integer, WorldData> getWorldDataDatabase() {
+        return getDatabase(WORLD_DATA_DATABASE);
+    }
+
+    public static DataBase<Integer, WorldData> getWorldDataDatabase(Level level) {
+        return getDatabase(WORLD_DATA_DATABASE, level);
+    }
 
     public static DataBase<UUID, VillageData> getVillageDatabase() {
         return getDatabase(VILLAGE_DATABASE);
