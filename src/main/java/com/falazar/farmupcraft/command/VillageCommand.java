@@ -311,9 +311,9 @@ public class VillageCommand {
     }
 
     public static int getDailyCost(VillageData village) {
-         int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
+        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
 
-         return dailyCost;
+        return dailyCost;
     }
 
     public static int getPlotCount(VillageData village) {
@@ -358,6 +358,7 @@ public class VillageCommand {
             for (VillageData village : villageList) {
                 response = response.append(Component.literal(index++
                         + ". " + village.getName() +
+                        " Level " + village.getLevel() +
                         " at " + village.getPosition().getWorldPosition().toShortString()
                         + " with " + village.getClaimedChunks().size() + " chunks, \n"));
                 // TODO1 bug size is not getting right here, or claim got too many.
@@ -393,7 +394,6 @@ public class VillageCommand {
         return null;
     }
 
-    // TODO Delete a village from db.
     public static int deleteVillage(CommandSourceStack source, String villageName) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -404,8 +404,8 @@ public class VillageCommand {
             }
 
             DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
-            VillageData villageData = findVillageByName(villageName);
-            if (villageData == null) {
+            VillageData village = findVillageByName(villageName);
+            if (village == null) {
                 source.sendFailure(Component.literal("No village data found."));
                 return 0;
             }
@@ -424,25 +424,23 @@ public class VillageCommand {
 //                }
 //            }
 
+
             // TODO remove chunks data. test
             DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
-            for (ChunkPos pos : villageData.getClaimedChunks()) {
-                ChunkData chunkData = chunkDataDatabase.getData(pos.toLong());
+            for (ChunkPos chunkPos : village.getClaimedChunks()) {
+                ChunkData chunkData = chunkDataDatabase.getData(chunkPos.toLong());
                 if (chunkData != null) {
-                    chunkDataDatabase.removeDataAsync(pos.toLong(), null);
+                    chunkDataDatabase.removeDataAsync(chunkPos.toLong(), null);
                 }
             }
-            // TODO this not working, scouter???
+            // TODO test once more.
 
-
-//            villageData.delete(); todo scouter.
-            // TODO remove from db. test
-            villageDatabase.removeDataAsync(villageData.getUUID(), null);
+            villageDatabase.removeDataAsync(village.getUUID(), null);
             villageDatabase.setDirty();
 
 
             // Build a response message
-            MutableComponent response = Component.literal("Village deleted: " + villageData.getName());
+            MutableComponent response = Component.literal("Village deleted: " + village.getName());
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -559,75 +557,19 @@ public class VillageCommand {
 
             // check any other requirements.
 
-            // Update level in db.
+            // STEP 5: Update level in db.
             village.setLevel(currLevel + 1);
 
-            // Add in all new chunks.....
-            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
-            UUID villageId = village.getUUID();
+            // STEP 6: Add new chunks.
+            int newChunksCount = addNewVillageChunks(village, playerSource);
 
-            // Add extra chunks until you equal (4 + level) * 2 + 1 squared chunks.
-            int currentLevelSize = (4 + village.getLevel()) * 2 + 1;
-            int previousLevelSize = (4 + (village.getLevel() - 1)) * 2 + 1;
-            int chunksCount = (currentLevelSize * currentLevelSize) - (previousLevelSize * previousLevelSize);
-
-            LOGGER.info("Level up village: " + village.getLevel() + " chunksCount = " + chunksCount);
-            ChunkPos centerChunkPos = village.getPosition();
-            LOGGER.info("Center chunk at " + centerChunkPos.toString());
-            List<ChunkPos> newChunks = new ArrayList<>();
-            // Add them randomly along the edge of current chunks.
-            int tries = 0;
-            // Calculate the range based on the village level
-            int range = 8 + 3 * village.getLevel();
-            while (chunksCount > 0 && tries < 5000) {
-                tries++;
-
-                // Generate random x and z positions within the range, centered around the current position
-                int x = centerChunkPos.x + (int) ((Math.random() * 2 - 1) * range);
-                int z = centerChunkPos.z + (int) ((Math.random() * 2 - 1) * range);
-                ChunkPos chunkPos = new ChunkPos(x, z);
-//                LOGGER.info("DEBUG Checking from "+centerChunkPos.toString()+"  at chunkPos = " + chunkPos.toString() + ", chunksCount = " + chunksCount +
-//                        ", tries = " + tries);
-//                if (!village.getClaimedChunkSet().contains(chunkPos.toLong())
-
-                // If an ocean chunk 2/3 chance skip it and continue.
-                Holder<Biome> biome = playerSource.level().getBiome(chunkPos.getWorldPosition());
-                if (biome.is(BiomeTags.IS_OCEAN)) {
-                    LOGGER.info("DEBUG notice Ocean chunk at: " + chunkPos.toString());
-                    if (Math.random() < 0.66) {
-                        LOGGER.info("DEBUG SKIPPING OCEAN CHUNK ");
-                        continue;
-                    }
-                    LOGGER.info("DEBUG adding ocean chunk ");
-                }
-
-
-                if (!village.getClaimedChunks().contains(chunkPos)
-                        && touchingVillageChunk(chunkPos)
-                        // TODO TODO make sure same name as our village, for when villages get close!!!!
-
-                        // or touching new chunks.... or save new chunk each time....
-                        && !newChunks.contains(chunkPos)) {
-                    LOGGER.info("DEBUG TODO Adding new chunk at: " + chunkPos.toString());
-                    newChunks.add(chunkPos); // dont need these...
-
-                    // Add now
-                    ChunkData chunk = new ChunkData("village", player.getId(), villageId);
-                    chunkDatabase.putData(chunkPos.toLong(), chunk);
-                    village.addClaimedChunk(chunkPos);
-
-                    chunksCount--;
-                }
-            }
-
-            // Draw out in text
+            // TODO Draw out in text grid to test.
 
             villageDatabase.putData(village.getUUID(), village);
-            // TODO TEST
 
             // Build a response message
             MutableComponent response = Component.literal("Village leveled up to: " + village.getLevel());
-            response = response.append(Component.literal(" and added " + newChunks.size() + " new chunks. \n"));
+            response = response.append(Component.literal(", and added " + newChunksCount + " new chunks. \n"));
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -635,6 +577,122 @@ public class VillageCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    // When a village levels, add new chunks all around.
+    public static int addNewVillageChunks(VillageData village, Player playerSource) {
+        PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+        DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+        UUID villageId = village.getUUID();
+
+        // Add in all new chunks.....
+        DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+
+        // STEP 1: Add extra chunks until you equal (4 + level) * 2 + 1 squared chunks.
+        int currentLevelSize = (4 + village.getLevel()) * 2 + 1;
+        int previousLevelSize = (4 + (village.getLevel() - 1)) * 2 + 1;
+        int chunksCount = (currentLevelSize * currentLevelSize) - (previousLevelSize * previousLevelSize);
+        int newChunksCount = chunksCount;
+        ChunkPos centerChunkPos = village.getPosition();
+        LOGGER.info("Level up village: " + village.getLevel() + " chunksCount = " + chunksCount);
+        LOGGER.info("Center chunk at " + centerChunkPos.toString());
+
+        // STEP 2: Loop and add all new chunks until done.
+        // Add them randomly along the edge of current chunks.
+        int tries = 0;
+        // Calculate the range based on the village level
+        int range = 8 + 3 * village.getLevel();
+        while (chunksCount > 0 && tries < 5000) {
+            tries++;
+
+            // Generate random x and z positions within the range, centered around the current position
+            int x = centerChunkPos.x + (int) ((Math.random() * 2 - 1) * range);
+            int z = centerChunkPos.z + (int) ((Math.random() * 2 - 1) * range);
+            ChunkPos chunkPos = new ChunkPos(x, z);
+
+            // RULE 1: Must be touching claims.
+            if (!touchingVillageChunk(village, chunkPos)) {
+//                LOGGER.info("DEBUG not adding chunk not near claims... " + chunkPos.toString());
+                continue;
+            }
+
+//            LOGGER.info("DEBUG Checking from " + centerChunkPos.toString() + "  at chunkPos = " + chunkPos.toString() + ", chunksCount = " + chunksCount + ", tries = " + tries);
+
+            // RULE 2: If an ocean chunk 2/3 chance skip it and continue.
+            Holder<Biome> biome = playerSource.level().getBiome(chunkPos.getWorldPosition());
+            if (biome.is(BiomeTags.IS_OCEAN)) {
+                LOGGER.info("DEBUG notice Ocean chunk at: " + chunkPos.toString());
+                if (Math.random() < 0.66) {
+                    LOGGER.info("DEBUG SKIPPING OCEAN CHUNK ");
+                    continue;
+                }
+                LOGGER.info("DEBUG adding ocean chunk ");
+            }
+
+            // If already claimed, skip.
+            if (village.getClaimedChunks().contains(chunkPos)) {
+                continue;
+            }
+            // RULE 3: If claimed by another village 50% chance to take it over.
+            // TODO if taking over another village chunk send text to world chat now.
+            // TODO TODO make sure same name as our village, for when villages get close!!!!
+            // todo test me.
+            // Get village owner.
+            ChunkData chunkData = chunkDatabase.getData(chunkPos.toLong());
+            if (chunkData != null) {
+                VillageData otherVillage = villageDatabase.getData(chunkData.getVillageId());
+                if (otherVillage != null && !otherVillage.getUUID().equals(villageId)) {
+                    LOGGER.info("DEBUG: Checking other village owns it... at " + chunkPos.toString() + ", other village = " + otherVillage.getName());
+                    if (Math.random() < 0.5) {
+                        LOGGER.info("DEBUG SKIPPING chunk owned by another village: " + otherVillage.getName());
+                        continue;
+                    }
+                    LOGGER.info("DEBUG taking over chunk owned by another village: " + otherVillage.getName());
+
+                    // Change chunk data.
+                    chunkData.setVillageId(villageId);
+                    chunkData.setType("village");
+                    chunkDatabase.putData(chunkPos.toLong(), chunkData);
+
+                    // Remove from old village.
+                    otherVillage.removeClaimedChunk(chunkPos);
+                    villageDatabase.putData(otherVillage.getUUID(), otherVillage);
+                    village.addClaimedChunk(chunkPos);
+                    villageDatabase.putData(village.getUUID(), otherVillage);
+
+                    // TODO TEST chat didnt show?????
+                    // Add world chat message. Show center chunk pos.
+                    MutableComponent message = Component.literal("Village " + village.getName()
+                            + " took over " + otherVillage.getName() + " chunk"
+                            + " at " + chunkPos.getMiddleBlockPosition(64).getX() + ", " + chunkPos.getMiddleBlockPosition(64).getZ());
+                    message.withStyle(ChatFormatting.RED);
+                    playerSource.sendSystemMessage(message);
+                    chunksCount--;
+                    continue;
+                }
+            }
+
+            // Add now.
+            LOGGER.info("DEBUG  Adding new chunk at: " + chunkPos.toString());
+            ChunkData chunk = new ChunkData("village", player.getId(), villageId);
+            chunkDatabase.putData(chunkPos.toLong(), chunk);
+            village.addClaimedChunk(chunkPos);
+            // TODO PUT BACK
+
+            chunksCount--;
+        } // while
+
+        // Log an alert if we hit max without getting the new ones done.
+        if (tries >= 5000) {
+            LOGGER.info("DEBUG TODO MAX tries hit, not adding new chunks. ");
+            // TODO add message to player.
+            MutableComponent message = Component.literal("Error Village " + village.getName() +
+                    " has hit max tries for adding new chunks, please report to dev.");
+            message.withStyle(ChatFormatting.RED);
+            playerSource.sendSystemMessage(message);
+        }
+
+        return newChunksCount;
     }
 
     public static int runVillageDailyUpkeep(CommandSourceStack source) {
@@ -666,21 +724,26 @@ public class VillageCommand {
 
     // Helper methods
 
-    public static boolean touchingVillageChunk(ChunkPos chunkPos) {
-        // TODO check if touching village chunk.
+    // Make sure at least one neighbor is a village chunk we own.
+    public static boolean touchingVillageChunk(VillageData village, ChunkPos chunkPos) {
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
 
         // Check four neighbors nearby.
-        if (dataBase.getData(new ChunkPos(chunkPos.x + 1, chunkPos.z).toLong()) != null) {
+        ChunkData chunkData = null;
+        chunkData = dataBase.getData(new ChunkPos(chunkPos.x + 1, chunkPos.z).toLong());
+        if (chunkData != null && chunkData.getVillageId().equals(village.getUUID())) {
             return true;
         }
-        if (dataBase.getData(new ChunkPos(chunkPos.x - 1, chunkPos.z).toLong()) != null) {
+        chunkData = dataBase.getData(new ChunkPos(chunkPos.x - 1, chunkPos.z).toLong());
+        if (chunkData != null && chunkData.getVillageId().equals(village.getUUID())) {
             return true;
         }
-        if (dataBase.getData(new ChunkPos(chunkPos.x, chunkPos.z + 1).toLong()) != null) {
+        chunkData = dataBase.getData(new ChunkPos(chunkPos.x, chunkPos.z + 1).toLong());
+        if (chunkData != null && chunkData.getVillageId().equals(village.getUUID())) {
             return true;
         }
-        if (dataBase.getData(new ChunkPos(chunkPos.x, chunkPos.z - 1).toLong()) != null) {
+        chunkData = dataBase.getData(new ChunkPos(chunkPos.x, chunkPos.z - 1).toLong());
+        if (chunkData != null && chunkData.getVillageId().equals(village.getUUID())) {
             return true;
         }
 

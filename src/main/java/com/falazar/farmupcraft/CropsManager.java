@@ -371,7 +371,7 @@ public class CropsManager {
                 return;
             }
             Player player = (Player) event.getEntity();
-            BlockPos pos = player.blockPosition();
+//            BlockPos pos = player.blockPosition();
 
             // If changed only y level, skip this notice!!! jumping in a farm triggers a ton of these.
             // Change this later for dungeon areas.
@@ -389,6 +389,14 @@ public class CropsManager {
                 player.displayClientMessage(Component.literal("You left the village of " + lastChunkVillageName), false);
                 return;
             } else if (currChunkVillageName != null && lastChunkVillageName == null) {
+                // Send entering village message.
+                player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName), false);
+                return;
+            } else if (currChunkVillageName != null && lastChunkVillageName != null) {
+                // If same village name no message needed
+                if (currChunkVillageName.equals(lastChunkVillageName)) {
+                    return;
+                }
                 // Send entering village message.
                 player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName), false);
                 return;

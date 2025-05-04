@@ -109,6 +109,11 @@ public class VillageData {
         claimedChunkSet.add(ChunkPos.asLong(chunkPos.x, chunkPos.z));
     }
 
+    public void removeClaimedChunk(ChunkPos chunkPos) {
+        claimedChunks.remove(chunkPos);
+        claimedChunkSet.remove(ChunkPos.asLong(chunkPos.x, chunkPos.z));
+    }
+
     public boolean isBought() {
         return bought;
     }
