@@ -17,19 +17,23 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.levelgen.Heightmap;
 
 import java.util.*;
 
@@ -114,6 +118,14 @@ public class VillageCommand {
                 })
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(runDailyUpkeepBuilder);
+
+        // Define the "villagebiomes" sub-command
+        LiteralArgumentBuilder<CommandSourceStack> villageBiomesBuilder = Commands.literal("villagebiomes")
+                .executes(context -> {
+                    return showVillageBiomes(context.getSource());
+                });
+        builder.then(villageBiomesBuilder);
+
 
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
@@ -634,10 +646,8 @@ public class VillageCommand {
                 continue;
             }
             // RULE 3: If claimed by another village 50% chance to take it over.
-            // TODO if taking over another village chunk send text to world chat now.
-            // TODO TODO make sure same name as our village, for when villages get close!!!!
-            // todo test me.
-            // Get village owner.
+            // If taking over another village chunk send text to world chat now.
+            // Get chunk village.
             ChunkData chunkData = chunkDatabase.getData(chunkPos.toLong());
             if (chunkData != null) {
                 VillageData otherVillage = villageDatabase.getData(chunkData.getVillageId());
@@ -660,7 +670,6 @@ public class VillageCommand {
                     village.addClaimedChunk(chunkPos);
                     villageDatabase.putData(village.getUUID(), otherVillage);
 
-                    // TODO TEST chat didnt show?????
                     // Add world chat message. Show center chunk pos.
                     MutableComponent message = Component.literal("Village " + village.getName()
                             + " took over " + otherVillage.getName() + " chunk"
@@ -721,6 +730,97 @@ public class VillageCommand {
         }
         return 0;
     }
+
+    // Method to loop over all chunks in a village, and get the center spot biome there.
+    // Then unique and sort count the list.
+    // Then show the list of biomes.
+    // Two methods, one to get one to show, later can store on an object.
+    // Uses current player village.
+    public static int showVillageBiomes(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // Get the village data for the player.
+            DataBase<UUID, PlayerData> playerDataDB = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDB.getData(playerSource.getUUID());
+            if (playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("Player is not in a village right now."));
+                return 0;
+            }
+
+            // Get the village data for the player.
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(source.getLevel());
+            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+
+            // Get the list of biomes in the village.
+            Map<String, Integer> biomes = getVillageBiomes(villageData);
+
+            // Show the list of biomes.
+            // TODO first line yellow.
+            MutableComponent response = Component.literal("Biomes in village: ");
+            for (Map.Entry<String, Integer> entry : biomes.entrySet()) {
+                String biome = entry.getKey();
+                // Remove mod tag, dont need really.  With regex all before the ":"
+                String biomeName = biome.toString().replaceAll("^[^:]+:", "");
+
+                int count = entry.getValue();
+                response.append(Component.literal(biomeName + " (" + count + "), \n"));
+            }
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static Map<String, Integer> getVillageBiomes(VillageData villageData) {
+        Level level = Minecraft.getInstance().level;
+
+        // Loop over each chunk in territory.
+        // Get the biome for each chunk.
+        List<ChunkPos> chunks = villageData.getClaimedChunks();
+        // Count of each biome here.
+        Map<String, Integer> biomeCounts = new HashMap<>();
+
+        for (ChunkPos chunk : chunks) {
+            // Get the biome for the chunk center.
+            BlockPos blockPos = chunk.getMiddleBlockPosition(64); // default height notice.
+            // Get height at that position.
+            int height = level.getHeight(Heightmap.Types.MOTION_BLOCKING, blockPos.getX(), blockPos.getZ());
+            blockPos = new BlockPos(blockPos.getX(), height, blockPos.getZ());
+
+            // Update blockPos
+            assert level != null;
+            Biome biome = level.getBiome(blockPos).value();
+            ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+            if (biomeName == null) {
+                LOGGER.info("Biome name is null for chunk " + chunk);
+                continue;
+            }
+
+            // Add to a count of biomes hash.
+            String biomeString = biomeName.toString();
+            LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeString);
+            if (biomeCounts.containsKey(biomeString)) {
+                // Increment the count for this biome
+                biomeCounts.put(biomeString, biomeCounts.get(biomeString) + 1);
+            } else {
+                // Add this biome to the map with an initial count of 1
+                biomeCounts.put(biomeString, 1);
+            }
+        }
+
+        // Sort the map by count in descending order
+        Map<String, Integer> sortedBiomeCounts = biomeCounts.entrySet().stream()
+                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                .collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), LinkedHashMap::putAll);
+
+        return sortedBiomeCounts;
+    }
+
 
     // Helper methods
 

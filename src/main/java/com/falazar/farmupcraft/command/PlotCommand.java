@@ -85,6 +85,7 @@ public class PlotCommand {
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(reclaimBuilder);
 
+        // TODO do a /plot biomes command also!
 
         // Register the main "plot" command with the dispatcher
         pDispatcher.register(builder);

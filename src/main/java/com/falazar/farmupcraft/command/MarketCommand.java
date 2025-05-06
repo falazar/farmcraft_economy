@@ -261,55 +261,55 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodcore:baconandeggsitem\t6
-                    pamhc2foodextended:turkishdelightitem\t8
-                    pamhc2foodextended:sundayhighteaitem\t11
-                    pamhc2foodextended:cookedtofeakitem\t5
+                    pamhc2foodcore:baconandeggsitem\t8
+                    pamhc2foodextended:turkishdelightitem\t10
+                    pamhc2foodextended:sundayhighteaitem\t13
+                    pamhc2foodextended:cookedtofeakitem\t7
                     pamhc2foodcore:vinegaritem\t6
-                    pamhc2foodextended:passionfruityogurtitem\t5
-                    pamhc2foodextended:chickencelerycasseroleitem\t10
-                    pamhc2foodextended:meringueitem\t10
-                    pamhc2foodextended:springfieldcashewchickenitem\t10
-                    pamhc2foodextended:elderberryjellyitem\t6
-                    pamhc2foodextended:durianjellysandwichitem\t10
-                    pamhc2foodextended:bibimbapitem\t10
-                    pamhc2foodextended:charsiuitem\t8
-                    pamhc2foodextended:sweetpickleitem\t5
-                    pamhc2foodextended:potatoesobrienitem\t6
+                    pamhc2foodextended:passionfruityogurtitem\t7
+                    pamhc2foodextended:honeysoyribsitem\t5
+                    pamhc2foodextended:meringueitem\t12
+                    pamhc2foodextended:frosteddonutitem\t6
+                    pamhc2foodextended:gardensoupitem\t3
+                    pamhc2foodextended:spaghettidinneritem\t5
+                    pamhc2foodextended:bibimbapitem\t12
+                    pamhc2foodextended:charsiuitem\t10
+                    pamhc2foodextended:sweetpickleitem\t7
+                    pamhc2foodextended:potatoesobrienitem\t9
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    biomesoplenty:mahogany_stairs	5
-                    minecraft:stripped_acacia_log	7
-                    macawsbridgesbop:hellbark_rail_bridge	11
-                    minecraft:oak_stairs	6
-                    valhelsia_structures:bundled_mangrove_posts	10
+                    biomesoplenty:mahogany_stairs	7
+                    minecraft:stripped_acacia_log	9
+                    cfm:jungle_chair	6
+                    cfm:mangrove_kitchen_drawer	5
+                    valhelsia_structures:bundled_mangrove_posts	12
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    minecraft:calcite\t6
-                    minecraft:stone_bricks\t6
-                    minecraft:redstone_torch\t5
-                    minecraft:diorite\t6
-                    minecraft:polished_andesite_stairs\t5
+                    minecraft:red_sandstone_stairs\t8
+                    minecraft:stone_bricks\t7
+                    minecraft:redstone_torch\t6
+                    mcwbridges:deepslate_brick_bridge_stair\t5
+                    minecraft:polished_andesite_stairs\t3
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {
             String generalString = """
-                    minecraft:mycelium	6
-                    valhelsia_structures:big_magenta_glazed_jar	7
-                    biomesoplenty:blue_hydrangea	7
-                    monsterplus:crystal_clump	5
-                    minecraft:flowering_azalea_leaves	7
-                    cfm:black_kitchen_drawer	10
-                    minecraft:sunflower	9
-                    biomesoplenty:tall_lavender	9
-                    minecraft:magenta_candle	6
-                    cfm:minecraftamethys_block	5
+                    minecraft:mycelium	8
+                    cfm:magenta_grill	6
+                    minecraft:prismarine_shard	5
+                    monsterplus:crystal_clump	7
+                    minecraft:flowering_azalea_leaves	9
+                    cfm:black_kitchen_drawer	12
+                    untamedwilds:material_fat	5
+                    minecraft:vine	6
+                    minecraft:magenta_candle	8
+                    minecraft:amethyst_block	7
                     """;
             // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, or make harder?
             // copper one is broken, odd.

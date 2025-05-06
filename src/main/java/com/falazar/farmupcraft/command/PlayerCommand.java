@@ -104,7 +104,7 @@ public class PlayerCommand {
 //            LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
-            source.sendSuccess(() -> Component.literal("Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()))
+            source.sendSuccess(() -> Component.literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()) + " ----------")
                     .withStyle(ChatFormatting.YELLOW), false);
 
             // STEP 2: Get money from wallet.

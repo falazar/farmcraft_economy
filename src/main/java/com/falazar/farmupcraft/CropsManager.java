@@ -3,7 +3,6 @@ package com.falazar.farmupcraft;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.CropBlockData;
 import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
-import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
@@ -54,7 +53,6 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -64,7 +62,6 @@ import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
-import static com.falazar.farmupcraft.command.VillageCommand.getClosestVillage;
 import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
 import static org.apache.commons.lang3.StringUtils.replace;
 
@@ -227,7 +224,7 @@ public class CropsManager {
     }
 
     @SubscribeEvent
-    public static void onRightHarvestTrees(PlayerInteractEvent.RightClickBlock event) {
+    public static void onRightClickHarvestTrees(PlayerInteractEvent.RightClickBlock event) {
         // Check if the event is on client side, then skip.
         if (event.getEntity().level().isClientSide) {
             return;
@@ -276,16 +273,21 @@ public class CropsManager {
         // Need actual item instead??? TODO
         // block is a tree fruit named block.pamhc2trees.pamchestnut
         // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
-        String itemname = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";;
-        // Get item from new name.
-//        LOGGER.info( "DEBUG: itemname is " + itemname);
         // TODO MAKE METHOD.
-        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemname));
+//        LOGGER.info("DEBUG blockId is " + blockId);
+        String itemName = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";
+
+        // Special case: Convert apple to old item name.
+        // block.pamhc2trees.pamapple
+        if (blockId.equals("block.pamhc2trees.pamapple")) {
+            itemName = "minecraft:apple";
+        }
+        // Get item from new name.
+//        LOGGER.info( "DEBUG: itemname is " + itemName);
+        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
         LOGGER.info( "DEBUG: item is " + item);
-        // get times picked up.
         int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
-//        LOGGER.info("DEBUG: timespickedup " + timesPickedUp + " times.");
-        // get times dropped, (maybe subtract the two would be close?
+        // get times dropped, subtract the two would be close.
         int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
 //        LOGGER.info("DEBUG: timesdropped " + timesDropped + " times.");
         int timesHarvested = timesPickedUp - timesDropped;
@@ -295,8 +297,9 @@ public class CropsManager {
         // STEP 6: Calc a percent chance of failure, and fruit dies.
         // If age is 7 its ripe, break block fruit!
         // 75% chance of success, hardcoded for now.
-        int successPercent = 50;
+        int successPercent = 60;
         successPercent += player.experienceLevel + (timesHarvested / 100) * 2;
+        // TODO add nursery level.  real player level.
         successPercent = Math.min(successPercent, 98); // max 98 percent.
         LOGGER.info("DEBUG: successPercent is " + successPercent);
         Random rand = new Random();
@@ -313,7 +316,6 @@ public class CropsManager {
             player.displayClientMessage(Component.literal("You failed to harvest the fruit!"), false);
             return;
         }
-
 
 
         // TODO calc a percent chance of double fruit,
@@ -346,10 +348,7 @@ public class CropsManager {
                 LOGGER.info("DEBUG: block got bonus fruit named "+ blockId);
             }
         }
-
     }
-
-
 
 
     // Check anytime a player enters a new chunk.
@@ -705,6 +704,15 @@ public class CropsManager {
 
             // Create the final message component
             component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+
             player.displayClientMessage(component, false);
         }
 

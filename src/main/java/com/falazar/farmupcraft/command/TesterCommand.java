@@ -35,6 +35,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.phys.AABB;
 
@@ -61,13 +62,6 @@ public class TesterCommand {
         // Find all nearby Structures - ruins and such.
         // Find all nearby Open caves, at surface.
         // Find all below ground caves.
-
-        // Define the "villagebiomes" sub-command
-        LiteralArgumentBuilder<CommandSourceStack> villageBiomesBuilder = Commands.literal("villagebiomes")
-                .executes(context -> {
-                    return showVillageBiomes(context.getSource());
-                });
-        builder.then(villageBiomesBuilder);
 
         // Define the "islandsAndLakes" sub-command
         LiteralArgumentBuilder<CommandSourceStack> islandsBuilder = Commands.literal("islandsAndLakes")
@@ -117,6 +111,18 @@ public class TesterCommand {
         builder.then(findStructuresBuilder);
 
 
+        // Find all chests in nearest structure.
+        // Define the findchests subcommand. ADMIN perms only.
+        LiteralArgumentBuilder<CommandSourceStack> findChestsBuilder = Commands.literal("findchests")
+                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
+                .executes(context -> {
+                    // Call the method to find chests in the nearest structure
+                    findChestsInNearestStructure(context.getSource());
+                    return 0;
+                });
+        builder.then(findChestsBuilder);
+
+
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -144,30 +150,65 @@ public class TesterCommand {
         source.sendSystemMessage(Component.literal("Structures nearby: ").withStyle(ChatFormatting.GOLD));
 
         // STEP 2: Loop over all structures found, put in our list.
+        LOGGER.info("STEP 2 loop over structures....");
         Map<BlockPos, String> structurePositions = new HashMap<>();
         for (Map.Entry<Structure, LongSet> structureEntry : structures.entrySet()) {
             world.structureManager().fillStartsForStructure(structureEntry.getKey(), structureEntry.getValue(),
                     structureStart ->
                     {
-                        structurePositions.put(structureStart.getBoundingBox().getCenter(), source.registryAccess().registry(Registries.STRUCTURE).get()
-                                .getKey(structureEntry.getKey()).toString());
+                        String type = source.registryAccess().registry(Registries.STRUCTURE).get().getKey(structureEntry.getKey()).toString();
+                        structurePositions.put(structureStart.getBoundingBox().getCenter(), type);
+                        // This seems to indicate we have bounding box and such on things?  hmmm
+                        // How do we save a single structure?
+                        // by type and longset.
+                        LOGGER.info("Type = "+type);
+                        LOGGER.info("key = "+structureEntry.getKey()
+                                + " longset="+structureEntry.getValue().toString());
+                        LOGGER.info("Bounds = "+structureStart.getBoundingBox().toString());
+                        LOGGER.info("");
+                        // if cemetery, save some stuff to use for later.
                     }
             );
         }
 
+        /*  NOTES:
+
+ Type = structory:graveyard
+ key = net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@3a553e5e
+ longset={270582939571}
+ Bounds = BoundingBox{minX=-1244, minY=64, minZ=980, maxX=-1198, maxY=93, maxZ=1025}
+         */
+
+        LOGGER.info("TEST 2: Find structure.");
+        // Hardcoded 2 ids from earlier.
+        String structureType = "structory:graveyard";
+        Long structureLong = 270582939571L;
+
+        // TODO TEST METHOD.
+        loadStructure(source, structureType, structureLong);
+
+
         // TODO what else can we get from this structure info?
         // need size and desc and as much as possible
+
+        // TODO ability to show ONLY the closest so I cant cheat much???
 
         // STEP 3: Sort list by distance then add fancy clickables.
         final List<Map.Entry<BlockPos, String>> sortedStructures = new ArrayList<>(structurePositions.entrySet());
         sortedStructures.sort(Comparator.comparingDouble(p -> p.getKey().distSqr(BlockPos.containing(source.getPosition()))));
+        // Show count.
+        source.sendSystemMessage(Component.literal("Found " + sortedStructures.size() + " structures nearby.").withStyle(ChatFormatting.GOLD));
 
+
+        // STEP 4: Show results list.
         // Simple version with dist and tp.
         for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
             int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
-
-            source.sendSystemMessage(Component.literal(structureEntry.getValue())
-                    .append(Component.literal("a. " + structureEntry.getKey().toShortString() + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
+            source.sendSystemMessage(Component.literal(
+                    sortedStructures.indexOf(structureEntry)+1 + ". " +
+                    structureEntry.getValue())
+                    .append(Component.literal(" " +
+                            "a. " + structureEntry.getKey().toShortString() + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
                                 return style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                         "/tp " + structureEntry.getKey().getX() + " "
                                                 + structureEntry.getKey().getY() + " "
@@ -178,48 +219,146 @@ public class TesterCommand {
 
         // we get name and key, thats it, what other call do we need to get object?
 
-        // Fancier version with bounding.
-        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
-            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
+        // TEST 2: Fancier version with bounding.
+        // This doesnt seem to have an entry for all of them.
+        // Scratch this one.
+//        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
+//            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
+//
+//            // Convert the structure name (String) to a Structure object
+//            ResourceLocation structureKey = new ResourceLocation(structureEntry.getValue());
+//            Optional<Structure> structureOptional = source.registryAccess()
+//                    .registry(Registries.STRUCTURE)
+//                    .flatMap(registry -> registry.getOptional(structureKey));
+//
+//            if (structureOptional.isEmpty()) {
+//                source.sendSystemMessage(Component.literal("Structure not found: " + structureEntry.getValue()).withStyle(ChatFormatting.RED));
+//                continue;
+//            }
+//
+//            Structure structure = structureOptional.get();
+//
+//            // Retrieve the StructureStart for the structure
+//            world.structureManager().fillStartsForStructure(
+//                    structure, // Use the Structure object here
+//                    new LongOpenHashSet(Collections.singleton(ChunkPos.asLong(structureEntry.getKey().getX() >> 4, structureEntry.getKey().getZ() >> 4))),
+//                    structureStart -> {
+//                        // Get the bounding box of the structure
+//                        var boundingBox = structureStart.getBoundingBox();
+//                        int width = boundingBox.getXSpan();
+//                        int height = boundingBox.getYSpan();
+//                        int depth = boundingBox.getZSpan();
+//
+//                        // Send the structure info to the player
+//                        source.sendSystemMessage(
+//                                Component.literal(structureEntry.getValue())
+//                                        .append(Component.literal("b. " + structureEntry.getKey().toShortString() + " d=" + dist))
+//                                        .append(Component.literal(" Size: " + width + "x" + height + "x" + depth).withStyle(ChatFormatting.GREEN))
+//                                        .withStyle(ChatFormatting.YELLOW)
+//                                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+//                                                "/tp " + structureEntry.getKey().getX() + " "
+//                                                        + structureEntry.getKey().getY() + " "
+//                                                        + structureEntry.getKey().getZ())))
+//                        );
+//                    }
+//            );
+//        }
 
-            // Convert the structure name (String) to a Structure object
-            ResourceLocation structureKey = new ResourceLocation(structureEntry.getValue());
-            Optional<Structure> structureOptional = source.registryAccess()
-                    .registry(Registries.STRUCTURE)
-                    .flatMap(registry -> registry.getOptional(structureKey));
+        return 0;
+    }
 
-            if (structureOptional.isEmpty()) {
-                source.sendSystemMessage(Component.literal("Structure not found: " + structureEntry.getValue()).withStyle(ChatFormatting.RED));
-                continue;
-            }
+    // TODO make a method for chunk load entering the structure we know
+    // send chat message for now to test. any chunk.
 
-            Structure structure = structureOptional.get();
 
-            // Retrieve the StructureStart for the structure
-            world.structureManager().fillStartsForStructure(
-                    structure, // Use the Structure object here
-                    new LongOpenHashSet(Collections.singleton(ChunkPos.asLong(structureEntry.getKey().getX() >> 4, structureEntry.getKey().getZ() >> 4))),
-                    structureStart -> {
-                        // Get the bounding box of the structure
-                        var boundingBox = structureStart.getBoundingBox();
-                        int width = boundingBox.getXSpan();
-                        int height = boundingBox.getYSpan();
-                        int depth = boundingBox.getZSpan();
+    // TODO call this with /tester chest
+    public static BoundingBox loadStructure(CommandSourceStack source, String structureType, Long structureLong) {
+        // TODO phase out source to make generic.
 
-                        // Send the structure info to the player
-                        source.sendSystemMessage(
-                                Component.literal(structureEntry.getValue())
-                                        .append(Component.literal("b. " + structureEntry.getKey().toShortString() + " d=" + dist))
-                                        .append(Component.literal(" Size: " + width + "x" + height + "x" + depth).withStyle(ChatFormatting.GREEN))
-                                        .withStyle(ChatFormatting.YELLOW)
-                                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-                                                "/tp " + structureEntry.getKey().getX() + " "
-                                                        + structureEntry.getKey().getY() + " "
-                                                        + structureEntry.getKey().getZ())))
-                        );
-                    }
-            );
+        // Define the ResourceLocation for the structure
+        ResourceLocation structureKey = new ResourceLocation(structureType);
+        // Retrieve the Structure object from the registry
+        Optional<Structure> structureOptional = source.registryAccess()
+                .registry(Registries.STRUCTURE)
+                .flatMap(registry -> registry.getOptional(structureKey));
+        if (structureOptional.isEmpty()) {
+            LOGGER.error("Structure not found: " + structureKey);
+            return null;
         }
+        Structure structure = structureOptional.get();
+        // Create a LongSet and add the chunk position
+        LongSet longSet = new LongOpenHashSet();
+        longSet.add(structureLong);
+
+        final ServerLevel world = source.getLevel();
+
+        // Log the retrieved objects
+        LOGGER.info("TEST 2 Structure: " + structure);
+        LOGGER.info("TEST 2 LongSet: " + longSet);
+        BoundingBox[] boundingBoxHolder = new BoundingBox[1];
+        world.structureManager().fillStartsForStructure(structure, longSet, structureStart -> {
+            // Access the StructureStart here
+            boundingBoxHolder[0] = structureStart.getBoundingBox();
+            BlockPos center = boundingBoxHolder[0].getCenter();
+            LOGGER.info("StructureStart found: " + structureStart);
+            LOGGER.info("BoundingBox: " + boundingBoxHolder[0]);
+            LOGGER.info("Center: " + center);
+
+            // Center chunk
+            ChunkPos centerChunk = new ChunkPos(center.getX() >> 4, center.getZ() >> 4);
+            LOGGER.info("Center Chunk: " + centerChunk);
+        });
+
+        // Retrieve the bounding box value after the lambda
+        BoundingBox boundingBox = boundingBoxHolder[0];
+        LOGGER.info("Retrieved BoundingBox: " + boundingBox);
+        return boundingBox;
+
+        /* notes
+
+        [10:52:58] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:181]
+        TEST 2: Find structure.
+10:52:58.267
+game
+TEST 2 Structure: net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@5b9eafd8
+TEST 2 LongSet: {270582939571}
+StructureStart found: net.minecraft.world.level.levelgen.structure.StructureStart@3a23a503
+BoundingBox: BoundingBox{minX=-1244, minY=64, minZ=980, maxX=-1198, maxY=93, maxZ=1025}
+Center: BlockPos{x=-1221, y=79, z=1003}
+WORKS!
+Stretches out to chunk areas.
+         */
+
+    }
+
+    public static int findChestsInNearestStructure(CommandSourceStack source) {
+        // TODO find all chests in the nearest structure.
+        // TODO find all chests in a structure.
+        // TODO find all chests in a chunk.
+        LOGGER.info("DEBUG findChestsInNearestStructure");
+
+        // Hardcoded 2 ids from earlier.
+        // Graveyard near Faewild.
+//        loadStructure(source, "structory:graveyard", 270582939571L);
+        BoundingBox boundingBox = loadStructure(source, "structory:graveyard", 270582939571L);
+
+        // Loop over all blocks here and look for a chest, doublechest, or barrel
+         for (int y=boundingBox.minY(); y < boundingBox.maxY(); y++) {
+             for (int x = boundingBox.minX(); x < boundingBox.maxX(); x++) {
+                 for (int z = boundingBox.minZ(); z < boundingBox.maxZ(); z++) {
+                     BlockPos pos = new BlockPos(x, y, z);
+                     Block block = source.getLevel().getBlockState(pos).getBlock();
+                     if (block == Blocks.CHEST || block == Blocks.BARREL) {
+                         LOGGER.info("Found chest at " + pos);
+                         // TODO add to our list of chests. do other things.
+
+                     }
+                 }
+             }
+         }
+
+        // TODO find all chests in a structure.
+        // TODO find all chests in a plot.
 
         return 0;
     }
@@ -234,23 +373,26 @@ public class TesterCommand {
         BlockPos playerPos = playerSource.blockPosition();
         Level level = source.getLevel();
 
-        // Scan for any villager in 20 chunk radius
+        // STEP 1: Scan for any villager in 10 chunk radius.
         TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting().ignoreLineOfSight();
         List<? extends LivingEntity> list = level.getNearbyEntities(
                 Villager.class,
                 playersTarget,
                 playerSource,
-                new net.minecraft.world.phys.AABB(playerPos).inflate(320)
+                new net.minecraft.world.phys.AABB(playerPos).inflate(160) // ten chunk default around.
         );
-
         int count = list.size();
-        LOGGER.info(" DEBUG: Found " + count + " villagers nearby.");
         MutableComponent response = Component.literal("Found " + count + " villagers nearby.");
         MutableComponent finalResponse = response;
         source.sendSuccess(() -> finalResponse, false);
 
-        // Loop over all villagers, give name and UUID and position.
-        for (LivingEntity v : list) {
+        // STEP 2: Sort villagers by distance.
+        List <LivingEntity> sortedList = new ArrayList<>(list);
+        sortedList.sort(Comparator.comparingDouble(v -> v.distanceToSqr(playerSource)));
+
+
+        // STEP 3: Show, Loop over all villagers, give name and UUID and position.
+        for (LivingEntity v : sortedList) {
             LOGGER.info("\nLIST Villager found: ");
 //            LOGGER.info("Villager UUID: " + v.getUUID());
 //            LOGGER.info("Villagers found: " + v.getScoreboardName()); uuid
@@ -258,13 +400,13 @@ public class TesterCommand {
             LOGGER.info("Villager position: " + v.blockPosition());
 //            LOGGER.info("Villager type: " + v.getType().toString()); villager
 
+            // STEP 4: Grab villager and extra info we want.
             Villager villager = (Villager) v;
             VillagerData d = villager.getVillagerData();
             String profession = d.getProfession().toString();
             String type = d.getType().toString();
 //            LOGGER.info("Villager profession: " + profession);
             LOGGER.info("Villager type: " + type);  // plains and ? regular people?
-
             // Find distance from me, approx, use manhattan distance.
             BlockPos villagerPos = v.blockPosition();
             int distance = Math.abs(villagerPos.getX() - playerPos.getX()) + Math.abs(villagerPos.getY() - playerPos.getY()) + Math.abs(villagerPos.getZ() - playerPos.getZ());
@@ -622,89 +764,4 @@ public class TesterCommand {
                 "Number of islands: " + islandCount;
     }
 
-    // Method to loop over all chunks in a village, and get the center spot biome there.
-    // Then unique and sort count the list.
-    // Then show the list of biomes.
-    // Two methods, one to get one to show, later can store on an object.
-    // Uses current player village.
-    public static int showVillageBiomes(CommandSourceStack source) {
-        try {
-            Entity nullableSummoner = source.getEntity();
-            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-
-            // Get the village data for the player.
-            DataBase<UUID, PlayerData> playerDataDB = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDB.getData(playerSource.getUUID());
-            if (playerData.getHomeVillageUUID() == null) {
-                source.sendFailure(Component.literal("Player is not in a village right now."));
-                return 0;
-            }
-
-            // Get the village data for the player.
-            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(source.getLevel());
-            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
-
-            // Get the list of biomes in the village.
-            Map<String, Integer> biomes = getVillageBiomes(villageData);
-
-            // Show the list of biomes.
-            MutableComponent response = Component.literal("Biomes in village: ");
-            for (Map.Entry<String, Integer> entry : biomes.entrySet()) {
-                String biome = entry.getKey();
-                int count = entry.getValue();
-                response.append(Component.literal(biome + " (" + count + "), \n"));
-            }
-            MutableComponent finalResponse = response;
-            source.sendSuccess(() -> finalResponse, false);
-        } catch (Exception ex) {
-            source.sendFailure(Component.literal("Exception thrown - see log"));
-            ex.printStackTrace();
-        }
-        return 0;
-    }
-
-    public static Map<String, Integer> getVillageBiomes(VillageData villageData) {
-        Level level = Minecraft.getInstance().level;
-
-        // Loop over each chunk in territory.
-        // Get the biome for each chunk.
-        List<ChunkPos> chunks = villageData.getClaimedChunks();
-        // Count of each biome here.
-        Map<String, Integer> biomeCounts = new HashMap<>();
-
-        for (ChunkPos chunk : chunks) {
-            // Get the biome for the chunk center.
-            BlockPos blockPos = chunk.getMiddleBlockPosition(64); // default height notice.
-            // Get height at that position.
-            int height = level.getHeight(Heightmap.Types.MOTION_BLOCKING, blockPos.getX(), blockPos.getZ());
-            blockPos = new BlockPos(blockPos.getX(), height, blockPos.getZ());
-
-            // Update blockPos
-            assert level != null;
-            Biome biome = level.getBiome(blockPos).value();
-            ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-            if (biomeName == null) {
-                LOGGER.info("Biome name is null for chunk " + chunk);
-                continue;
-            }
-
-            // Add to a count of biomes hash.
-            String biomeString = biomeName.toString();
-            LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeString);
-            if (biomeCounts.containsKey(biomeString)) {
-                // Increment the count for this biome
-                biomeCounts.put(biomeString, biomeCounts.get(biomeString) + 1);
-            } else {
-                // Add this biome to the map with an initial count of 1
-                biomeCounts.put(biomeString, 1);
-            }
-        }
-
-        // Sort the map by count in descending order
-        Map<String, Integer> sortedBiomeCounts = biomeCounts.entrySet().stream()
-                .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                .collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), LinkedHashMap::putAll);
-
-        return sortedBiomeCounts;
-    }
 }

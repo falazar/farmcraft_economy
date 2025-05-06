@@ -60,11 +60,29 @@ VILLAGERS:
     -- DONE - See if we can get their names.
         MOD: villagernames-1.20.1-7.1 updating to newest.
         REF: https://www.curseforge.com/minecraft/mc-mods/villager-names
-    -- TODO make a rename village command
+    -- DONE make a rename village command
     -- Possibly give some a description -
         When coming close give a description of the villager.
         but dont spam it, only show once then cache that it was shown, per server login
     -- add extra command to show description
+    -- Have villagers suggest random things to do for the toown
+       hardcoded list that rotates by day and village id hash
+       like: improve roads,
+           create market items
+           harvest wood
+           add on to walls
+           make another house,
+           increase a house size,
+           improve rail station,
+           improve farm,
+           improve nursery
+           improve mine
+           update animal farms
+           improve out of town roads
+           breed villagers
+           breed animals
+           update port
+           etc, make a large list
     -- connect to outside db or text files?
     -- use ai to add descriptions profiles?
     -- Create a mayor?

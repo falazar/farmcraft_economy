@@ -89,7 +89,9 @@ public class ShowBiomesCommand {
                 if (!biomesInRadius.isEmpty()) {
                     MutableComponent response = Component.literal("Biomes within radius " + radius + ": ");
                     for (ResourceLocation biome : biomesInRadius) {
-                        response = response.append(Component.literal(biome.toString() + " "));
+                        // Remove mod tag, dont need really.  With regex all before the ":"
+                        String biomeName = biome.toString().replaceAll("^[^:]+:", "");
+                        response = response.append(Component.literal(biomeName + ", "));
                     }
                     MutableComponent finalResponse = response;
                     c.getSource().sendSuccess(() -> finalResponse, false);
