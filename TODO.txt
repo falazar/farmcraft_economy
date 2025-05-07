@@ -3,7 +3,8 @@ TODO list
 BUGS: not saving player coins correctly, not showing.
 Not showing wallet correctly on overlay
 Overlay not always updating after an action, like buy plot or village?
-Diamond Border not showing.
+Working now -Diamond Border not showing.
+  --Todo, change into a toggleAble command.
 GIVE player a UUID field properly
 
 DONE - Add journey map to test builder.
