@@ -259,61 +259,62 @@ public class MarketCommand {
 
     // TODO notice put all new ones at TOP of the list.
     // We will hard code a list here now to play with.
-    // Fields needed: itemId, price, numSold
+    // Fields needed: itemId, cost, amountSold
+    // TODO start using MarketData and GoodsData objects instead.
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodextended:energydrinkitem\t5
-                    pamhc2foodextended:rawtofishitem\t5
-                    pamhc2foodextended:cornedbeefandcabbageitem\t5
-                    pamhc2foodcore:baconandeggsitem\t9
-                    pamhc2foodextended:cookedtofeakitem\t8
-                    pamhc2foodcore:vinegaritem\t5
-                    pamhc2foodextended:passionfruityogurtitem\t8
-                    pamhc2foodextended:honeysoyribsitem\t6
-                    pamhc2foodextended:frosteddonutitem\t7
-                    pamhc2foodextended:gardensoupitem\t4
-                    pamhc2foodextended:spaghettidinneritem\t6
+                    pamhc2foodextended:chipsandsalsaitem\t5
+                    pamhc2foodextended:potatoskinsitem\t5
+                    pamhc2foodextended:footlongitem\t6
+                    pamhc2foodextended:figjellyitem\t6
+                    pamhc2foodextended:kiwismoothieitem\t6
+                    pamhc2foodextended:pomegranatejuiceitem\t6
+                    pamhc2foodextended:energydrinkitem\t7
+                    pamhc2foodextended:rawtofishitem\t8
+                    pamhc2foodcore:vinegaritem\t7
+                    pamhc2foodextended:passionfruityogurtitem\t11
+                    pamhc2foodextended:honeysoyribsitem\t8
+                    pamhc2foodextended:gardensoupitem\t6
+                    pamhc2foodextended:spaghettidinneritem\t8
                     pamhc2foodextended:bibimbapitem\t13
-                    pamhc2foodextended:charsiuitem\t12
-                    pamhc2foodextended:sweetpickleitem\t8
-                    pamhc2foodextended:potatoesobrienitem\t10
+                    pamhc2foodextended:sweetpickleitem\t7
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    biomesoplenty:mahogany_stairs	8
-                    cfm:stripped_acacia_mail_box	5
-                    cfm:jungle_chair	7
-                    cfm:mangrove_kitchen_drawer	6
-                    valhelsia_structures:bundled_mangrove_posts	13
+                    biomesoplenty:jacaranda_fence\t5
+                    biomesoplenty:stripped_jacaranda_log\t5
+                    cfm:jungle_chair	10
+                    cfm:mangrove_kitchen_drawer	8
+                    valhelsia_structures:bundled_mangrove_posts	15
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    minecraft:obsidian\t5
-                    minecraft:stone_bricks\t8
-                    minecraft:redstone_torch\t5
-                    mcwbridges:deepslate_brick_bridge_stair\t7
-                    minecraft:polished_andesite_stairs\t4
+                    minecraft:white_terracotta\t5
+                    minecraft:cracked_deepslate_bricks\t6
+                    minecraft:redstone_torch\t8
+                    mcwbridges:deepslate_brick_bridge_stair\t5
+                    minecraft:polished_andesite_stairs\t5
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {
             String generalString = """
-                    biomesoplenty:spanish_moss	5
-                    cfm:light_gray_grill	5
-                    minecraft:mycelium	9
-                    cfm:magenta_grill	7
-                    minecraft:prismarine_shard	6
-                    minecraft:flowering_azalea_leaves	10
+                    minecraft:sculk_catalyst\t5
+                    minecraft:light_gray_banner\t5
+                    minecraft:wither_rose\t6
+                    minecraft:bone\t7
+                    cfm:light_gray_grill	7
+                    minecraft:prismarine_shard	8
+                    minecraft:flowering_azalea_leaves	12
                     cfm:black_kitchen_drawer	13
-                    untamedwilds:material_fat	6
-                    minecraft:magenta_candle	9
-                    minecraft:amethyst_block	8
+                    untamedwilds:material_fat	8
+                    minecraft:magenta_candle	11
                     """;
-            // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, or make harder?
+            // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, yes removed both.
             // copper one is broken, odd.
             return parseItemsFromString(generalString);
         } else {
@@ -522,7 +523,6 @@ public class MarketCommand {
         }
         return 0;
     }
-
 
 }
 

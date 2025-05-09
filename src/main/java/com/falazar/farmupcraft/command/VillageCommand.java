@@ -35,6 +35,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
 
+import java.text.NumberFormat;
 import java.util.*;
 
 import static com.falazar.farmupcraft.command.PlotCommand.calculatePlotCost;
@@ -281,10 +282,11 @@ public class VillageCommand {
             }
 
             // Build a response message
+            NumberFormat numberFormat = NumberFormat.getInstance();
             MutableComponent response = Component.literal("")
-                    .append(Component.literal("Village Name: " + village.getName() + " \n").withStyle(ChatFormatting.YELLOW)) // Yellow
+                    .append(Component.literal("---------- Village Name: " + village.getName() + " ----------\n").withStyle(ChatFormatting.YELLOW)) // Yellow
                     .append(Component.literal("Level: " + village.getLevel() + " \n")) // White
-                    .append(Component.literal("Coins: " + village.getCoins() + " \n")
+                    .append(Component.literal("Coins: " + numberFormat.format(village.getCoins()) + " \n")
                             .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if negative, white otherwise
                     .append(Component.literal(" at " + village.getPosition().getWorldPosition().toShortString() + " \n")) // White
                     .append(Component.literal(" with claimed chunks = " + village.getClaimedChunks().size() + "\n")); // White
@@ -305,13 +307,13 @@ public class VillageCommand {
 
             // Plot Cost: 100 + 30 * plots TODO testing
             int plotCost = PlotCommand.calculatePlotCost(village, "plot");
-            response = response.append(Component.literal(" Plot cost: " + plotCost + " coins. \n"));
+            response = response.append(Component.literal(" Plot cost: " + numberFormat.format(plotCost) + " coins. \n"));
 
             // TODO MAKE METHOD
             // Daily Cost: villageLevel * 100 + 50 per plot? TODO test lowered 50>30
 //            int dailyCost = village.getLevel() * 100 + plotCnt * 30;
             int dailyCost = getDailyCost(village);
-            response = response.append(Component.literal(" Daily cost: " + dailyCost + " coins. \n"));
+            response = response.append(Component.literal(" Daily cost: " + numberFormat.format(dailyCost) + " coins. \n"));
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);

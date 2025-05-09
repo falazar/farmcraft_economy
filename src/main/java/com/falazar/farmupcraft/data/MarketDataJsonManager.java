@@ -48,7 +48,9 @@ public class MarketDataJsonManager extends SimpleJsonResourceReloadListener {
     @Override
     protected void apply(Map<ResourceLocation, JsonElement> jsons, ResourceManager pResourceManager, ProfilerFiller pProfiler) {
         clearEntries();
-        Map<ResourceLocation, MarketData> cropData = new HashMap<>();
+        // Create a new list for market.
+        // Loop over json and parse into our list.
+        Map<ResourceLocation, MarketData> itemData = new HashMap<>();
         for (Map.Entry<ResourceLocation, JsonElement> entry : jsons.entrySet()) {
             ResourceLocation key = entry.getKey();
             JsonElement element = entry.getValue();
@@ -56,14 +58,12 @@ public class MarketDataJsonManager extends SimpleJsonResourceReloadListener {
                     .get()
                     .ifLeft(result -> {
                         MarketData codec = result.getFirst();
-                        cropData.put(key, codec);
+                        itemData.put(key, codec);
                     })
                     .ifRight(partial -> LOGGER.error("Failed to parse market data json {} due to: {}", key, partial.message()));
-
-
         }
 
-        this.marketEntries = cropData;
+        this.marketEntries = itemData;
         LOGGER.info("Data loader for {} loaded {} jsons", this.folderName, this.marketEntries.size());
     }
 }

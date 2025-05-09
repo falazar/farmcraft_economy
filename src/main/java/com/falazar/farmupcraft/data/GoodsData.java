@@ -13,11 +13,15 @@ public class GoodsData {
             instance.group(
                     BuiltInRegistries.ITEM.byNameCodec().fieldOf("item").forGetter(GoodsData::getItem),
                     CurrencyCost.CODEC.fieldOf("cost").forGetter(GoodsData::getCost)
+                    // amountSold
+                    // Dont need type right? just in list?
             ).apply(instance, GoodsData::new)
     );
 
     private final Item item;
     private final CurrencyCost cost;
+    private int amountSold; // TODO USE
+    private String rarity; // common, uncommon, rare.
 
     public GoodsData(Item item, CurrencyCost cost) {
         this.item = item;
