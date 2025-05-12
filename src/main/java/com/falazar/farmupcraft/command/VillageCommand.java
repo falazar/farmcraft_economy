@@ -120,8 +120,8 @@ public class VillageCommand {
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(runDailyUpkeepBuilder);
 
-        // Define the "villagebiomes" sub-command
-        LiteralArgumentBuilder<CommandSourceStack> villageBiomesBuilder = Commands.literal("villagebiomes")
+        // Define the "biomes" sub-command
+        LiteralArgumentBuilder<CommandSourceStack> villageBiomesBuilder = Commands.literal("biomes")
                 .executes(context -> {
                     return showVillageBiomes(context.getSource());
                 });

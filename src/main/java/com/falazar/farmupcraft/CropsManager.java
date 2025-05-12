@@ -1,8 +1,6 @@
 package com.falazar.farmupcraft;
 
-import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.CropBlockData;
-import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
+import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
@@ -62,6 +60,7 @@ import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
+import static com.falazar.farmupcraft.command.VillageCommand.getVillageBiomes;
 import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
 import static org.apache.commons.lang3.StringUtils.replace;
 
@@ -174,7 +173,7 @@ public class CropsManager {
         // STEP 4: Get current biome the block is in.
         Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
 
-        //The biome has rules defined for what can happen in it or not!
+        // The biome has rules defined for what can happen in it or not!
         BiomeRulesManager manager = BiomeRulesManager.get(event.getLevel());
         if (manager == null || !manager.hasRules()) return;
 
@@ -285,7 +284,7 @@ public class CropsManager {
         // Get item from new name.
 //        LOGGER.info( "DEBUG: itemname is " + itemName);
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
-        LOGGER.info( "DEBUG: item is " + item);
+        LOGGER.info("DEBUG: item is " + item);
         int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
         // get times dropped, subtract the two would be close.
         int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
@@ -343,9 +342,9 @@ public class CropsManager {
                 // Only show this message 1 out of 10 times.
                 randomNum = rand.nextInt(10); // 10% 0-9
                 if (randomNum == 0) {
-                    player.displayClientMessage(Component.literal("You got "+bonusCnt+" bonus fruit!"), false);
+                    player.displayClientMessage(Component.literal("You got " + bonusCnt + " bonus fruit!"), false);
                 }
-                LOGGER.info("DEBUG: block got bonus fruit named "+ blockId);
+                LOGGER.info("DEBUG: block got bonus fruit named " + blockId);
             }
         }
     }
@@ -631,23 +630,22 @@ public class CropsManager {
 
         // TODO MAKE METHOD
 
-        // Get the name of the crop item
+        // Step 1Get the name of the crop item
         String cropItemShow = stack.getHoverName().getString();
-
         // Get the biome name
         ResourceKey<Biome> rl = biome.unwrapKey().orElse(UKNOWN_RK);
         Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
 
-        Player player = event.getEntity();
+        Player playerSource = event.getEntity();
         if (event.getLevel().isClientSide) {
             return false;
         }
 
         // Display message that this crop cannot be planted in this biome
         MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
-        player.displayClientMessage(component, false);
+        playerSource.displayClientMessage(component, false);
 
-        // List the crops allowed in the current biome
+        // STEP 3: List the crops allowed in the current biome
         Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
                 // Map item to a custom string for special cases and then translate
                 .map(item -> {
@@ -679,31 +677,69 @@ public class CropsManager {
                 // Join the names with commas
                 .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                 .orElse(Component.literal("None"));
-
-
         // Construct the message for the crops that can be planted in the biome
         component = Component.literal("§aCrops you can plant in ")
                 .append(biomeNameShow)
                 .append(": §2")
                 .append(cropsAllowedShow);
+        playerSource.displayClientMessage(component, false);
 
-
-        player.displayClientMessage(component, false);
-
-        // List the biomes where this crop can be planted
+        // STEP 4: List the biomes where this crop can be planted.
         if (manager.hasItems()) {
-            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
-            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-                    .map(Component::getString) // Convert to plain text for uniqueness check
+            // TODO Get all this farms biomes, compare and note.
+            // TODO Get all this villages biomes, compare and note now.
+            // Get the village data for the player.
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+            PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
+            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+            // Get the list of biomes in the village.
+            Map<String, Integer> biomes = getVillageBiomes(villageData);
+            // Map to a single set of biomes.
+            Set<String> biomeSet = new HashSet<>();
+            for (String biomeString : biomes.keySet()) {
+                biomeSet.add(biomeString);
+            }
+
+
+            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component.
+//            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
+//                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+//                    .map(Component::getString) // Convert to plain text for uniqueness check
+//                    .distinct() // Ensure each biome is unique
+//                    .sorted() // Sort the biomes alphabetically
+//                    .map(name -> Component.literal(name)) // Convert back to Component
+//                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+//                    .orElse(Component.literal("None"));
+
+
+            // Step 1: Get the list of formatted biome components
+            LOGGER.info("DEBUG1 biomeSet=" + biomeSet);
+            LOGGER.info("DEBUG2 biomesForItem=" + manager.getBiomesForItem(stack.getItem()));
+
+            List<MutableComponent> biomeComponents = manager.getBiomesForItem(stack.getItem()).stream()
+                    .map(b -> {
+                        String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
+                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName+"*");
+                        String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
+                        biomeName2 = biomeName2.replace(".", ":");
+                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName+"*");
+
+                        ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
+                        return Component.translatable(biomeName).withStyle(color);
+                    })
                     .distinct() // Ensure each biome is unique
-                    .sorted() // Sort the biomes alphabetically
-                    .map(name -> Component.literal(name)) // Convert back to Component
+                    .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
+                    .toList();
+
+            // Step 2: Combine the components into a single component
+            Component biomesListShow = biomeComponents.stream()
                     .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                     .orElse(Component.literal("None"));
 
+
             // Create the final message component
-            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
+//            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
+            component = Component.literal("Biomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
             // TODO highlight in green any that are in this farm, yellow if in this town.
             // TODO highlight in green any that are in this farm, yellow if in this town.
             // TODO highlight in green any that are in this farm, yellow if in this town.
@@ -713,13 +749,13 @@ public class CropsManager {
             // TODO highlight in green any that are in this farm, yellow if in this town.
             // TODO highlight in green any that are in this farm, yellow if in this town.
 
-            player.displayClientMessage(component, false);
+            playerSource.displayClientMessage(component, false);
         }
 
         return false;
     }
 
-    private static String getBiomeLangKey(ResourceLocation location) {
+    public static String getBiomeLangKey(ResourceLocation location) {
         String name = location.getPath();
         String id = location.getNamespace();
         return "biome." + id + "." + name;

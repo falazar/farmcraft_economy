@@ -264,55 +264,55 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodextended:chipsandsalsaitem\t5
-                    pamhc2foodextended:potatoskinsitem\t5
-                    pamhc2foodextended:footlongitem\t6
-                    pamhc2foodextended:figjellyitem\t6
-                    pamhc2foodextended:kiwismoothieitem\t6
-                    pamhc2foodextended:pomegranatejuiceitem\t6
-                    pamhc2foodextended:energydrinkitem\t7
-                    pamhc2foodextended:rawtofishitem\t8
-                    pamhc2foodcore:vinegaritem\t7
-                    pamhc2foodextended:passionfruityogurtitem\t11
-                    pamhc2foodextended:honeysoyribsitem\t8
-                    pamhc2foodextended:gardensoupitem\t6
-                    pamhc2foodextended:spaghettidinneritem\t8
-                    pamhc2foodextended:bibimbapitem\t13
-                    pamhc2foodextended:sweetpickleitem\t7
+                    pamhc2foodextended:quesadillaitem\t5
+                    pamhc2foodcore:butteritem\t5
+                    pamhc2foodextended:cinnamontoastitem\t6
+                    pamhc2foodcore:pumpkinsoupitem\t6
+                    pamhc2foodextended:teriyakichickenitem\t7
+                    pamhc2foodextended:durianjuiceitem\t8
+                    pamhc2foodextended:potatoskinsitem\t8
+                    pamhc2foodextended:kiwismoothieitem\t9
+                    pamhc2foodextended:pomegranatejuiceitem\t10
+                    pamhc2foodextended:energydrinkitem\t8
+                    pamhc2foodextended:rawtofishitem\t11
+                    pamhc2foodcore:vinegaritem\t10
+                    pamhc2foodextended:passionfruityogurtitem\t14
+                    pamhc2foodextended:honeysoyribsitem\t11
+                    pamhc2foodextended:gardensoupitem\t9
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    biomesoplenty:jacaranda_fence\t5
-                    biomesoplenty:stripped_jacaranda_log\t5
-                    cfm:jungle_chair	10
-                    cfm:mangrove_kitchen_drawer	8
-                    valhelsia_structures:bundled_mangrove_posts	15
+                    cfm:stripped_spruce_bedside_cabinet\t5
+                    minecraft:spruce_log\t6
+                    biomesoplenty:jacaranda_fence\t8
+                    cfm:mangrove_kitchen_drawer	11
+                    valhelsia_structures:bundled_mangrove_posts	18
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
+                    valhelsia_structures:cyan_metal_framed_glass\t5
+                    minecraft:black_glazed_terracotta\t6
                     minecraft:white_terracotta\t5
-                    minecraft:cracked_deepslate_bricks\t6
-                    minecraft:redstone_torch\t8
-                    mcwbridges:deepslate_brick_bridge_stair\t5
-                    minecraft:polished_andesite_stairs\t5
+                    mcwbridges:deepslate_brick_bridge_stair\t9
+                    minecraft:polished_andesite_stairs\t6
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {
             String generalString = """
-                    minecraft:sculk_catalyst\t5
-                    minecraft:light_gray_banner\t5
-                    minecraft:wither_rose\t6
-                    minecraft:bone\t7
-                    cfm:light_gray_grill	7
-                    minecraft:prismarine_shard	8
-                    minecraft:flowering_azalea_leaves	12
-                    cfm:black_kitchen_drawer	13
-                    untamedwilds:material_fat	8
-                    minecraft:magenta_candle	11
+                    minecraft:amethyst_block\t5
+                    minecraft:iron_ingot\t5
+                    minecraft:gray_wool\tt6
+                    minecraft:rabbit_foot\t6
+                    minecraft:snowball\t7
+                    minecraft:magenta_concrete_powder\t7
+                    minecraft:light_gray_banner\t8
+                    minecraft:wither_rose\t9
+                    cfm:light_gray_grill	10
+                    untamedwilds:material_fat	11
                     """;
             // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, yes removed both.
             // copper one is broken, odd.

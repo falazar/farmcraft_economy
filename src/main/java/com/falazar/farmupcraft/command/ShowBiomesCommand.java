@@ -1,30 +1,40 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
+import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
+import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.Vec3;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.HashSet;
 import java.util.Set;
 
-public class ShowBiomesCommand {
+import static com.falazar.farmupcraft.CropsManager.getBiomeLangKey;
 
+public class ShowBiomesCommand {
+    public static final CustomLogger LOGGER = new CustomLogger(ShowBiomesCommand.class.getSimpleName());
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -39,15 +49,91 @@ public class ShowBiomesCommand {
                         )
                 )
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
-
         // Add the "biomes" sub-command to the "show" command
         builder.then(biomesBuilder);
+
+        // show cropbiomes tomato
+        // Define the "cropbiomes" sub-command with crop name argument
+        LiteralArgumentBuilder<CommandSourceStack> cropbiomesBuilder = Commands.literal("cropbiomes")
+                .then(Commands.argument("crop", StringArgumentType.string())
+                        .executes(c -> {
+                            // Handle the cropbiomes command here
+                            String cropName = StringArgumentType.getString(c, "crop");
+                            // Implement your logic for showing crop biomes
+                            showCropBiomes(c.getSource(), cropName);
+                            return 0;
+                        })
+                );
+        // Add the "cropbiomes" sub-command to the "show" command
+        builder.then(cropbiomesBuilder);
 
         // Register the main "show" command with the dispatcher
         pDispatcher.register(builder);
     }
 
+    // Given a crop name show all biomes you can plant this in.
+    public static void showCropBiomes(CommandSourceStack source, String cropName) {
+        // Implement your logic for showing crop biomes here
+        Player playerSource = source.getPlayer();
 
+        LOGGER.info("DEBUG: cropName is " + cropName);
+
+        // STEP 2: Load biome rules. The biome has rules defined for what can happen in it or not!
+        BiomeRulesManager manager = BiomeRulesManager.get(source.getLevel());
+        if (manager == null || !manager.hasRules()) return;
+
+        // STEP 2: Get the crop item from the name from main item thing registry.
+        // DEBUG grab from minecraft or pams for now, whichever exists.
+        String cropNameWithMod = "pamhc2crops:" + cropName + "item";
+        LOGGER.info("DEBUG: cropNameWithMod is " + cropNameWithMod);
+        Item cropItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation(cropNameWithMod));
+        LOGGER.info("DEBUG: cropItem is " + cropItem);
+        if (cropItem == null || cropItem.toString().trim().equals("air")) {
+            // Try to get the item from the Minecraft registry
+            // carrot potato, careful with wheat and beet cuz seeds.
+            if (cropName.equals("wheat")) {
+                cropNameWithMod = "minecraft:wheat_seeds";
+            } else if (cropName.equals("beetroot")) {
+                cropNameWithMod = "minecraft:beetroot_seeds";
+            } else {
+                cropNameWithMod = "minecraft:" + cropName;
+            }
+            LOGGER.info("DEBUG: cropNameWithMod is " + cropNameWithMod);
+            cropItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation(cropNameWithMod));
+            LOGGER.info("DEBUG: cropItem is " + cropItem);
+        }
+
+        if (!manager.hasItems()) {
+            LOGGER.info("DEBUG: No items found in manager.");
+            return;
+        }
+        // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
+        Component biomesListShow = manager.getBiomesForItem(cropItem).stream()
+                .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+                .map(Component::getString) // Convert to plain text for uniqueness check
+                .distinct() // Ensure each biome is unique
+                .sorted() // Sort the biomes alphabetically
+                .map(name -> Component.literal(name)) // Convert back to Component
+                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                .orElse(Component.literal("None"));
+
+        // Create the final message component
+        // TODO chat Code here can change colors easily for us, use in other areas.
+        MutableComponent component = Component.literal("§bBiomes you can plant " + cropName + " in §3").append(biomesListShow);
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+        // TODO highlight in green any that are in this farm, yellow if in this town.
+
+        playerSource.displayClientMessage(component, false);
+    }
+
+
+    // Show biomes from a block radius from standing point.
     public static int showBiomes(CommandContext<CommandSourceStack> c, Vec3 pos, int radius) {
         try {
             Entity nullableSummoner = c.getSource().getEntity();

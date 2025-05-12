@@ -22,6 +22,8 @@ public class GoodsData {
     private final CurrencyCost cost;
     private int amountSold; // TODO USE
     private String rarity; // common, uncommon, rare.
+    // active
+    // marketType
 
     public GoodsData(Item item, CurrencyCost cost) {
         this.item = item;
