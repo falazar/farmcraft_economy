@@ -272,13 +272,13 @@ public class MarketCommand {
                     pamhc2foodextended:durianjuiceitem\t8
                     pamhc2foodextended:potatoskinsitem\t8
                     pamhc2foodextended:kiwismoothieitem\t9
-                    pamhc2foodextended:pomegranatejuiceitem\t10
+                    pamhc2foodextended:pomegranatejuiceitem\t11
                     pamhc2foodextended:energydrinkitem\t8
                     pamhc2foodextended:rawtofishitem\t11
                     pamhc2foodcore:vinegaritem\t10
                     pamhc2foodextended:passionfruityogurtitem\t14
                     pamhc2foodextended:honeysoyribsitem\t11
-                    pamhc2foodextended:gardensoupitem\t9
+                    pamhc2foodextended:gardensoupitem\t7
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
@@ -295,17 +295,17 @@ public class MarketCommand {
         } else if (type.equals("stone")) {
             String stoneString = """
                     valhelsia_structures:cyan_metal_framed_glass\t5
-                    minecraft:black_glazed_terracotta\t6
+                    minecraft:black_glazed_terracotta\t4
                     minecraft:white_terracotta\t5
-                    mcwbridges:deepslate_brick_bridge_stair\t9
+                    mcwbridges:deepslate_brick_bridge_stair\t10
                     minecraft:polished_andesite_stairs\t6
                     """;
             return parseItemsFromString(stoneString);
-        } else if (type.equals("general")) {
+        } else if (type.equals("general")) {  // those two in stone maybe only?
             String generalString = """
                     minecraft:amethyst_block\t5
                     minecraft:iron_ingot\t5
-                    minecraft:gray_wool\tt6
+                    minecraft:gray_wool\t6
                     minecraft:rabbit_foot\t6
                     minecraft:snowball\t7
                     minecraft:magenta_concrete_powder\t7
@@ -1426,34 +1426,399 @@ Shows: * for stone, sandstone, redstone, blackstone, mossy, glowstone, end_stone
 
 #####################################################################################
 General Market Type:
-all flowers, dyes
-all concretes, concrete powders
+all flowers, dyes, tag?
+    dandelion
+    poppy
+    blue orchid
+    allium
+    oxeye_daisy
+    azure_bluet
+    red_tulip
+    orange_tulip
+    white_tulip
+    pink_tulip
+    cornflower
+    lily_of_the_valley
+    wither_rose
+    pink_petals
+    cactus
+    sunflower
+    lilac
+    rose_bush
+    peony
+    lily_pad
+    sea_grass
+    kelp
+
+dyes
+    minecraft:black_dye
+    minecraft:blue_dye
+    minecraft:brown_dye
+    minecraft:cyan_dye
+    minecraft:gray_dye
+    minecraft:green_dye
+    minecraft:light_blue_dye
+    minecraft:light_gray_dye
+    minecraft:lime_dye
+    minecraft:magenta_dye
+    minecraft:orange_dye
+    minecraft:pink_dye
+    minecraft:purple_dye
+    minecraft:red_dye
+    minecraft:white_dye
+    minecraft:yellow_dye
+
+red mushroom, brown mushroom
+    minecraft:brown_mushroom
+    minecraft:red_mushroom
+all concrete powders skip concrete, pain to wet
+    minecraft:black_concrete_powder
+    minecraft:blue_concrete_powder
+    minecraft:brown_concrete_powder
+    minecraft:cyan_concrete_powder
+    minecraft:gray_concrete_powder
+    minecraft:green_concrete_powder
+    minecraft:light_blue_concrete_powder
+    minecraft:light_gray_concrete_powder
+    minecraft:lime_concrete_powder
+    minecraft:magenta_concrete_powder
+    minecraft:orange_concrete_powder
+    minecraft:pink_concrete_powder
+    minecraft:purple_concrete_powder
+    minecraft:red_concrete_powder
+    minecraft:white_concrete_powder
+    minecraft:yellow_concrete_powder
+
 all non wooden furniture
-all copper items
+    sofa, trampoline odd skip!, cooler, grill, colored kitchen counters only,
+    colored kitchen drawers, and kitchen sink
+    stem] [CHAT] Items matching "sofa":
+    cfm:black_sofa
+    cfm:blue_sofa
+    cfm:brown_sofa
+    cfm:cyan_sofa
+    cfm:gray_sofa
+    cfm:green_sofa
+    cfm:light_blue_sofa
+    cfm:light_gray_sofa
+    cfm:lime_sofa
+    cfm:magenta_sofa
+    cfm:orange_sofa
+    cfm:pink_sofa
+    cfm:purple_sofa
+    cfm:rainbow_sofa
+    cfm:red_sofa
+    cfm:white_sofa
+    cfm:yellow_sofa
+
+    cfm:black_cooler
+    cfm:blue_cooler
+    cfm:brown_cooler
+    cfm:cyan_cooler
+    cfm:gray_cooler
+    cfm:green_cooler
+    cfm:light_blue_cooler
+    cfm:light_gray_cooler
+    cfm:lime_cooler
+    cfm:magenta_cooler
+    cfm:orange_cooler
+    cfm:pink_cooler
+    cfm:purple_cooler
+    cfm:red_cooler
+    cfm:white_cooler
+    cfm:yellow_cooler
+    
+    cfm:black_grill
+    cfm:blue_grill
+    cfm:brown_grill
+    cfm:cyan_grill
+    cfm:gray_grill
+    cfm:green_grill
+    cfm:light_blue_grill
+    cfm:light_gray_grill
+    cfm:lime_grill
+    cfm:magenta_grill
+    cfm:orange_grill
+    cfm:pink_grill
+    cfm:purple_grill
+    cfm:red_grill
+    cfm:white_grill
+    cfm:yellow_grill
+
+
+    cfm:black_kitchen_counter
+    cfm:black_kitchen_drawer
+    cfm:black_kitchen_sink
+    cfm:blue_kitchen_counter
+    cfm:blue_kitchen_drawer
+    cfm:blue_kitchen_sink
+    cfm:brown_kitchen_counter
+    cfm:brown_kitchen_drawer
+    cfm:brown_kitchen_sink
+    cfm:cyan_kitchen_counter
+    cfm:cyan_kitchen_drawer
+    cfm:cyan_kitchen_sink
+    cfm:gray_kitchen_counter
+    cfm:gray_kitchen_drawer
+    cfm:gray_kitchen_sink
+    cfm:green_kitchen_counter
+    cfm:green_kitchen_drawer
+    cfm:green_kitchen_sink
+    cfm:light_blue_kitchen_counter
+    cfm:light_blue_kitchen_drawer
+    cfm:light_blue_kitchen_sink
+    cfm:light_gray_kitchen_counter
+    cfm:light_gray_kitchen_drawer
+    cfm:light_gray_kitchen_sink
+    cfm:lime_kitchen_counter
+    cfm:lime_kitchen_drawer
+    cfm:lime_kitchen_sink
+    cfm:magenta_kitchen_counter
+    cfm:magenta_kitchen_drawer
+    cfm:magenta_kitchen_sink
+    cfm:orange_kitchen_counter
+    cfm:orange_kitchen_drawer
+    cfm:orange_kitchen_sink
+    cfm:pink_kitchen_counter
+    cfm:pink_kitchen_drawer
+    cfm:pink_kitchen_sink
+    cfm:purple_kitchen_counter
+    cfm:purple_kitchen_drawer
+    cfm:purple_kitchen_sink
+    cfm:red_kitchen_counter
+    cfm:red_kitchen_drawer
+    cfm:red_kitchen_sink
+    cfm:white_kitchen_counter
+    cfm:white_kitchen_drawer
+    cfm:white_kitchen_sink
+    cfm:yellow_kitchen_counter
+    cfm:yellow_kitchen_drawer
+    cfm:yellow_kitchen_sink
+
+
 all candles
+minecraft:black_candle
+minecraft:blue_candle
+minecraft:brown_candle
+minecraft:candle
+minecraft:cyan_candle
+minecraft:gray_candle
+minecraft:green_candle
+minecraft:light_blue_candle
+minecraft:light_gray_candle
+minecraft:lime_candle
+minecraft:magenta_candle
+minecraft:orange_candle
+minecraft:pink_candle
+minecraft:purple_candle
+minecraft:red_candle
+minecraft:white_candle
+minecraft:yellow_candle
+
 all banners
-iron items (how)
+minecraft:black_banner
+minecraft:blue_banner
+minecraft:brown_banner
+minecraft:cyan_banner
+minecraft:gray_banner
+minecraft:green_banner
+minecraft:light_blue_banner
+minecraft:light_gray_banner
+minecraft:lime_banner
+minecraft:magenta_banner
+minecraft:orange_banner
+minecraft:pink_banner
+minecraft:purple_banner
+minecraft:red_banner
+minecraft:white_banner
+minecraft:yellow_banner
+
+all copper items
+minecraft:copper_block
+minecraft:copper_ingot
+minecraft:cut_copper
+minecraft:cut_copper_stairs
+minecraft:exposed_copper
+minecraft:exposed_cut_copper
+minecraft:exposed_cut_copper_stairs
+minecraft:oxidized_copper
+minecraft:oxidized_cut_copper
+minecraft:oxidized_cut_copper_stairs
+minecraft:waxed_copper_block
+minecraft:waxed_cut_copper
+minecraft:waxed_cut_copper_stairs
+minecraft:waxed_exposed_copper
+minecraft:waxed_exposed_cut_copper
+minecraft:waxed_exposed_cut_copper_stairs
+minecraft:waxed_oxidized_copper
+minecraft:waxed_oxidized_cut_copper
+minecraft:waxed_oxidized_cut_copper_stairs
+minecraft:waxed_weathered_copper
+minecraft:waxed_weathered_cut_copper
+minecraft:waxed_weathered_cut_copper_stairs
+minecraft:weathered_copper
+minecraft:weathered_cut_copper
+minecraft:weathered_cut_copper_stairs
+
+
+iron items (how) not much, skip.
+
+
 NO wood items, stone items, or fooditems.
 NO weapons, armor
+
+all wools
+    minecraft:black_wool
+    minecraft:blue_wool
+    minecraft:brown_wool
+    minecraft:cyan_wool
+    minecraft:gray_wool
+    minecraft:green_wool
+    minecraft:light_blue_wool
+    minecraft:light_gray_wool
+    minecraft:lime_wool
+    minecraft:magenta_wool
+    minecraft:orange_wool
+    minecraft:pink_wool
+    minecraft:purple_wool
+    minecraft:red_wool
+    minecraft:white_wool
+    minecraft:yellow_wool
+
 MOB drops - some - easier ones.
-    all wools
-    arrows
-    feathers
-    slime balls
-    bones
-    string
-    gunpowder
+    minecraft:arrow
+    minecraft:feather
+    minecraft:slime_ball
+    minecraft:bone
+    minecraft:string
+    minecraft:gunpowder
+    minecraft:leather
+    minecraft:rabbit_foot
+    iceandfire:pixie_dust
+    alexsmobs:kangaroo_hide
+    minecraft:rabbit_hide
+    untamedwilds:hide_ashen
+    untamedwilds:hide_beige
+    untamedwilds:hide_black
+    untamedwilds:hide_brown
+    untamedwilds:hide_golden
+    untamedwilds:hide_gray
+    untamedwilds:hide_orange
+    untamedwilds:hide_tan
+    untamedwilds:hide_white
+    alexmobs:bison_fur
+    monsterplus:crystal_shard
+    monsterplus:crystal_clump
+    iceandfire:silver_ingot
+    iceandfire:dragon_bone
+    biomesoplenty:lavender
+    biomesoplenty:tall_lavender
+    biomesoplenty:pink_daffodil
+    biomesoplenty:goldenrod
+    biomesoplenty:blue_hydrangea
+    rats:rat_pelt
+
+
+
+
 Prismarine items - #
+    minecraft:dark_prismarine
+    minecraft:dark_prismarine_stairs
+    minecraft:prismarine
+    minecraft:prismarine_brick_stairs
+    minecraft:prismarine_bricks
+    minecraft:prismarine_crystals
+    minecraft:prismarine_shard
+    minecraft:prismarine_stairs
+    minecraft:prismarine_wall
+
 snow block, ice block, packed ice block.
-red mushroom, brown mushroom
-cactus
-skulk block
+    minecraft:snow_block
+    minecraft:ice
+    minecraft:packed_ice
+    minecraft:blue_ice
+
+sculk blocks
+    minecraft:sculk
+    minecraft:sculk_catalyst
+    minecraft:sculk_sensor
+
 soul torch, soul lantern
+    minecraft:soul_torch
+    minecraft:soul_lantern
+    minecraft:soul_campfire
+    minecraft:campfire
+    minecraft:lantern
+
 book, paper, bookshelf
+    minecraft:book
+    minecraft:bookshelf
+    minecraft:paper
+    minecraft:writable_book
+
 flower pot
-TODO check other mods too.
+    minecraft:flower_pot
+
 sleeping bags
+    valhelsia_structures:black_sleeping_bag
+    valhelsia_structures:blue_sleeping_bag
+    valhelsia_structures:brown_sleeping_bag
+    valhelsia_structures:cyan_sleeping_bag
+    valhelsia_structures:gray_sleeping_bag
+    valhelsia_structures:green_sleeping_bag
+    valhelsia_structures:light_blue_sleeping_bag
+    valhelsia_structures:light_gray_sleeping_bag
+    valhelsia_structures:lime_sleeping_bag
+    valhelsia_structures:magenta_sleeping_bag
+    valhelsia_structures:orange_sleeping_bag
+    valhelsia_structures:pink_sleeping_bag
+    valhelsia_structures:purple_sleeping_bag
+    valhelsia_structures:red_sleeping_bag
+    valhelsia_structures:white_sleeping_bag
+    valhelsia_structures:yellow_sleeping_bag
+
+
 glazed jars
+    iceandfire:pixie_jar_empty
+    valhelsia_structures:big_black_glazed_jar
+    valhelsia_structures:big_blue_glazed_jar
+    valhelsia_structures:big_brown_glazed_jar
+    valhelsia_structures:big_cyan_glazed_jar
+    valhelsia_structures:big_glazed_jar
+    valhelsia_structures:big_gray_glazed_jar
+    valhelsia_structures:big_green_glazed_jar
+    valhelsia_structures:big_light_blue_glazed_jar
+    valhelsia_structures:big_light_gray_glazed_jar
+    valhelsia_structures:big_lime_glazed_jar
+    valhelsia_structures:big_magenta_glazed_jar
+    valhelsia_structures:big_orange_glazed_jar
+    valhelsia_structures:big_pink_glazed_jar
+    valhelsia_structures:big_purple_glazed_jar
+    valhelsia_structures:big_red_glazed_jar
+    valhelsia_structures:big_white_glazed_jar
+    valhelsia_structures:big_yellow_glazed_jar
+    valhelsia_structures:black_glazed_jar
+    valhelsia_structures:blue_glazed_jar
+    valhelsia_structures:brown_glazed_jar
+    valhelsia_structures:cracked_big_glazed_jar
+    valhelsia_structures:cracked_glazed_jar
+    valhelsia_structures:cyan_glazed_jar
+    valhelsia_structures:glazed_jar
+    valhelsia_structures:gray_glazed_jar
+    valhelsia_structures:green_glazed_jar
+    valhelsia_structures:light_blue_glazed_jar
+    valhelsia_structures:light_gray_glazed_jar
+    valhelsia_structures:lime_glazed_jar
+    valhelsia_structures:magenta_glazed_jar
+    valhelsia_structures:orange_glazed_jar
+    valhelsia_structures:pink_glazed_jar
+    valhelsia_structures:purple_glazed_jar
+    valhelsia_structures:red_glazed_jar
+    valhelsia_structures:white_glazed_jar
+    valhelsia_structures:yellow_glazed_jar
+
+
+TODO check other mods too.
 
 
 #####################################################################################

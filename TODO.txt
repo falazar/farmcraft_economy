@@ -7,6 +7,10 @@ Working now -Diamond Border not showing.
   --Todo, change into a toggleAble command.
 GIVE player a UUID field properly
 
+Add biomes onto plot info and format and color it.
+
+Add clickable link in /player info that goes to the village info automatically.
+
 DONE - Add journey map to test builder.
 
 Markets -Get them up and working.
