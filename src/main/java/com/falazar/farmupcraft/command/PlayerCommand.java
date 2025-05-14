@@ -14,6 +14,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.Registry;
@@ -63,13 +64,31 @@ public class PlayerCommand {
 
         // Admin: Define the "givecoins" and amount sub-command for admin only.
         LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
-                .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
                         .executes(context -> {
                             int amount = IntegerArgumentType.getInteger(context, "amount");
                             return givePlayerCoins(context.getSource(), amount);
                         }))
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(giveCoinsBuilder);
+
+        // Define the "givevillagecoins" and amount sub-command.
+        LiteralArgumentBuilder<CommandSourceStack> giveVillageCoinsBuilder = Commands.literal("givevillagecoins")
+                .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                        .executes(context -> {
+                            int amount = IntegerArgumentType.getInteger(context, "amount");
+                            return giveVillageCoins(context.getSource(), amount);
+                        }));
+        builder.then(giveVillageCoinsBuilder);
+
+        // Define the "takevillagecoins" and amount sub-command.
+        LiteralArgumentBuilder<CommandSourceStack> takeVillageCoinsBuilder = Commands.literal("takevillagecoins")
+                .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                        .executes(context -> {
+                            int amount = IntegerArgumentType.getInteger(context, "amount");
+                            return takeVillageCoins(context.getSource(), amount);
+                        }));
+        builder.then(takeVillageCoinsBuilder);
 
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
@@ -85,23 +104,23 @@ public class PlayerCommand {
 //            LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
-            // TODO make this bolder and colorful.
-            source.sendSuccess(() -> Component.literal("Player: " + player.getNameForPlayer(serverLevel, playerSource.getUUID())), false);
+            source.sendSuccess(() -> Component.literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()) + " ----------")
+                    .withStyle(ChatFormatting.YELLOW), false);
 
-            // STEP 2: TODO Pull money from wallet.
+            // STEP 2: Get money from wallet.
             // TODO helper method.
             Wallet wallet = player.getWallet();
             Registry<Coin> coinRegistry = serverLevel.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
             int bronzeCoins = wallet.get(bronzeCoin);
-            source.sendSuccess(() -> Component.literal("Coins: " + bronzeCoins), false);
+            source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
 
             // STEP 3: Pull home village info if set.
             if (player.getHomeVillageUUID() == null) {
                 source.sendSuccess(() -> Component.literal("No home village."), false);
             } else {
                 // todo helper method on player manager or village manager.
-                // todo player.getHomeVillageName();
+                // todo player.getHomeVillage();
                 DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
                 VillageData villageData = villageDataDB.getData(player.getHomeVillageUUID());
                 if (villageData != null) {
@@ -121,17 +140,22 @@ public class PlayerCommand {
     public static int givePlayerCoins(CommandSourceStack source, int amount) {
         try {
             Entity nullableSummoner = source.getEntity();
-            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            PlayerData player = getPlayer(source);
 
             // Add money to wallet.
-            Wallet wallet = ModEvents.getPlayerDatabase().getData(player.getUUID()).getWallet();
-            Registry<Coin> coinRegistry = player.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Wallet wallet = player.getWallet();
+            Registry<Coin> coinRegistry = playerSource.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
 
             wallet.add(bronzeCoin, amount);
+
+            // TODO THIS IS ALL THATS NEEDED? save is not quite working.
+            savePlayer(playerSource.getUUID(), player);
+
             int bronzeCoins = wallet.get(bronzeCoin);
             source.sendSuccess(() -> Component.literal("Player: "
-                    + player.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+                    + playerSource.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();
@@ -142,12 +166,14 @@ public class PlayerCommand {
     // Leave village command
     public static int leaveVillage(CommandSourceStack source) {
         try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             PlayerData player = getPlayer(source);
 
             // TODO make helper method for this.
             source.sendSuccess(() -> Component.literal("Leaving home village now"), false);
             player.setHomeVillageId(null);
-
+            savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("player info Exception thrown - see log"));
             ex.printStackTrace();
@@ -158,6 +184,8 @@ public class PlayerCommand {
     // Set village command
     public static int setVillage(CommandSourceStack source, String villageName) {
         try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             PlayerData player = getPlayer(source);
 
             // Get village data from database. and uuid
@@ -170,7 +198,7 @@ public class PlayerCommand {
             // TODO make helper method for this.
             source.sendSuccess(() -> Component.literal("Joining home village now: " + villageName), false);
             player.setHomeVillageId(village.getUUID());
-
+            savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("player info Exception thrown - see log"));
             ex.printStackTrace();
@@ -195,4 +223,110 @@ public class PlayerCommand {
 
         return player;
     }
+
+    // TODO get uuid from within player instead!!!! update me.
+    public static void savePlayer(UUID uuid, PlayerData player) {
+        DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
+
+        playerDataDataBase.putData(uuid, player);
+    }
+
+    // Give village coins method.
+    public static int giveVillageCoins(CommandSourceStack source, int amount) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // STEP 1: Get player data and village data.
+            PlayerData player = getPlayer(source);
+            ServerLevel serverLevel = source.getLevel();
+            // TODO helper methods.
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase(serverLevel);
+            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("No home village set."));
+                return 0;
+            }
+
+            // STEP 2: Check enough money in wallet.
+            Wallet wallet = player.getWallet();
+            Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+            if (!player.getWallet().hasEnough(bronzeCoin, amount)) {
+                source.sendFailure(Component.literal("Not enough coins in wallet, only have " + wallet.get(bronzeCoin)));
+                return 0;
+            }
+
+            // STEP 3: Subtract coins from player.
+            // TODO use helper method.
+            wallet.remove(bronzeCoin, amount);
+            savePlayer(playerSource.getUUID(), player);
+
+            // STEP 4: Add to village coins.
+            village.addCoins(amount);
+            villageDatabase.putData(village.getUUID(), village);
+
+            int bronzeCoins = wallet.get(bronzeCoin);
+            source.sendSuccess(() -> Component.literal("Village: "
+                    + village.getName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static int takeVillageCoins(CommandSourceStack source, int amount) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // STEP 1: Get player data and village data.
+            PlayerData player = getPlayer(source);
+            ServerLevel serverLevel = source.getLevel();
+            // TODO helper methods.
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase(serverLevel);
+            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("No home village set."));
+                return 0;
+            }
+
+            // STEP 2: Check enough money in village
+            if (!village.hasEnoughCoins(amount)) {
+                source.sendFailure(Component.literal("Not enough coins in village, only have " + village.getCoins()));
+                return 0;
+            }
+
+            // STEP 3: Subtract coins from village.
+            village.subtractCoins(amount);
+            villageDatabase.putData(village.getUUID(), village);
+
+            // STEP 4: Add to player coins.
+            Wallet wallet = player.getWallet();
+            Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
+            wallet.add(bronzeCoin, amount);
+
+            // TODO remove almost all playerDatabase calls within this file, use helpers.
+            // TODO remove almost all playerDatabase calls within this file, use helpers.
+            // TODO remoe almost all playerDatabase calls within this file, use helpers.
+            // TODO remoe almost all playerDatabase calls within this file, use helpers.
+            // TODO remoe almost all playerDatabase calls within this file, use helpers.
+            // TODO remoe almost all playerDatabase calls within this file, use helpers.
+            // TODO remoe almost all playerDatabase calls within this file, use helpers.
+
+//            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            savePlayer(playerSource.getUUID(), player);
+
+            int bronzeCoins = wallet.get(bronzeCoin);
+            source.sendSuccess(() -> Component.literal("Village: "
+                    + village.getName() + " taken " + amount + " coins. Total: " + bronzeCoins), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
 }

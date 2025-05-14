@@ -3,18 +3,10 @@ package com.falazar.farmupcraft.data;
 import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.UUIDUtil;
-import net.minecraft.core.Vec3i;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 public class VillageData {
     public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance ->
@@ -24,7 +16,8 @@ public class VillageData {
                             CodecUtils.CHUNK_POS_CODEC.fieldOf("position").forGetter(VillageData::getPosition),
                             Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
                             CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
-                            Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought)
+                            Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought),
+                            Codec.INT.optionalFieldOf("coins", 0).forGetter(VillageData::getCoins) // New field with default value
                     ).apply(instance, VillageData::new)
     );
 
@@ -32,27 +25,33 @@ public class VillageData {
     private String name;
     private final ChunkPos position;
     private int level;
-    private final List<ChunkPos> claimedChunks;
-    private final Set<Long> claimedChunkSet = new HashSet<>();
-    private final boolean bought;  // TODO what is this one?
+    private List<ChunkPos> claimedChunks;
+    private Set<Long> claimedChunkSet = new HashSet<>();
+    private final boolean bought;  // TODO what is this one? remove?
+    // TODO add coins to see if we have any or are in debt.
+    private int coins;
+
+    // TODO add coins to see if we have any or are in debt.
+    // TODO add player commands to add coins and subtract
 
     /**
-     * Constructs a new ChunkData object.
-     * @param uuid       unique id of village
+     * Constructs a new VillageData object.
+     * @param uuid     unique id of village
      * @param name     the mame of village
      * @param level    the level of village
      * @param position the 3d position of village
      */
-    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks, boolean bought) {
+    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks, boolean bought, int coins) {
         this.uuid = uuid;
         this.name = name;
         this.position = position;
         this.level = level;
-        this.claimedChunks = claimedChunks;
+        this.claimedChunks = new ArrayList<>(claimedChunks); // Convert to mutable list
         this.bought = bought;
         for (ChunkPos pos : claimedChunks) {
             claimedChunkSet.add(ChunkPos.asLong(pos.x, pos.z));
         }
+        this.coins = coins;
     }
 
     /**
@@ -105,6 +104,16 @@ public class VillageData {
         return claimedChunkSet;
     }
 
+    public void addClaimedChunk(ChunkPos chunkPos) {
+        claimedChunks.add(chunkPos);
+        claimedChunkSet.add(ChunkPos.asLong(chunkPos.x, chunkPos.z));
+    }
+
+    public void removeClaimedChunk(ChunkPos chunkPos) {
+        claimedChunks.remove(chunkPos);
+        claimedChunkSet.remove(ChunkPos.asLong(chunkPos.x, chunkPos.z));
+    }
+
     public boolean isBought() {
         return bought;
     }
@@ -114,4 +123,29 @@ public class VillageData {
         return "Village ID: " + uuid + ", Owner: " + name + ", Chunks: " + claimedChunks;
     }
 
+    public int getCoins() {
+        return coins;
+    }
+
+    public void setCoins(int coins) {
+        this.coins = coins;
+    }
+
+    public void addCoins(int coins) {
+        if (coins < 0) {
+            throw new IllegalArgumentException("Cannot add negative coins");
+        }
+        this.coins += coins;
+    }
+
+    public void subtractCoins(int coins) {
+        if (coins < 0) {
+            throw new IllegalArgumentException("Cannot subtract negative coins");
+        }
+        this.coins -= coins;
+    }
+
+    public boolean hasEnoughCoins(int coins) {
+        return this.coins >= coins;
+    }
 }

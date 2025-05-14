@@ -1,9 +1,6 @@
 package com.falazar.farmupcraft;
 
-import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.CropBlockData;
-import com.falazar.farmupcraft.data.CropBlockDataJsonManager;
-import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
@@ -23,6 +20,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.StructureTags;
@@ -52,7 +51,6 @@ import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
-import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.eventbus.api.Event;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -62,7 +60,8 @@ import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
-import static com.falazar.farmupcraft.command.VillageCommand.getClosestVillage;
+import static com.falazar.farmupcraft.command.VillageCommand.getVillageBiomes;
+import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
 import static org.apache.commons.lang3.StringUtils.replace;
 
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -73,8 +72,6 @@ public class CropsManager {
 
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
-    // NOTE: Planting IS allowed on non-farm plots - villager created plots. Only can hoe on farms though.
-    // TODO BUG can plant outside farm outside village area scouter.
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
@@ -176,7 +173,7 @@ public class CropsManager {
         // STEP 4: Get current biome the block is in.
         Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
 
-        //The biome has rules defined for what can happen in it or not!
+        // The biome has rules defined for what can happen in it or not!
         BiomeRulesManager manager = BiomeRulesManager.get(event.getLevel());
         if (manager == null || !manager.hasRules()) return;
 
@@ -225,6 +222,133 @@ public class CropsManager {
         }
     }
 
+    @SubscribeEvent
+    public static void onRightClickHarvestTrees(PlayerInteractEvent.RightClickBlock event) {
+        // Check if the event is on client side, then skip.
+        if (event.getEntity().level().isClientSide) {
+            return;
+        }
+        // Ensure the event is only processed for the main hand
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
+        // triggering multiple times?? once with air?
+        LOGGER.info("\n TRIGGERED: onRightHarvestTrees event. ");
+
+        // Step 1: If in creative mode, skip all rules and allow.
+        Player player = (Player) event.getEntity();
+        if (player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
+        if (player.isCreative()) {
+            return;
+        }
+
+        // STEP 2: If holding bone meal skip area also!
+        ItemStack stack = event.getItemStack();
+        if (stack.is(Items.BONE_MEAL)) {
+            return;
+        }
+
+        // STEP 3: Test if target block is tree fruit, else leave.
+        Level level = event.getLevel();
+        BlockPos clickedPos = event.getPos();
+        BlockState blockState = level.getBlockState(clickedPos);
+        Block block = blockState.getBlock();
+        String blockId = block.getDescriptionId();
+        if (!blockId.contains("pamhc2trees")) {
+            return;
+        }
+
+        // STEP 4: Get age of fruit.  TODO test cinnamon
+        int age = blockState.getValue(AGE);
+        if (age < 7) {
+            return;
+        }
+
+
+        // TESTING AREA!!!
+        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
+        ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
+        // times picked up?  hmmm harvested? used? eaten?
+        // Need actual item instead??? TODO
+        // block is a tree fruit named block.pamhc2trees.pamchestnut
+        // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
+        // TODO MAKE METHOD.
+//        LOGGER.info("DEBUG blockId is " + blockId);
+        String itemName = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";
+
+        // Special case: Convert apple to old item name.
+        // block.pamhc2trees.pamapple
+        if (blockId.equals("block.pamhc2trees.pamapple")) {
+            itemName = "minecraft:apple";
+        }
+        // Get item from new name.
+//        LOGGER.info( "DEBUG: itemname is " + itemName);
+        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
+        LOGGER.info("DEBUG: item is " + item);
+        int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
+        // get times dropped, subtract the two would be close.
+        int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
+//        LOGGER.info("DEBUG: timesdropped " + timesDropped + " times.");
+        int timesHarvested = timesPickedUp - timesDropped;
+        LOGGER.info("DEBUG: timesharvested " + timesHarvested + " times.");
+
+
+        // STEP 6: Calc a percent chance of failure, and fruit dies.
+        // If age is 7 its ripe, break block fruit!
+        // 75% chance of success, hardcoded for now.
+        int successPercent = 60;
+        successPercent += player.experienceLevel + (timesHarvested / 100) * 2;
+        // TODO add nursery level.  real player level.
+        successPercent = Math.min(successPercent, 98); // max 98 percent.
+        LOGGER.info("DEBUG: successPercent is " + successPercent);
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum >= successPercent) {
+            // Cancel event and return now.
+            event.setCanceled(true);
+
+            // Break the fruit block. (set to air)
+            BlockState air = Blocks.AIR.defaultBlockState();
+            level.setBlock(clickedPos, air, 3);
+
+            // Show message to player.
+            player.displayClientMessage(Component.literal("You failed to harvest the fruit!"), false);
+            return;
+        }
+
+
+        // TODO calc a percent chance of double fruit,
+        // TODO Higher at high nursery and player levels.
+        // STEP 7: Extra fruit.
+        // At player level over 25, increased chance of double fruits.
+        int doubleSuccessPercent = 40;
+        if (player.experienceLevel > 20) {
+            // TODO calc a percent chance of double fruit,
+            // TODO Higher at high nursery and player levels.
+            // Add in player level
+            doubleSuccessPercent += player.experienceLevel + (timesHarvested / 100) * 2; // (50% min)
+            LOGGER.info("DEBUG: doubleSuccessPercent is " + doubleSuccessPercent);
+            randomNum = rand.nextInt(100); // 100% 0-99
+            if (randomNum <= doubleSuccessPercent) {
+                int bonusCnt = 1;
+                if (randomNum <= doubleSuccessPercent - 25) {
+                    // Add another!
+                    bonusCnt = 2;
+                }
+
+                // Give player a fruit item.
+                ItemStack itemStack = new ItemStack(item, bonusCnt);
+                player.addItem(itemStack);
+                // Only show this message 1 out of 10 times.
+                randomNum = rand.nextInt(10); // 10% 0-9
+                if (randomNum == 0) {
+                    player.displayClientMessage(Component.literal("You got " + bonusCnt + " bonus fruit!"), false);
+                }
+                LOGGER.info("DEBUG: block got bonus fruit named " + blockId);
+            }
+        }
+    }
+
 
     // Check anytime a player enters a new chunk.
     // Tell if they have entered a village or not.
@@ -245,7 +369,7 @@ public class CropsManager {
                 return;
             }
             Player player = (Player) event.getEntity();
-            BlockPos pos = player.blockPosition();
+//            BlockPos pos = player.blockPosition();
 
             // If changed only y level, skip this notice!!! jumping in a farm triggers a ton of these.
             // Change this later for dungeon areas.
@@ -263,6 +387,14 @@ public class CropsManager {
                 player.displayClientMessage(Component.literal("You left the village of " + lastChunkVillageName), false);
                 return;
             } else if (currChunkVillageName != null && lastChunkVillageName == null) {
+                // Send entering village message.
+                player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName), false);
+                return;
+            } else if (currChunkVillageName != null && lastChunkVillageName != null) {
+                // If same village name no message needed
+                if (currChunkVillageName.equals(lastChunkVillageName)) {
+                    return;
+                }
                 // Send entering village message.
                 player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName), false);
                 return;
@@ -498,23 +630,22 @@ public class CropsManager {
 
         // TODO MAKE METHOD
 
-        // Get the name of the crop item
+        // Step 1Get the name of the crop item
         String cropItemShow = stack.getHoverName().getString();
-
         // Get the biome name
         ResourceKey<Biome> rl = biome.unwrapKey().orElse(UKNOWN_RK);
         Component biomeNameShow = Component.translatable(getBiomeLangKey(rl.location())).withStyle(ChatFormatting.AQUA);
 
-        Player player = event.getEntity();
+        Player playerSource = event.getEntity();
         if (event.getLevel().isClientSide) {
             return false;
         }
 
         // Display message that this crop cannot be planted in this biome
         MutableComponent component = Component.literal("§eYou cannot plant " + cropItemShow + " in ").append(biomeNameShow);
-        player.displayClientMessage(component, false);
+        playerSource.displayClientMessage(component, false);
 
-        // List the crops allowed in the current biome
+        // STEP 3: List the crops allowed in the current biome
         Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
                 // Map item to a custom string for special cases and then translate
                 .map(item -> {
@@ -546,38 +677,85 @@ public class CropsManager {
                 // Join the names with commas
                 .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                 .orElse(Component.literal("None"));
-
-
         // Construct the message for the crops that can be planted in the biome
         component = Component.literal("§aCrops you can plant in ")
                 .append(biomeNameShow)
                 .append(": §2")
                 .append(cropsAllowedShow);
+        playerSource.displayClientMessage(component, false);
 
-
-        player.displayClientMessage(component, false);
-
-        // List the biomes where this crop can be planted
+        // STEP 4: List the biomes where this crop can be planted.
         if (manager.hasItems()) {
-            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
-            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-                    .map(Component::getString) // Convert to plain text for uniqueness check
+            // TODO Get all this farms biomes, compare and note.
+            // TODO Get all this villages biomes, compare and note now.
+            // Get the village data for the player.
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+            PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
+            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+            // Get the list of biomes in the village.
+            Map<String, Integer> biomes = getVillageBiomes(villageData);
+            // Map to a single set of biomes.
+            Set<String> biomeSet = new HashSet<>();
+            for (String biomeString : biomes.keySet()) {
+                biomeSet.add(biomeString);
+            }
+
+
+            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component.
+//            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
+//                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+//                    .map(Component::getString) // Convert to plain text for uniqueness check
+//                    .distinct() // Ensure each biome is unique
+//                    .sorted() // Sort the biomes alphabetically
+//                    .map(name -> Component.literal(name)) // Convert back to Component
+//                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+//                    .orElse(Component.literal("None"));
+
+
+            // Step 1: Get the list of formatted biome components
+            LOGGER.info("DEBUG1 biomeSet=" + biomeSet);
+            LOGGER.info("DEBUG2 biomesForItem=" + manager.getBiomesForItem(stack.getItem()));
+
+            List<MutableComponent> biomeComponents = manager.getBiomesForItem(stack.getItem()).stream()
+                    .map(b -> {
+                        String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
+                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName+"*");
+                        String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
+                        biomeName2 = biomeName2.replace(".", ":");
+                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName+"*");
+
+                        ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
+                        return Component.translatable(biomeName).withStyle(color);
+                    })
                     .distinct() // Ensure each biome is unique
-                    .sorted() // Sort the biomes alphabetically
-                    .map(name -> Component.literal(name)) // Convert back to Component
+                    .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
+                    .toList();
+
+            // Step 2: Combine the components into a single component
+            Component biomesListShow = biomeComponents.stream()
                     .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
                     .orElse(Component.literal("None"));
 
+
             // Create the final message component
-            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
-            player.displayClientMessage(component, false);
+//            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
+            component = Component.literal("Biomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+            // TODO highlight in green any that are in this farm, yellow if in this town.
+
+            playerSource.displayClientMessage(component, false);
         }
 
         return false;
     }
 
-    private static String getBiomeLangKey(ResourceLocation location) {
+    public static String getBiomeLangKey(ResourceLocation location) {
         String name = location.getPath();
         String id = location.getNamespace();
         return "biome." + id + "." + name;
@@ -756,38 +934,11 @@ public class CropsManager {
         if (player == null) {
             return;
         }
-        String string = "";
-        //StringBuilder builder = new StringBuilder();
-//
-        //Iterable<Item> allItems = ForgeRegistries.ITEMS;
-//
-        //// Filter information about items from the target mod
-        //List<String> itemNames = new ArrayList<>();
-        //for (Item item : allItems) {
-        //    // TODO add in basic foods and tree foods.
-//
-        //    // Check if the item belongs to the target mod
-        //    String itemName = item.getDescriptionId();
-        //    // Example: 'pamhc2foodcore:baconcheeseburgeritem'
-        //    // rolleritem bad ones, filter out.
-        //    // Look for edible as well.
-        //    if ((itemName.contains("pamhc2foodcore") || itemName.contains("pamhc2foodextended"))
-        //            && itemName.contains("item")
-        //            && item.isEdible()) {
-//      //          LOGGER.info("DEBUG: name = " + itemName);
-        //        ResourceLocation rl = ForgeRegistries.ITEMS.getKey(item);
-        //        builder.append(".tag(new ResourceLocation(\"" + rl + "\"))");
-        //    }
-        //}
-        //builder.append(";");
-        //LOGGER.info("Final string = " + builder.toString());
-
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
         MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
         String s = component.toString();
 //        LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
-
 
         // Only do rule if base stones or dirt.
         if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD)

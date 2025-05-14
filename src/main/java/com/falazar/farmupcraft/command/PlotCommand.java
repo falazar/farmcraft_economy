@@ -1,8 +1,6 @@
 package com.falazar.farmupcraft.command;
 
 import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.CurrencyCost;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
@@ -17,12 +15,9 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
-import net.minecraft.core.Vec3i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -42,9 +37,10 @@ public class PlotCommand {
         // Define the base command "show"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("plot");
 
-        // Define the "plots" sub-commands
+        // Define the "info" sub-commands
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(PlotCommand::showPlotInfo);
+        builder.then(infoBuilder);
 
         // Define the "buy" sub-command
         LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
@@ -67,24 +63,29 @@ public class PlotCommand {
                                 return 0;
                             }
                         }));
-
+        builder.then(buyBuilder);
 
         // Define the "delete" sub-command - For ADMIN only!
+        // removes chunk from database, and village
         LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
                 .executes(context -> {
-                    deletePlot(context.getSource());
+                    deleteChunk(context.getSource());
                     return 0;
                 })
                 .requires(s -> s.hasPermission(2));  // Adjust permission as needed
         builder.then(deleteBuilder);
 
-//        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
-//                .executes(c -> buyPlot(c))
-//                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
 
-        // Add the sub-commands to the "plot" command
-        builder.then(infoBuilder);
-        builder.then(buyBuilder);
+        // Define ADMIN setvillage chunk to reclaim a single chunk.
+        LiteralArgumentBuilder <CommandSourceStack> reclaimBuilder = Commands.literal("reclaim")
+                .executes(context -> {
+                    reclaimChunk(context.getSource());
+                    return 0;
+                })
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+        builder.then(reclaimBuilder);
+
+        // TODO do a /plot biomes command also!
 
         // Register the main "plot" command with the dispatcher
         pDispatcher.register(builder);
@@ -151,10 +152,10 @@ public class PlotCommand {
 
             ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
             DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
-            ;
+
             ChunkData chunk = chunkDataDatabase.getData(chunkPos.toLong());
-            DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData player = playerDatabase.getData(playerSource.getUUID());
 
             // STEP 1: Check if it is in a village and not already bought.
             // TODO TEST
@@ -169,20 +170,21 @@ public class PlotCommand {
             }
 
             // STEP 2: Check if the player is in the village that matches the chunk.
-            // TODO TEST
-            if (!chunk.getVillageId().equals(playerData.getHomeVillageUUID())) {
+            if (!chunk.getVillageId().equals(player.getHomeVillageUUID())) {
                 source.sendFailure(Component.literal("Plot is not in your village."));
                 return 0;
             }
-            // TODO BUG can buy plots OUTSIDE of village.
 
             // STEP 2.5: Check if it is touching another plot (that isn't marked village).
+            // TODO make optional rule maybe, for scout.
+            // TODO make a method.
+            // TODO make a method.
+            // TODO make a method.
+            // TODO make a method.
             // TODO make a method.
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
-            VillageData village = villageDataDB.getData(playerData.getHomeVillageUUID());
-            // TODO make optional rule maybe, for scout.
+            VillageData village = villageDataDB.getData(player.getHomeVillageUUID());
             // Get all four adjacent chunks.
-            // TODO TEST
             ChunkPos[] adjacentChunks = {
                     new ChunkPos(chunkPos.x + 1, chunkPos.z),
                     new ChunkPos(chunkPos.x - 1, chunkPos.z),
@@ -219,15 +221,15 @@ public class PlotCommand {
 
 
             // STEP 3: Calc cost to buy plot and check players total.
-            int cost = calculatePlotCost(playerData, village, plotType);
+            int cost = calculatePlotCost(village, plotType);
             Level level = playerSource.level();
             Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!playerData.getWallet().hasEnough(bronzeCoin, cost)) {
+            if (!player.getWallet().hasEnough(bronzeCoin, cost)) {
                 source.sendFailure(Component.literal("Player does not have enough money."));
                 // Show cost and coins
                 source.sendFailure(Component.literal("Cost: " + cost));
-                source.sendFailure(Component.literal("Player Coins: " + playerData.getWallet().get(bronzeCoin)));
+                source.sendFailure(Component.literal("Player Coins: " + player.getWallet().get(bronzeCoin)));
                 return 0;
             }
 
@@ -240,13 +242,14 @@ public class PlotCommand {
                 LOGGER.info("DEBUG1: Farming plot for " + chunkPos + ": " + village.getName());
                 ForgeChunkManager.forceChunk((ServerLevel) level, MODID, playerSource.getUUID(), chunkPos.x, chunkPos.z, true, true);
             }
-            LOGGER.info("Plot bought at " + chunkPos);
+            LOGGER.info("Plot bought at " + playerSource.blockPosition().toShortString());
 
-            // STEP 5: Subtract money out of player.
-            playerData.getWallet().remove(bronzeCoin, cost);
+            // STEP 5: Subtract money out of player.  TODO helper method hide this???
+            player.getWallet().remove(bronzeCoin, cost);
+            playerDatabase.putData(playerSource.getUUID(), player);
 
             // Build a response message
-            MutableComponent response = Component.literal("Plot bought at " + chunkPos + " as " + plotType);
+            MutableComponent response = Component.literal("Plot bought at " + playerSource.blockPosition().toShortString() + " as " + plotType + " for " + cost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -256,30 +259,27 @@ public class PlotCommand {
         return 0;
     }
 
-    // Delete a plot from DB right now, admin method.
-    public static void deletePlot(CommandSourceStack source) {
+    // Delete a chunk sfrom DB right now, admin method.
+    public static void deleteChunk(CommandSourceStack source) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (player == null) {
-                source.sendFailure(Component.literal("Player not found."));
-                return;
-            }
 
-//            Level level = player.level();
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
-            DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-            ChunkData data = dataBase.getData(chunkPos.toLong());
-            if (data == null) {
-                source.sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
+            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+            ChunkData chunkData = chunkDatabase.getData(chunkPos.toLong());
+            if (chunkData == null) {
+                source.sendFailure(Component.literal("Chunk at " + chunkPos + " is not owned."));
                 return;
             }
 
             // TODO remove from DB.
-//            dataBase.removeData(chunkPos);
+            // TODO TEST
+            chunkDatabase.removeDataAsync(chunkPos.toLong(), null);
+            chunkDatabase.setDirty(); // TODO DOES THIS WORK.
             LOGGER.info("Plot deleted at " + chunkPos);
 
-            // TODO MAYBE REMOVE FROM VILLAGE LIST.
+            // TODO REMOVE FROM VILLAGE LIST.
 
             // Build a response message
             MutableComponent response = Component.literal("Plot deleted at " + chunkPos);
@@ -291,17 +291,54 @@ public class PlotCommand {
         }
     }
 
-    private static int calculatePlotCost(PlayerData playerData, VillageData villageData, String plotType) {
-        // TODO implement cost calculation logic here.
+    public static void reclaimChunk(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            UUID villageId = player.getHomeVillageUUID();
+            VillageData village = ModEvents.getVillageDatabase().getData(villageId);
+
+            // Create Chunk.
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+
+            // Add to village now.
+            ChunkData chunk = new ChunkData("village", playerSource.getId(), villageId);
+            chunkDatabase.putData(chunkPos.toLong(), chunk);
+            village.addClaimedChunk(chunkPos);
+
+            // Build a response message
+            MutableComponent response = Component.literal("Chunk added at " + chunkPos);
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static int calculatePlotCost(VillageData villageData, String plotType) {
+        // TODO get from village Object.
+        // TODO MAKE METHOD
+        // Loop over all plots and count them, and farms.
+        int plotCnt = 0;
+        for (ChunkPos pos : villageData.getClaimedChunks()) {
+            ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(pos.toLong());
+            if (chunkData != null) {
+                if (!chunkData.getType().equalsIgnoreCase("village")) {
+                    plotCnt++;
+                }
+            }
+        }
+
         int baseCost = 100;
-        // 100 + 100 for each plot.... whatevers.
 
-        // TODO count plots existing scouter
+        // Plot Cost: 100 + 100 * plots TODO test
+        // Plot Cost: 100 + 30 * plots TODO testing lower cost.
+        int totalCost = baseCost + 30 * plotCnt;
 
-        int plotCount = 1; // TODO get from village Object.
-        int totalCost = baseCost + (plotCount - 1) * 100;
-
-        LOGGER.info("DEBUG: Plot cost for " + plotType + ": " + totalCost + " plotCount = " + plotCount);
         return totalCost;
     }
 }

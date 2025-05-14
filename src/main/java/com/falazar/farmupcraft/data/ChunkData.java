@@ -10,7 +10,6 @@ import net.minecraft.world.entity.player.Player;
 import java.util.UUID;
 
 public class ChunkData {
-
     public static final Codec<ChunkData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     Codec.STRING.fieldOf("type").forGetter(ChunkData::getType),
@@ -66,11 +65,15 @@ public class ChunkData {
 
     /**
      * Gets the village's integer ID associated with this chunk.
-     *
      * @return the village's integer ID
      */
     public UUID getVillageId() {
         return villageId;
+    }
+
+    // setVillageId
+    public void setVillageId(UUID villageId) {
+        this.villageId = villageId;
     }
 
     /**

@@ -1,4 +1,116 @@
 
-TODO list
+TODO LIST:
 
-Add journey map to to test builder.
+TODO BUGS: not saving player coins correctly, not showing.
+    Not showing wallet correctly on overlay
+    Overlay not always updating after an action, like buy plot or village?
+    GIVE player a UUID field properly
+END BUGS AREA
+
+
+GENERAL SOON:
+    TODO NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
+
+    TODO Add biomes info onto plot info and format and color it.
+
+    TODO Make find structures command have a top bottom and all options. optional distance?
+
+    TODO -Diamond Border change into a toggleAble command.
+
+    TODO - Add clickable link in /player info that goes to the village info automatically.
+
+
+MARKETS - Get them up and fully working.
+  --DONE - Create 4 market type files, listing all items. - JAMES TODO
+  --Pull in 4 market type files. Import to DB
+  --TODO update goods data nad market objects to be right.
+  --DONE - Allow player to browser 4 markets -JAMES
+  --Allow player to sell all in inventory for a market type. -JAMES
+    -- mostly done - check wallet saving.
+  --Graphical UI laters.
+  --TODO Market command Apdates prices daily. -JAMES
+  --TODO Market command Adds new random items daily. -JAMES
+
+VILLAGES:
+  --TODO Add coins to village, single value?
+  --TODO Create addCoins() method to village and subtractCoins() method.
+  --TODO Add player putCoins and takeCoins methods
+
+  --TODO Add a setLevel method to village
+  --TODO Add chunks when level is grown
+  --TODO Add chunks randomly along edges, half chance in oceans...
+  --TODO ignore (dont shrink, if level is reduced)
+  --TODO Add levelUpVillage() method that adds one level.
+
+PLAYERS:
+    TODO Add level and experience fields.
+    TODO check easy access to skills, number of stone mined, number of chickens killed etc?
+    TODO add experience adder on regular things.
+    TODO add exp gain for Quests...
+
+Get a way to show village areas (or others) on JourneyMap
+    --TODO They had a decent integration a couple years back, should be able to use.
+    --REF: https://github.com/TeamJM/journeymap-api/blob/1.20.x_1.9-forge/src/main/java/example/mod/client/plugin/SamplePolygonOverlayFactory.java
+    --Similar: https://www.reddit.com/r/feedthebeast/comments/gq172e/this_is_my_mod_mapfrontiers_an_addon_for/
+    -- REF: https://teamjm.github.io/journeymap-docs/5.9.x/Tools%20and%20Customisation/integration/
+
+#############################################################
+Adventure Areas
+    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
+
+Create find islands and lakes command
+    -- Command created - MOSTLY DONE
+    -- TODO Create new area object, or use ChunkData ? need y values.
+    -- TODO Save to database
+
+Find nearby structures
+    -- TODO
+
+NPCS:
+    -- DONE - Locate nearby villagers
+    -- DONE - See if we can get their names.
+        MOD: villagernames-1.20.1-7.1 updating to newest.
+        REF: https://www.curseforge.com/minecraft/mc-mods/villager-names
+    -- DONE make a rename village command
+    -- Possibly give some a description -
+        When coming close give a description of the villager.
+        but dont spam it, only show once then cache that it was shown, per server login
+    -- add extra command to show description
+    -- Have villagers suggest random things to do for the toown
+       hardcoded list that rotates by day and village id hash
+       like: improve roads,
+           create market items
+           harvest wood
+           add on to walls
+           make another house,
+           increase a house size,
+           improve rail station,
+           improve farm,
+           improve nursery
+           improve mine
+           update animal farms
+           improve out of town roads
+           breed villagers
+           breed animals
+           update port
+           etc, make a large list
+    -- connect to outside db or text files?
+    -- use ai to add descriptions profiles?
+    -- Create a mayor?
+
+QUESTS:
+    TODO Use the saved quest structure and have objects for
+        Google docs
+        https://docs.google.com/document/d/1vd2d181XleGLk1lIGOxdb3SVidpRx3DDX1SHOH8Sqlc/edit?tab=t.9k430rwfvs2y
+        quest
+        dialogue
+        npc
+        playerQuests
+
+    TODO load in first npc
+    TODO load in first quest
+    TODO test dialogue
+
+
+DONE LIST:
+       DONE - Add journey map to test builder.
