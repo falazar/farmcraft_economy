@@ -1,29 +1,35 @@
 
-TODO list
-BUGS: not saving player coins correctly, not showing.
-Not showing wallet correctly on overlay
-Overlay not always updating after an action, like buy plot or village?
-Working now -Diamond Border not showing.
-  --Todo, change into a toggleAble command.
-GIVE player a UUID field properly
+TODO LIST:
 
-Add biomes onto plot info and format and color it.
+TODO BUGS: not saving player coins correctly, not showing.
+    Not showing wallet correctly on overlay
+    Overlay not always updating after an action, like buy plot or village?
+    GIVE player a UUID field properly
+END BUGS AREA
 
-Add clickable link in /player info that goes to the village info automatically.
 
-DONE - Add journey map to test builder.
+GENERAL SOON:
+    TODO NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
 
-Markets -Get them up and working.
-  --Create 4 market type files, listing all items. - JAMES TODO
-    -- 2 created, 2 todo
-  --Pull in 4 market type files.
-  --Allow player to browser 4 markets -JAMES
-    -- mostly done
+    TODO Add biomes info onto plot info and format and color it.
+
+    TODO Make find structures command have a top bottom and all options. optional distance?
+
+    TODO -Diamond Border change into a toggleAble command.
+
+    TODO - Add clickable link in /player info that goes to the village info automatically.
+
+
+MARKETS - Get them up and fully working.
+  --DONE - Create 4 market type files, listing all items. - JAMES TODO
+  --Pull in 4 market type files. Import to DB
+  --TODO update goods data nad market objects to be right.
+  --DONE - Allow player to browser 4 markets -JAMES
   --Allow player to sell all in inventory for a market type. -JAMES
     -- mostly done - check wallet saving.
   --Graphical UI laters.
-  --Market updates prices daily. -JAMES
-  --Market adds new random items daily. -JAMES
+  --TODO Market command Apdates prices daily. -JAMES
+  --TODO Market command Adds new random items daily. -JAMES
 
 VILLAGES:
   --TODO Add coins to village, single value?
@@ -50,7 +56,7 @@ Get a way to show village areas (or others) on JourneyMap
 
 #############################################################
 Adventure Areas
-Add usage for cooking tools, small amount!   like Oak Posts and axe
+    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
 
 Create find islands and lakes command
     -- Command created - MOSTLY DONE
@@ -60,7 +66,7 @@ Create find islands and lakes command
 Find nearby structures
     -- TODO
 
-VILLAGERS:
+NPCS:
     -- DONE - Locate nearby villagers
     -- DONE - See if we can get their names.
         MOD: villagernames-1.20.1-7.1 updating to newest.
@@ -92,4 +98,19 @@ VILLAGERS:
     -- use ai to add descriptions profiles?
     -- Create a mayor?
 
+QUESTS:
+    TODO Use the saved quest structure and have objects for
+        Google docs
+        https://docs.google.com/document/d/1vd2d181XleGLk1lIGOxdb3SVidpRx3DDX1SHOH8Sqlc/edit?tab=t.9k430rwfvs2y
+        quest
+        dialogue
+        npc
+        playerQuests
 
+    TODO load in first npc
+    TODO load in first quest
+    TODO test dialogue
+
+
+DONE LIST:
+       DONE - Add journey map to test builder.

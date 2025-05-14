@@ -149,6 +149,8 @@ minecraft:deepslate_bricks
 minecraft:mud_brick_stairs
 minecraft:mud_brick_wall
 minecraft:mud_bricks
+minecraft:packed_mud
+minecraft:mud
 minecraft:nether_brick
 minecraft:nether_brick_fence
 minecraft:nether_brick_stairs

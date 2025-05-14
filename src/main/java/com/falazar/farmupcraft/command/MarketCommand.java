@@ -32,6 +32,7 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
@@ -113,7 +114,15 @@ public class MarketCommand {
                 });
         builder.then(findWoodBuilder);
 
-        // TODO make a special function to call each of the four market types to help define them.
+        // Define the "rundaily" ADMIN only sub command.
+        LiteralArgumentBuilder<CommandSourceStack> runDailyBuilder = Commands.literal("rundaily")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .executes(context -> {
+                    // Run the daily task for all markets.
+                    runDailyTask(context.getSource());
+                    return 0;
+                });
+        builder.then(runDailyBuilder);
 
         // Register the main "market" command with the dispatcher
         pDispatcher.register(builder);
@@ -264,55 +273,55 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodextended:quesadillaitem\t5
-                    pamhc2foodcore:butteritem\t5
-                    pamhc2foodextended:cinnamontoastitem\t6
-                    pamhc2foodcore:pumpkinsoupitem\t6
-                    pamhc2foodextended:teriyakichickenitem\t7
-                    pamhc2foodextended:durianjuiceitem\t8
-                    pamhc2foodextended:potatoskinsitem\t8
-                    pamhc2foodextended:kiwismoothieitem\t9
-                    pamhc2foodextended:pomegranatejuiceitem\t11
-                    pamhc2foodextended:energydrinkitem\t8
-                    pamhc2foodextended:rawtofishitem\t11
-                    pamhc2foodcore:vinegaritem\t10
-                    pamhc2foodextended:passionfruityogurtitem\t14
-                    pamhc2foodextended:honeysoyribsitem\t11
-                    pamhc2foodextended:gardensoupitem\t7
+                    pamhc2foodextended:raisinsitem\t5
+                    pamhc2foodextended:slawdogitem\t5
+                    pamhc2foodextended:rawtofaconitem\t5
+                    pamhc2foodextended:grapepieitem\t6
+                    pamhc2foodextended:misosoupitem\t6
+                    pamhc2foodextended:celeryandpeanutbutteritem\t6
+                    pamhc2foodextended:quesadillaitem\t7
+                    pamhc2foodcore:butteritem\t7
+                    pamhc2foodextended:cinnamontoastitem\t8
+                    pamhc2foodcore:pumpkinsoupitem\t8
+                    pamhc2foodextended:kiwismoothieitem\t11
+                    pamhc2foodextended:pomegranatejuiceitem\t13
+                    pamhc2foodextended:energydrinkitem\t10
+                    pamhc2foodextended:honeysoyribsitem\t13
+                    pamhc2foodextended:gardensoupitem\t9
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    cfm:stripped_spruce_bedside_cabinet\t5
-                    minecraft:spruce_log\t6
-                    biomesoplenty:jacaranda_fence\t8
-                    cfm:mangrove_kitchen_drawer	11
-                    valhelsia_structures:bundled_mangrove_posts	18
+                    biomesoplenty:stripped_palm_wood\t5
+                    cfm:jungle_park_bench\t6
+                    minecraft:spruce_log\t8
+                    cfm:mangrove_kitchen_drawer	13
+                    valhelsia_structures:bundled_mangrove_posts	20
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    valhelsia_structures:cyan_metal_framed_glass\t5
-                    minecraft:black_glazed_terracotta\t4
-                    minecraft:white_terracotta\t5
+                    minecraft:stone_stairs\t5
+                    minecraft:end_stone\t6
+                    valhelsia_structures:cyan_metal_framed_glass\t8
                     mcwbridges:deepslate_brick_bridge_stair\t10
-                    minecraft:polished_andesite_stairs\t6
+                    minecraft:polished_andesite_stairs\t8
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {  // those two in stone maybe only?
             String generalString = """
-                    minecraft:amethyst_block\t5
-                    minecraft:iron_ingot\t5
-                    minecraft:gray_wool\t6
-                    minecraft:rabbit_foot\t6
-                    minecraft:snowball\t7
-                    minecraft:magenta_concrete_powder\t7
-                    minecraft:light_gray_banner\t8
-                    minecraft:wither_rose\t9
-                    cfm:light_gray_grill	10
-                    untamedwilds:material_fat	11
+                    cfm:red_kitchen_drawer\t5
+                    cfm:cyan_cooler\t5
+                    minecraft:bookshelf\t6
+                    minecraft:amethyst_block\t7
+                    minecraft:gray_wool\t8
+                    minecraft:rabbit_foot\t8
+                    minecraft:snowball\t9
+                    minecraft:magenta_concrete_powder\t9
+                    minecraft:light_gray_banner\t10
+                    minecraft:wither_rose\t11
                     """;
             // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, yes removed both.
             // copper one is broken, odd.
@@ -524,6 +533,30 @@ public class MarketCommand {
         return 0;
     }
 
+    // TODO run daily task for all markets.
+    public static int runDailyTask(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Run the daily task for all markets.
+            // TODO
+            // TODO Loop over each market and add cost
+            // TODO and change new items.
+
+
+            // Notify the player
+            source.sendSuccess((Supplier<Component>) Component.literal("Daily task completed for all markets."), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Run Daily Task Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
 }
 
 /* sample data found

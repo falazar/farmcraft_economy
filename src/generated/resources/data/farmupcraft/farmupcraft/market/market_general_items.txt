@@ -236,6 +236,7 @@ minecraft:rabbit_foot
 iceandfire:pixie_dust
 alexsmobs:kangaroo_hide
 minecraft:rabbit_hide
+untamedwilds:material_fat
 untamedwilds:hide_ashen
 untamedwilds:hide_beige
 untamedwilds:hide_black
