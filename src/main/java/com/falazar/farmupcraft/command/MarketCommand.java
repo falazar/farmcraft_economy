@@ -266,10 +266,11 @@ public class MarketCommand {
         }
     }
 
-    // TODO notice put all new ones at TOP of the list.
+    // TODO: notice put all new ones at TOP of the list - not sure how we do that?
     // We will hard code a list here now to play with.
     // Fields needed: itemId, cost, amountSold
-    // TODO start using MarketData and GoodsData objects instead.
+    // TODO start using GoodsData objects instead.
+    // Scan db of items, find all of this type, and active.
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
@@ -323,8 +324,6 @@ public class MarketCommand {
                     minecraft:light_gray_banner\t10
                     minecraft:wither_rose\t11
                     """;
-            // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, yes removed both.
-            // copper one is broken, odd.
             return parseItemsFromString(generalString);
         } else {
             LOGGER.info("DEBUG unknown market type: " + type);

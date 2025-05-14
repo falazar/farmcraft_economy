@@ -28,11 +28,7 @@ public class VillageData {
     private List<ChunkPos> claimedChunks;
     private Set<Long> claimedChunkSet = new HashSet<>();
     private final boolean bought;  // TODO what is this one? remove?
-    // TODO add coins to see if we have any or are in debt.
     private int coins;
-
-    // TODO add coins to see if we have any or are in debt.
-    // TODO add player commands to add coins and subtract
 
     /**
      * Constructs a new VillageData object.
