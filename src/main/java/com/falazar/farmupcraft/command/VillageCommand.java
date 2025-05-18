@@ -605,6 +605,7 @@ public class VillageCommand {
         // STEP 1: Add extra chunks until you equal (4 + level) * 2 + 1 squared chunks.
         int currentLevelSize = (4 + village.getLevel()) * 2 + 1;
         int previousLevelSize = (4 + (village.getLevel() - 1)) * 2 + 1;
+        // TODO count actual chunks instead we have!
         int chunksCount = (currentLevelSize * currentLevelSize) - (previousLevelSize * previousLevelSize);
         int newChunksCount = chunksCount;
         ChunkPos centerChunkPos = village.getPosition();

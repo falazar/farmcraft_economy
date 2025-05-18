@@ -9,15 +9,25 @@ END BUGS AREA
 
 
 GENERAL SOON:
-    TODO NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
+    DONE NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
+        - modify to check player sol diversity, and last longer for longer 50 60 70
 
-    TODO Add biomes info onto plot info and format and color it.
+    DONE Add biomes info onto plot info and format and color it.
+
+    TODO - make planting saplings and getting saplings much harder.  easier in nursery.
 
     TODO Make find structures command have a top bottom and all options. optional distance?
+     not quite working on some.
 
-    TODO -Diamond Border change into a toggleAble command.
+    TODO - Diamond Border change into a toggleAble command.
 
     TODO - Add clickable link in /player info that goes to the village info automatically.
+
+    TODO - break up CropsManager into several other things.  should be events or?  check another project?
+
+    // Recipes and such
+    TODO - make emu and duck eggs usable in cooking.
+    TODO - make cows and animals use a new grain per village. alfalfa has a use then.
 
 
 MARKETS - Get them up and fully working.
@@ -28,7 +38,7 @@ MARKETS - Get them up and fully working.
   --Allow player to sell all in inventory for a market type. -JAMES
     -- mostly done - check wallet saving.
   --Graphical UI laters.
-  --TODO Market command Apdates prices daily. -JAMES
+  --TODO Market command Updates prices daily. -JAMES
   --TODO Market command Adds new random items daily. -JAMES
 
 VILLAGES:

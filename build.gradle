@@ -301,3 +301,19 @@ idea {
         downloadJavadoc = true
     }
 }
+
+// Replace this with the path to your mods folder where you want the jar copied
+def modsFolder = file("C:\\Users\\robin\\AppData\\Roaming\\.minecraft\\mods")
+
+// Copy task to copy the jar after build
+task copyJar(type: Copy) {
+    dependsOn build // run after the build task
+
+    from("${buildDir}/libs") {
+        include '*.jar'
+    }
+    into modsFolder
+}
+
+// Make copyJar run automatically after build
+build.finalizedBy(copyJar)

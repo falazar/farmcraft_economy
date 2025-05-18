@@ -13,16 +13,21 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.*;
@@ -94,26 +99,32 @@ public class PlotCommand {
     public static int showPlotInfo(CommandContext<CommandSourceStack> context) {
         try {
             Entity nullableSummoner = context.getSource().getEntity();
-            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (summoner == null) {
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
                 context.getSource().sendFailure(Component.literal("Player not found."));
                 return 0;
             }
 
-//            Level level = summoner.level();
 
-            ChunkPos chunkPos = new ChunkPos(summoner.blockPosition());
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            // Get all biomes for all blocks in this chunk.
+            ServerLevel serverLevel = context.getSource().getLevel();
+            List<String> biomes = getChunkBiomes(chunkPos, serverLevel);
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+
+            // If no data, then not owned by a village.
             if (chunkData == null) {
                 context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
-                // todo show closest village still though.
+                if (biomes.size() > 0) {
+                    context.getSource().sendSuccess(() -> Component.literal(", Biomes: " + String.join(", ", biomes)), false);
+                } else {
+                    context.getSource().sendSuccess(() -> Component.literal(", No biomes found."), false);
+                }
                 return 0;
             }
 
             // Pull out plot info and owner and village.
-            ServerLevel serverLevel = context.getSource().getLevel();
-
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
             VillageData villageData = villageDataDB.getData(chunkData.getVillageId());
 
@@ -123,10 +134,18 @@ public class PlotCommand {
             LOGGER.info("Player name: " + chunkData.getNameForPlayer(serverLevel));
 
             // Build a response message
-            MutableComponent response = Component.literal("Plot info for " + chunkPos + ": ");
-            response = response.append(Component.literal("Owned by: " + chunkData.getNameForPlayer(serverLevel) + ", "));
-            response = response.append(Component.literal("Village: " + villageData.getName() + ", "));
-            response = response.append(Component.literal("Type: " + chunkData.getType()));
+            MutableComponent response = Component.literal("---------- Plot info for " + chunkPos + ": ----------\n").withStyle(ChatFormatting.YELLOW)
+//                    .append(Component.literal("Owned by: " + chunkData.getNameForPlayer(serverLevel) + ", "))
+                    .append(Component.literal("Village: " + villageData.getName() + "\n").withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal("Type: " + chunkData.getType()+ "\n").withStyle(ChatFormatting.WHITE));
+
+            // TODO get counts of biomes also.
+            if (biomes.size() > 0) {
+                response.append(Component.literal("Biomes: " + String.join(", ", biomes)+"\n").withStyle(ChatFormatting.WHITE));
+            } else {
+                response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.WHITE));
+            }
+
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -134,6 +153,35 @@ public class PlotCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    // Another helper method to get all biomes in this chunk based on blockPos
+    public static List<String> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
+        ChunkPos chunkPos = new ChunkPos(blockPos);
+        List<String> biomes = PlotCommand.getChunkBiomes(chunkPos, serverLevel);
+
+        return biomes;
+    }
+
+    public static List<String> getChunkBiomes(ChunkPos chunkPos, ServerLevel serverLevel) {
+        List<String> biomes = new ArrayList<>();
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                // Get the biome at the given chunk position
+                int biomeX = chunkPos.x * 16 + x;
+                int biomeZ = chunkPos.z * 16 + z;
+                BlockPos blockPos = new BlockPos(biomeX, 0, biomeZ);
+                Biome biome = serverLevel.getBiome(blockPos).value();
+                ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+                String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
+                if (!biomes.contains(biomeName.toString())) {
+                    biomes.add(biomeName);
+                }
+            }
+        }
+
+        return biomes;
     }
 
     // Buy with an optional type, farm, village, etc.

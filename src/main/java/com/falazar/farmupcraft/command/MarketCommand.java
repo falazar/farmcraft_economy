@@ -124,6 +124,24 @@ public class MarketCommand {
                 });
         builder.then(runDailyBuilder);
 
+        // TEST admin command.
+        // Define the "removeolditems" sub-command for food, wood, stone, and general.
+        LiteralArgumentBuilder<CommandSourceStack> removeOldItemsBuilder = Commands.literal("removeolditems")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.literal("food").executes(context -> {
+                    return getNewMarketItems(context.getSource(), "food");
+                }))
+                .then(Commands.literal("wood").executes(context -> {
+                    return getNewMarketItems(context.getSource(), "wood");
+                }))
+                .then(Commands.literal("stone").executes(context -> {
+                    return getNewMarketItems(context.getSource(), "stone");
+                }))
+                .then(Commands.literal("general").executes(context -> {
+                    return getNewMarketItems(context.getSource(), "general");
+                }));
+        builder.then(removeOldItemsBuilder);
+
         // Register the main "market" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -274,55 +292,55 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodextended:raisinsitem\t5
-                    pamhc2foodextended:slawdogitem\t5
-                    pamhc2foodextended:rawtofaconitem\t5
-                    pamhc2foodextended:grapepieitem\t6
-                    pamhc2foodextended:misosoupitem\t6
-                    pamhc2foodextended:celeryandpeanutbutteritem\t6
-                    pamhc2foodextended:quesadillaitem\t7
-                    pamhc2foodcore:butteritem\t7
-                    pamhc2foodextended:cinnamontoastitem\t8
-                    pamhc2foodcore:pumpkinsoupitem\t8
-                    pamhc2foodextended:kiwismoothieitem\t11
-                    pamhc2foodextended:pomegranatejuiceitem\t13
-                    pamhc2foodextended:energydrinkitem\t10
-                    pamhc2foodextended:honeysoyribsitem\t13
-                    pamhc2foodextended:gardensoupitem\t9
+                    pamhc2foodextended:mochicakeitem\t5
+                    pamhc2foodextended:beetburgeritem\t5
+                    pamhc2foodextended:soursopjellytoastitem\t5
+                    pamhc2foodextended:mushroomketchupomeletitem\t6
+                    pamhc2foodextended:pralinesitem\t6
+                    pamhc2foodextended:dimsumitem\t7
+                    pamhc2foodextended:raisinsitem\t8
+                    pamhc2foodextended:slawdogitem\t8
+                    pamhc2foodextended:rawtofaconitem\t8
+                    pamhc2foodextended:misosoupitem\t9
+                    pamhc2foodextended:celeryandpeanutbutteritem\t9
+                    pamhc2foodextended:cinnamontoastitem\t11
+                    pamhc2foodcore:pumpkinsoupitem\t11
+                    pamhc2foodextended:honeysoyribsitem\t16
+                    pamhc2foodextended:gardensoupitem\t12
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    biomesoplenty:stripped_palm_wood\t5
-                    cfm:jungle_park_bench\t6
-                    minecraft:spruce_log\t8
-                    cfm:mangrove_kitchen_drawer	13
-                    valhelsia_structures:bundled_mangrove_posts	20
+                    minecraft:birch_trapdoor\t5
+                    biomesoplenty:mahogany_fence_gate\t6
+                    biomesoplenty:stripped_palm_wood\t8
+                    cfm:mangrove_kitchen_drawer	16
+                    valhelsia_structures:bundled_mangrove_posts	24
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    minecraft:stone_stairs\t5
-                    minecraft:end_stone\t6
-                    valhelsia_structures:cyan_metal_framed_glass\t8
-                    mcwbridges:deepslate_brick_bridge_stair\t10
-                    minecraft:polished_andesite_stairs\t8
+                    minecraft:stone_brick_stairs\t6
+                    minecraft:polished_granite_stairs\t4
+                    minecraft:calcite\t8
+                    valhelsia_structures:cyan_metal_framed_glass\t13
+                    mcwbridges:deepslate_brick_bridge_stair\t7
                     """;
             return parseItemsFromString(stoneString);
-        } else if (type.equals("general")) {  // those two in stone maybe only?
-            String generalString = """
-                    cfm:red_kitchen_drawer\t5
-                    cfm:cyan_cooler\t5
-                    minecraft:bookshelf\t6
-                    minecraft:amethyst_block\t7
-                    minecraft:gray_wool\t8
-                    minecraft:rabbit_foot\t8
-                    minecraft:snowball\t9
-                    minecraft:magenta_concrete_powder\t9
-                    minecraft:light_gray_banner\t10
-                    minecraft:wither_rose\t11
+        } else if (type.equals("general")) {
+            String generalString = """                   
+                    cfm:white_kitchen_counter\t5
+                    valhelsia_structures:brown_glazed_jar\t5
+                    cfm:white_kitchen_counter\t6
+                    minecraft:oxidized_cut_copper\t7
+                    minecraft:snow_block\t7
+                    cfm:cyan_cooler\t8
+                    minecraft:bookshelf\t9
+                    minecraft:magenta_concrete_powder\t12
+                    minecraft:light_gray_banner\t14
+                    minecraft:wither_rose\t14
                     """;
             return parseItemsFromString(generalString);
         } else {
@@ -547,11 +565,51 @@ public class MarketCommand {
             // TODO Loop over each market and add cost
             // TODO and change new items.
 
+            getNewMarketItems(source, "food");
+            getNewMarketItems(source, "wood");
+            getNewMarketItems(source, "stone");
+            getNewMarketItems(source, "general");
 
             // Notify the player
-            source.sendSuccess((Supplier<Component>) Component.literal("Daily task completed for all markets."), false);
+            source.sendSuccess(() -> Component.literal("Daily task completed for all markets."), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Run Daily Task Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // TEST METHOD
+    public static int getNewMarketItems(CommandSourceStack source, String type) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Get market list
+            Map<String, Integer> items = getMarketBuyItems(type);
+
+            // Shuffle and remove 1 item per 5 existing.
+            List<String> shuffledItems = new ArrayList<>(items.keySet());
+            Collections.shuffle(shuffledItems);
+
+            // Print out the ones we are removing.
+            MutableComponent response = Component.literal("Removing Market items: \n").withStyle(ChatFormatting.YELLOW);
+            for (int i = 0; i < shuffledItems.size() / 5; i++) {  // mod 5
+                String itemName = shuffledItems.get(i);
+                response = response.append(Component.literal("- " + itemName + "\n"));
+            }
+
+            // TODO and add new items.
+
+            // Notify the player.
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Get New Market Items Exception thrown - see log"));
             ex.printStackTrace();
         }
         return 0;

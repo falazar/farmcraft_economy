@@ -88,6 +88,7 @@ public class TesterCommand {
         // Define the "renamevillager" sub-command, ADMIN only!
         // Add two inputs oldName and newName strings, required
         LiteralArgumentBuilder<CommandSourceStack> renameVillagerBuilder = Commands.literal("renamevillager")
+                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
                 .then(Commands.argument("oldName", StringArgumentType.string())
                         .then(Commands.argument("newName", StringArgumentType.string())
                                 .executes(context -> {
@@ -104,12 +105,19 @@ public class TesterCommand {
         // Define the "findStructures" sub-command, ADMIN permissions only!
         LiteralArgumentBuilder<CommandSourceStack> findStructuresBuilder = Commands.literal("findstructures")
                 .requires(stack -> stack.hasPermission(2)) // Require permission level 2
-                .executes(context -> {
-                    findNearbyStructures(context.getSource());
-                    return 0;
-                });
+                .then(Commands.argument("filter", StringArgumentType.word()) // Add a string argument
+                        .suggests((context, suggestionBuilder) -> {
+                            // Provide suggestions for the argument
+                            return net.minecraft.commands.SharedSuggestionProvider.suggest(new String[]{"upper", "lower", "all"}, suggestionBuilder);
+                        })
+                        .executes(context -> {
+                            // Get the filter argument
+                            String filter = StringArgumentType.getString(context, "filter");
+                            findNearbyStructures(context.getSource(), filter); // Pass the filter to the method
+                            return 0;
+                        })
+                );
         builder.then(findStructuresBuilder);
-
 
         // Find all chests in nearest structure.
         // Define the findchests subcommand. ADMIN perms only.
@@ -129,7 +137,7 @@ public class TesterCommand {
 
     // Find nearby structures
     // NOTE: working for mineshafts and villages and ruined portals, need to test more for new mod structures.... hmmm
-    public static int findNearbyStructures(CommandSourceStack source) {
+    public static int findNearbyStructures(CommandSourceStack source, String filter) {
         // REF: https://github.com/someaddons/structureessentials/blob/1.20.1/src/main/java/com/structureessentials/command/Command.java
 
         final ServerLevel world = source.getLevel();
@@ -161,10 +169,10 @@ public class TesterCommand {
                         // This seems to indicate we have bounding box and such on things?  hmmm
                         // How do we save a single structure?
                         // by type and longset.
-                        LOGGER.info("Type = "+type);
-                        LOGGER.info("key = "+structureEntry.getKey()
-                                + " longset="+structureEntry.getValue().toString());
-                        LOGGER.info("Bounds = "+structureStart.getBoundingBox().toString());
+                        LOGGER.info("Type = " + type);
+                        LOGGER.info("key = " + structureEntry.getKey()
+                                + " longset=" + structureEntry.getValue().toString());
+                        LOGGER.info("Bounds = " + structureStart.getBoundingBox().toString());
                         LOGGER.info("");
                         // if cemetery, save some stuff to use for later.
                     }
@@ -199,14 +207,39 @@ public class TesterCommand {
         // Show count.
         source.sendSystemMessage(Component.literal("Found " + sortedStructures.size() + " structures nearby.").withStyle(ChatFormatting.GOLD));
 
+        /* example
+
+[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:171] Type = bettermineshafts:mineshaft_jungle
+07:55:14.362
+game
+[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:172] key = com.yungnickyoung.minecraft.bettermineshafts.world.BetterMineshaftStructure@37e152ff longset={-412316860221, -390842023739}
+07:55:14.362
+game
+[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:174]
+Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=-1429}
+
+         */
 
         // STEP 4: Show results list.
+//        LOGGER.info("DEBUG filter = " + filter);
         // Simple version with dist and tp.
         for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
             int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
+
+            if (filter.equals("upper") && structureEntry.getKey().getY() <= 60) {
+//                LOGGER.info("Skipping structure at Y=" + structureEntry.getKey().getY() + " because it is below 60.");
+                continue; // Skip if below 60
+            } else if (filter.equals("lower") && structureEntry.getKey().getY() > 60) {
+//                LOGGER.info("Skipping structure at Y=" + structureEntry.getKey().getY() + " because it is above 60.");
+                continue; // Skip if above 60
+            }
+
+            // NOTICE: mineshafts and at least one dungeon have INCORRECT y value, need to dig deeper, they show at like 128 or something instead of underground,
+            // annoying.
+
             source.sendSystemMessage(Component.literal(
-                    sortedStructures.indexOf(structureEntry)+1 + ". " +
-                    structureEntry.getValue())
+                            sortedStructures.indexOf(structureEntry) + 1 + ". " +
+                                    structureEntry.getValue())
                     .append(Component.literal(" " +
                             "a. " + structureEntry.getKey().toShortString() + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
                                 return style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
@@ -343,19 +376,19 @@ Stretches out to chunk areas.
         BoundingBox boundingBox = loadStructure(source, "structory:graveyard", 270582939571L);
 
         // Loop over all blocks here and look for a chest, doublechest, or barrel
-         for (int y=boundingBox.minY(); y < boundingBox.maxY(); y++) {
-             for (int x = boundingBox.minX(); x < boundingBox.maxX(); x++) {
-                 for (int z = boundingBox.minZ(); z < boundingBox.maxZ(); z++) {
-                     BlockPos pos = new BlockPos(x, y, z);
-                     Block block = source.getLevel().getBlockState(pos).getBlock();
-                     if (block == Blocks.CHEST || block == Blocks.BARREL) {
-                         LOGGER.info("Found chest at " + pos);
-                         // TODO add to our list of chests. do other things.
+        for (int y = boundingBox.minY(); y < boundingBox.maxY(); y++) {
+            for (int x = boundingBox.minX(); x < boundingBox.maxX(); x++) {
+                for (int z = boundingBox.minZ(); z < boundingBox.maxZ(); z++) {
+                    BlockPos pos = new BlockPos(x, y, z);
+                    Block block = source.getLevel().getBlockState(pos).getBlock();
+                    if (block == Blocks.CHEST || block == Blocks.BARREL) {
+                        LOGGER.info("Found chest at " + pos);
+                        // TODO add to our list of chests. do other things.
 
-                     }
-                 }
-             }
-         }
+                    }
+                }
+            }
+        }
 
         // TODO find all chests in a structure.
         // TODO find all chests in a plot.
@@ -387,7 +420,7 @@ Stretches out to chunk areas.
         source.sendSuccess(() -> finalResponse, false);
 
         // STEP 2: Sort villagers by distance.
-        List <LivingEntity> sortedList = new ArrayList<>(list);
+        List<LivingEntity> sortedList = new ArrayList<>(list);
         sortedList.sort(Comparator.comparingDouble(v -> v.distanceToSqr(playerSource)));
 
 

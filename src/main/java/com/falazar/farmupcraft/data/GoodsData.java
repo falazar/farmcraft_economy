@@ -25,6 +25,7 @@ public class GoodsData {
     private String rarity; // common, uncommon, rare.
     private Boolean active;  // Is the item currently active in a market.
     private String marketType; // One of 4 or more types, "wood", "stone", "food", "general" etc.
+    // TODO one more dateAddedToMarket, so we can sort it.
 
     public GoodsData(Item item, CurrencyCost cost, int amountSold, String rarity, boolean active, String marketType) {
         this.item = item;

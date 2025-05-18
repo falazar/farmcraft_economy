@@ -18,6 +18,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -66,6 +67,20 @@ public class ShowBiomesCommand {
                 );
         // Add the "cropbiomes" sub-command to the "show" command
         builder.then(cropbiomesBuilder);
+
+        // Define the "biomecrops" sub-command with biome name argument.
+        LiteralArgumentBuilder<CommandSourceStack> biomecropsBuilder = Commands.literal("biomecrops")
+                .then(Commands.argument("biome", StringArgumentType.string())
+                        .executes(c -> {
+                            // Handle the biomecrops command here
+                            String biomeName = StringArgumentType.getString(c, "biome");
+                            // Implement your logic for showing biome crops
+                            showBiomeCrops(c.getSource(), biomeName);
+                            return 0;
+                        })
+                );
+        // Add the "biomecrops" sub-command to the "show" command
+        builder.then(biomecropsBuilder);
 
         // Register the main "show" command with the dispatcher
         pDispatcher.register(builder);
@@ -132,6 +147,78 @@ public class ShowBiomesCommand {
         playerSource.displayClientMessage(component, false);
     }
 
+    // Given a biome name show all crops you can plant in this biome.
+    public static void showBiomeCrops(CommandSourceStack source, String biomeName) {
+        // Implement your logic for showing biome crops here
+        Player playerSource = source.getPlayer();
+
+        LOGGER.info("DEBUG: biomeName is " + biomeName);
+
+        // MAKE all a method, too complicated!
+        // STEP 1: Load biome rules. The biome has rules defined for what can happen in it or not!
+        BiomeRulesManager manager = BiomeRulesManager.get(source.getLevel());
+        if (manager == null || !manager.hasRules()) return;
+
+        // TODO do i need plains or whole name minecraft:plains or biomesoplenty:XXXXX
+        // STEP 2: Get the biome from the name from main item thing registry.
+        String fullBiomeName = "minecraft:" + biomeName;
+        ResourceLocation biomeResLoc = new ResourceLocation(fullBiomeName);
+        Biome biome = source.getLevel().registryAccess().registryOrThrow(Registries.BIOME).get(biomeResLoc);
+        // biome not found orchard.
+        // plains crops none.  both none now.
+        if (biome == null) {
+            // Second guess with a biomesoplenty biome name.
+            fullBiomeName = "biomesoplenty:" + biomeName;
+            biomeResLoc = new ResourceLocation(fullBiomeName);
+            biome = source.getLevel().registryAccess().registryOrThrow(Registries.BIOME).get(biomeResLoc);
+
+            if (biome == null) {
+                playerSource.displayClientMessage(Component.literal("Biome not found: " + biomeName), false);
+                return;
+            }
+        }
+        LOGGER.info("DEBUG1: biome is " + biome);
+        Holder<Biome> biomeHolder = Holder.direct(biome);
+        BiomeRulesInstance instance = manager.getBiomeRules(biomeHolder);
+        if (instance == null) return;
+
+        // STEP 3: List the crops allowed in the current biome
+        Component cropsAllowedShow = instance.getCrops((ServerLevel) source.getLevel()).stream()
+                // Map item to a custom string for special cases and then translate
+                .map(item -> {
+                    String locationString = item.getDescriptionId();
+                    String translatedName = Component.translatable(locationString).getString();
+
+                    // Handle special cases where we want to avoid filtering out specific seeds
+                    if (locationString.contains("sesameseedsseeditem")) {
+                        translatedName = "Sesame";
+                    } else if (locationString.contains("mustardseedsseeditem")) {
+                        translatedName = "Mustard";
+                    } else if (locationString.contains("sesameseedsitem")) {
+                        translatedName = "Sesame Seeds"; // Same display name to keep only one of them
+                    } else if (locationString.contains("mustardseedsitem")) {
+                        translatedName = "Mustard Seeds"; // Same display name to keep only one of them
+                    } else if (locationString.contains("wheat_seeds")) {
+                        translatedName = "Wheat"; // Same display name to keep only one of them
+                    }
+
+                    return translatedName; // Return the adjusted or original translated name
+                })
+                // Filter out the remaining names that still include "Seed" or "Seeds" but not the special cases
+                .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
+                // Sort the remaining names alphabetically
+                .sorted()
+                .distinct() // Ensure each name is unique
+                // Map the filtered names back to Component
+                .map(Component::literal)
+                // Join the names with commas
+                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                .orElse(Component.literal("None"));
+
+        // Create the final message component
+        MutableComponent component = Component.literal("§bCrops you can plant in " + biomeName + " §3").append(cropsAllowedShow);
+        playerSource.displayClientMessage(component, false);
+    }
 
     // Show biomes from a block radius from standing point.
     public static int showBiomes(CommandContext<CommandSourceStack> c, Vec3 pos, int radius) {

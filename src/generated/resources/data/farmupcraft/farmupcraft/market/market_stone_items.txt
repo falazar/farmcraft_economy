@@ -205,6 +205,8 @@ iceandfire:raw_silver
 iceandfire:raw_silver_block
 iceandfire:silver_block
 iceandfire:silver_ingot
+iceandfire:crackled_stone
+iceandfire:crackled_cobblestone
 minecraft:clay
 minecraft:black_glazed_terracotta
 minecraft:black_terracotta
