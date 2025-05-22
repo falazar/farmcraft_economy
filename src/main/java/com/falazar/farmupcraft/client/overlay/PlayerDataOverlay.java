@@ -39,7 +39,8 @@ public class PlayerDataOverlay {
         DataBase<Long, ChunkData> chunkDataDataBase = ModEvents.getChunkDataDatabase(level);
         ChunkData chunkData = chunkDataDataBase.getData(chunkKey);
         String currentPlotType = "None";
-        String currentVillage = "None";
+        String currentVillage = "wilderness";
+        // TODO make method
         if (chunkData != null) {
             if (chunkData.getType() != null) currentPlotType = chunkData.getType();
             UUID villageId = chunkData.getVillageId();
@@ -63,8 +64,13 @@ public class PlayerDataOverlay {
         currentY += lineSpacing;
 
         // Show Plot type.
-        guiGraphics.drawString(mc.font, Component.literal("Plot: " + currentPlotType), paddingLeft, currentY, 0xCCCCCC, true);
-        currentY += lineSpacing;
+        if (currentPlotType.equals("village")) {
+            currentPlotType = "village unclaimed";
+        }
+        if (!currentPlotType.equals("None")) {
+            guiGraphics.drawString(mc.font, Component.literal("Plot: " + currentPlotType), paddingLeft, currentY, 0xCCCCCC, true);
+            currentY += lineSpacing;
+        }
 
         // Show Home village.
         VillageData homeVillage = null;

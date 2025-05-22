@@ -25,7 +25,14 @@ GENERAL SOON:
 
     TODO - change center plot to a "village center" name.
 
+    TODO - Create a /house command for house gethouse in front of you all allow copy with worlededit? or get dims to call worldedit commands
+        push back 3 type command.
+        stretch left 2 type command
+
     TODO - figure out how to control growth for village, population field?  bonus for taking over structures, bonus for villagers (limited maxs)
+
+    TODO - have a daily task sign in village center, with a list of tasks that would give more daily XP.
+        ie hunt mobs, explore, fix town roads, fix town walls, breed villagers, breed animals, plant trees, plant crops, harvest crops, build a house, build a farm, build a mine, build a nursery, build a port, build a rail station, build a market.
 
     TODO - maybe save villager names to village to respawn them if we feed and breed a villager?
 
