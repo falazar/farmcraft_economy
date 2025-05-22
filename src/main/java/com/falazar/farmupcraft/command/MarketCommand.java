@@ -292,55 +292,55 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodextended:mochicakeitem\t5
-                    pamhc2foodextended:beetburgeritem\t5
-                    pamhc2foodextended:soursopjellytoastitem\t5
-                    pamhc2foodextended:mushroomketchupomeletitem\t6
-                    pamhc2foodextended:pralinesitem\t6
-                    pamhc2foodextended:dimsumitem\t7
-                    pamhc2foodextended:raisinsitem\t8
-                    pamhc2foodextended:slawdogitem\t8
-                    pamhc2foodextended:rawtofaconitem\t8
-                    pamhc2foodextended:misosoupitem\t9
-                    pamhc2foodextended:celeryandpeanutbutteritem\t9
-                    pamhc2foodextended:cinnamontoastitem\t11
-                    pamhc2foodcore:pumpkinsoupitem\t11
-                    pamhc2foodextended:honeysoyribsitem\t16
-                    pamhc2foodextended:gardensoupitem\t12
+                    pamhc2foodcore:epicbaconitem\t5
+                    pamhc2foodextended:raspberryjellysandwichitem\t5
+                    pamhc2foodextended:duriansmoothieitem\t5
+                    pamhc2foodextended:strawberrypieitem\t6
+                    pamhc2foodcore:baconandeggsitem\t6
+                    pamhc2foodextended:imitationcrabsticksitem\t8
+                    pamhc2foodcore:doughitem\t7
+                    pamhc2foodextended:mochicakeitem\t8
+                    pamhc2foodextended:soursopjellytoastitem\t9
+                    pamhc2foodextended:mushroomketchupomeletitem\t9
+                    pamhc2foodextended:pralinesitem\t9
+                    pamhc2foodextended:raisinsitem\t9
+                    pamhc2foodextended:slawdogitem\t11
+                    pamhc2foodextended:rawtofaconitem\t11
+                    pamhc2foodextended:gardensoupitem\t9
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    minecraft:birch_trapdoor\t5
-                    biomesoplenty:mahogany_fence_gate\t6
-                    biomesoplenty:stripped_palm_wood\t8
-                    cfm:mangrove_kitchen_drawer	16
-                    valhelsia_structures:bundled_mangrove_posts	24
+                    valhelsia_structures:stripped_mangrove_post\t5
+                    biomesoplenty:mahogany_fence_gate\t9
+                    biomesoplenty:stripped_palm_wood\t11
+                    cfm:mangrove_kitchen_drawer	19
+                    valhelsia_structures:bundled_mangrove_posts	27
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    minecraft:stone_brick_stairs\t6
-                    minecraft:polished_granite_stairs\t4
-                    minecraft:calcite\t8
-                    valhelsia_structures:cyan_metal_framed_glass\t13
-                    mcwbridges:deepslate_brick_bridge_stair\t7
+                    gravestone:gravestone\t5
+                    minecraft:end_stone_brick_stairs\t7
+                    minecraft:stone_brick_stairs\t7
+                    minecraft:calcite\t10
+                    valhelsia_structures:cyan_metal_framed_glass\t10
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {
-            String generalString = """                   
-                    cfm:white_kitchen_counter\t5
-                    valhelsia_structures:brown_glazed_jar\t5
-                    cfm:white_kitchen_counter\t6
-                    minecraft:oxidized_cut_copper\t7
-                    minecraft:snow_block\t7
-                    cfm:cyan_cooler\t8
-                    minecraft:bookshelf\t9
-                    minecraft:magenta_concrete_powder\t12
-                    minecraft:light_gray_banner\t14
-                    minecraft:wither_rose\t14
+            String generalString = """      
+                    valhelsia_structures:magenta_glazed_jar\t5
+                    cfm:cyan_grill\t5
+                    minecraft:waxed_weathered_cut_copper\t6
+                    minecraft:lily_of_the_valley\t7
+                    valhelsia_structures:brown_glazed_jar\t8
+                    cfm:white_kitchen_counter\t10
+                    minecraft:snow_block\t8
+                    cfm:cyan_cooler\t11
+                    minecraft:light_gray_banner\t17
+                    minecraft:wither_rose\t17
                     """;
             return parseItemsFromString(generalString);
         } else {
@@ -597,7 +597,7 @@ public class MarketCommand {
             Collections.shuffle(shuffledItems);
 
             // Print out the ones we are removing.
-            MutableComponent response = Component.literal("Removing Market items: \n").withStyle(ChatFormatting.YELLOW);
+            MutableComponent response = Component.literal("Removing "+type+" Market items("+shuffledItems.size()+"): \n").withStyle(ChatFormatting.YELLOW);
             for (int i = 0; i < shuffledItems.size() / 5; i++) {  // mod 5
                 String itemName = shuffledItems.get(i);
                 response = response.append(Component.literal("- " + itemName + "\n"));

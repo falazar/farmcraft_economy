@@ -48,7 +48,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
-import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -70,7 +69,7 @@ import static org.apache.commons.lang3.StringUtils.replace;
 public class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
-    // TODO bonemeal recipe too easy powerful, make it make 1 instead of three.
+    // Bonemeal recipe was too easy powerful, made it make 1 instead of 3.
 
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
@@ -81,13 +80,11 @@ public class CropsManager {
         Player player = (Player) event.getEntity();
         if (player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
         if (player.isCreative()) {
-            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
+//            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
             return;
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
-
-
         Level level = event.getLevel();
         BlockPos clickedPos = event.getPos();
         BlockState clickedState = level.getBlockState(clickedPos);
@@ -116,55 +113,6 @@ public class CropsManager {
         ItemStack stack = event.getItemStack();
         if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
             return;
-        }
-
-        // DEBUG ZONE:
-        if (stack.is(Items.WHEAT_SEEDS)) {
-            LOGGER.info("DEBUG: is a wheat seeds crop, running DEBUG METHOD.");
-//            findNearestVillage(event);
-
-            // set some loaded chunks for farms now.
-
-//            ForgeChunkManager chunkManager = ForgeChunkManager.
-            // Get the chunk manager
-            // Now set a chunk to stay loaded.
-//             ForgeChunkManager.forceChunk(event.getLevel(), new ChunkPos(event.getPos()), player);
-
-            // Only run on server side.
-            if (event.getLevel() instanceof ServerLevel serverLevel) {
-                long worldSeed = serverLevel.getSeed();
-//                getAllFoods(serverLevel, worldSeed);
-
-                // TEST 3:  todo test/
-                // Test force three farms:
-                // 16,52
-                // 18,54
-                // 23,56
-                // TESTER: 24,57
-                // Orleans
-                // 16,6
-                // 17,3
-                // 24,0
-                // 19,-2
-                // Added Gaelis farm;
-                // 63,-18
-                // hardcoded values to test. Nave farms and one chunk.
-                // manually force loaded 3 with command.
-                LOGGER.info("Adding force chunk loads now. ");
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16, 52, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 18, 54, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 23, 56, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24, 57, true, true);
-                // Orleans:
-                // NOTE does this make underground active?  probably... is there another flag? dont see it.
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16, 6, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 17, 3, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24, 0, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 19, -2, true, true);
-                // Gaelis:
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 63, -18, true, true);
-                // working?
-            }
         }
 
         // Setup all of our biomes and crops rules allowed, saves to cache.
@@ -277,51 +225,57 @@ public class CropsManager {
             return;
         }
 
-
-        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
+        // Get Item and name.
         ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
-        // times picked up?  hmmm harvested? used? eaten?
-        // Need actual item instead??? TODO
-        // block is a tree fruit named block.pamhc2trees.pamchestnut
         // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
         // TODO MAKE METHOD.
 //        LOGGER.info("DEBUG blockId is " + blockId);
         String itemName = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";
-
         // Special case: Convert apple to old item name.
         // block.pamhc2trees.pamapple
         if (blockId.equals("block.pamhc2trees.pamapple")) {
             itemName = "minecraft:apple";
         }
         // Get item from new name.
-//        LOGGER.info( "DEBUG: itemname is " + itemName);
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
         LOGGER.info("DEBUG: item is " + item);
+
+        // Our base success rate.
+        int successPercent = 40;
+
+        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
         int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
-        // get times dropped, subtract the two would be close.
+        // get times dropped, subtract the two will be close.
         int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
-//        LOGGER.info("DEBUG: timesdropped " + timesDropped + " times.");
         int timesHarvested = timesPickedUp - timesDropped;
-        LOGGER.info("DEBUG: timesharvested " + timesHarvested + " times.");
+        // TODO can you hack stats or do they come from multiple servers?
+        successPercent += (timesHarvested / 100) * 2; // 2% per 100 harvested.
+        LOGGER.info("DEBUG: timesharvested " + timesHarvested + " times. successPercent is " + successPercent);
 
 
-        // STEP 6: Calc a percent chance of failure, and fruit dies.
+        // STEP 6: Calc a percent chance of success or failure, and fruit dies.
         // If age is 7 its ripe, break block fruit!
         // 75% chance of success, hardcoded for now.
-        int successPercent = 60;
-        successPercent += player.experienceLevel + (timesHarvested / 100) * 2;
-        // TODO add nursery level.  real player level.
-        successPercent = Math.min(successPercent, 98); // max 98 percent.
-        LOGGER.info("DEBUG: successPercent is " + successPercent);
+        successPercent += player.experienceLevel;
+        // TODO and New real player level.
+        LOGGER.info("DEBUG: fruit harvest after player exp successPercent is " + successPercent);
+
 
         // STEP 7: Add in percent if they are in a nursery.
-        // TODO
         // TODO cleanup method.
+        // TODO add nursery level.
+        if (getPlotType(event.getPos(), level).equals("nursery")) {
+            successPercent += 20;
+            LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus. successPercent is " + successPercent);
+        }
 
-        // STEP 7: Roll for success or failure.
+
+        // STEP 8: Roll for success or failure.
+        int finalSuccessPercent = Math.min(successPercent, 98); // max 98 percent.
+        // TODO make short roll method.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= successPercent) {
+        if (randomNum >= finalSuccessPercent) {
             // Cancel event and return now.
             event.setCanceled(true);
 
@@ -338,14 +292,10 @@ public class CropsManager {
         // TODO calc a percent chance of double fruit,
         // TODO Higher at high nursery and player levels.
         // STEP 8: Roll for Extra fruit.
-        // At player level over 25, increased chance of double fruits.
-        int doubleSuccessPercent = 40;
-        if (player.experienceLevel > 20) {
-            // TODO calc a percent chance of double fruit,
-            // TODO Higher at high nursery and player levels.
-            // Add in player level
-            doubleSuccessPercent += player.experienceLevel + (timesHarvested / 100) * 2; // (50% min)
-            LOGGER.info("DEBUG: doubleSuccessPercent is " + doubleSuccessPercent);
+        int doubleSuccessPercent = successPercent / 2;
+        // If over 25 get bonus fruits.
+        if (player.experienceLevel > 25) {
+            LOGGER.info("DEBUG: fruit harvest doubleSuccessPercent is " + doubleSuccessPercent);
             randomNum = rand.nextInt(100); // 100% 0-99
             if (randomNum <= doubleSuccessPercent) {
                 int bonusCnt = 1;
@@ -982,6 +932,7 @@ public class CropsManager {
 
         // STEP 1: Get SuccessRate
         int baseSuccessRate = 30;  // 50% chance to fail loot at start.
+        int successRate = baseSuccessRate;
         // change to 30% start?
 
         // Make generics.
@@ -990,23 +941,27 @@ public class CropsManager {
 //                baseSuccessRate += player.getRoleLevel("miner") * 4;
 //            }
 //            else {
-        // CHECK 2: Add basic smaller skill percent now for non miners.
-        baseSuccessRate += player.experienceLevel * 2;
+        // STEP 2: Add basic smaller skill percent now for non miners.
+        successRate += player.experienceLevel * 2;
 //            }
+//        LOGGER.info("DEBUG3: before stoneSuccessRate = " + successRate);
 
-        int successRate = baseSuccessRate;
+        // STEP 3: Add for blocks broken experience.
+        ServerPlayer serverPlayer = (ServerPlayer) event.getPlayer();
+        int stoneBroken = serverPlayer.getStats().getValue(Stats.BLOCK_MINED.get(blockState.getBlock()));
+        int brokenPercent = stoneBroken / 10000;
+        successRate += brokenPercent;
+//        LOGGER.info("DEBUG3: test stoneBroken = " + stoneBroken + " brokenPercent = " + brokenPercent +
+//                " new successRate = " + successRate);
 
-        // For Falazar now, increase as faking a skill...
-//        successRate = 100;
 
-
-        // STEP 2: Roll and check for success.
+        // STEP 4: Roll and check for success.
         // TODO make roll a mini method.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
 //        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
+//            LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);
             // TODO send a failure message on occasion if havnt since logged in.
@@ -1020,6 +975,7 @@ public class CropsManager {
 //                attemptTrenchBreak(player, event.getPos());
 //            }
 
+        // TODO add bonus stone.
 
     }
 
@@ -1060,7 +1016,7 @@ public class CropsManager {
 
         // STEP 3: Add in bonus for nursery plots.
         Level level = event.getPlayer().getCommandSenderWorld();
-        if (getPlotType(event.getPos(), level).equals("farm")) {
+        if (getPlotType(event.getPos(), level).equals("nursery")) {
             LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus. ");
             baseSuccessRate += 20;
         }
@@ -1074,7 +1030,7 @@ public class CropsManager {
         // STEP 4: Roll and check for success.
         // TODO make roll a mini method.
         int successRate = baseSuccessRate;
-        LOGGER.info("DEBUG: LOG successRate = " + successRate);
+//        LOGGER.info("DEBUG: LOG successRate = " + successRate);
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
         if (randomNum >= successRate) {
@@ -1091,44 +1047,23 @@ public class CropsManager {
     }
 
 
-    // TODO another method to limit ability to plant saplings.
-    // 100% in nursery
-    // 10 percent elsewhere.
-
     // Make a method that lowers event that causes saplings to fall from tree leaves block rate by a lot.
     @SubscribeEvent
     public static void onBreakLeaves(BlockEvent.BreakEvent event) {
-        Player player = event.getPlayer();
-        if (player == null) {
+        Player playerSource = event.getPlayer();
+        if (playerSource == null) {
             return;
         }
 
         final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
 
         // Only do rule if leaves
         if (!blockState.is(BlockTags.LEAVES)) {
             return;
         }
 
-        // STEP 1: Set base rate for success.
-        int successRate = 20;  // 20% chance to get drops at start.
-
-        LOGGER.info("DEBUG: LEAVES BREAK successRate = " + successRate);
-
-        // STEP 2: If in a nursery plot, add bonus.
-        Level level = event.getPlayer().getCommandSenderWorld();
-        if (getPlotType(event.getPos(), level).equals("nursery")) {
-            LOGGER.info("DEBUG3: target leaves block is in a nursery plot, adding bonus. ");
-            successRate += 30;
-        }
-
-
-        // STEP 3: Roll for success now.
-        Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING leaves block, no drops..." + successRate);
+        if (!CropsManager.allowSaplingDrop(event.getPos(), (ServerLevel) event.getLevel())) {
+//            LOGGER.info("DEBUG: DESTROYING leaves block, no drops...");
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);
             return;
@@ -1136,6 +1071,173 @@ public class CropsManager {
 
     }
 
+    // TODO For leaf decay we need more logic, hmmm custom block?
+
+    // NOTICE does not work for leaves, for some reason, fun.
+    // Catch leaves as they decay
+//    @SubscribeEvent
+//    public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
+//        // Exit early if the event is on the client side
+
+    /// /        if (event.getLevel().isClientSide()) {
+    /// /            return;
+    /// /        }
+//
+//        // Check if the block is a leaf
+//        BlockState state = event.getState();
+//        LOGGER.info("DEBUG1: leaf check state= " + state);
+//        if (!state.is(BlockTags.LEAVES)) {
+//            return;
+//        }
+//
+//        // Exit early on 90% random chance, since happens often?
+//        Random rand = new Random();
+//        int r = rand.nextInt(100); // 100% 0-99
+//        LOGGER.info("DEBUG2: leaf check rand= " + r);
+//        if (r < 30) { // TODO TEST
+//            return;
+//        }
+//
+//        BlockPos pos = event.getPos();
+//        Level level = (Level) event.getLevel();
+//
+//
+//        // Check the distance property
+//        if (state.hasProperty(BlockStateProperties.DISTANCE)) {
+//            int distance = state.getValue(BlockStateProperties.DISTANCE);
+//
+//            // Leaves decay if distance > 7 and not persistent
+//            if (distance > 7 && !state.getValue(BlockStateProperties.PERSISTENT)) {
+//                LOGGER.info("DEBUGB: Leaves are TRYING to decaying naturally at " + pos);
+//
+//                // Optionally, perform additional actions here
+//                // For example, prevent decay or modify drops
+//                if (!allowSapling(pos, (ServerLevel) level)) {
+//                    LOGGER.info("DEBUGB: DESTROYING leaves block, no drops...");
+//                    level.destroyBlock(pos, false);
+//                    event.setCanceled(true);
+//                } else {
+//                    LOGGER.info("DEBUGB: ALLOWING leaves block drops...");
+//                }
+//            }
+//        }
+//    }
+    public static boolean allowSaplingDrop(BlockPos pos, ServerLevel level) {
+        // STEP 1: Set base rate for success.
+        int successRate = 20;  // 20% chance to get drops at start.
+
+//        LOGGER.info("DEBUG: allowSapling LEAVES BREAK successRate = " + successRate);
+
+        // STEP 2: If in a nursery plot, add bonus.
+        if (CropsManager.getPlotType(pos, level).equals("nursery")) {
+//            LOGGER.info("DEBUG3: allowSapling target leaves block is in a nursery plot, adding bonus. ");
+            successRate += 30;
+        }
+
+        // STEP 3: Roll for success now.
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+//        LOGGER.info("DEBUG: allowSapling  rand leaves block, r=" + randomNum);
+        if (randomNum >= successRate) {
+//            LOGGER.info("DEBUG: allowSapling  DESTROYING leaves block, no drops..." + successRate);
+            return false;
+        }
+        return true;
+    }
+
+    // When trying to saplings, check our biome rules to see what is allowed there.
+    @SubscribeEvent
+    public static void onRightClickSaplingPlant(PlayerInteractEvent.RightClickBlock event) {
+        // Step 1: If in creative mode, skip all rules and allow planting all.
+        Player playerSource = (Player) event.getEntity();
+        if (playerSource.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
+        if (playerSource.isCreative()) {
+//            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
+            return;
+        }
+
+        // Skip if client side
+        if (event.getLevel().isClientSide) {
+//            LOGGER.info("DEBUG: sapling Skipping if client.");
+            return;
+        }
+
+        Level level = event.getLevel();
+        BlockPos clickedPos = event.getPos();
+
+        // STEP 2: Test if holding a sapling item, if not leave.
+        ItemStack stack = event.getItemStack();
+        String stackName = stack.getDescriptionId();
+        if (!stackName.contains("sapling")) {
+            return;
+        }
+
+
+        // STEP 4: Check if the sapling is allowed in this biome.
+        // block.minecraft.dark_oak_sapling  remove first parts and sapling both.
+        String shortName = stackName.replace("block.", "").replace("_sapling", "").replace("minecraft.", "").replace("biomesoplenty.", "");
+        LOGGER.info("DEBUG: onRightClickSaplingPlant shortName = " + shortName);
+        // Get current biome the block is in.
+        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
+        String biomeName = biome.unwrapKey().orElse(UKNOWN_RK).location().toString();
+        LOGGER.info("DEBUG: onRightClickSaplingPlant biome = " + biomeName);
+        // TODO dark oak, redwood, mystic what others? cherry lavender? jungle jacaranda?
+        // Create map with list of saplings and list of biomes allowed in.
+        Map<String, ArrayList<String>> saplingsLimited = new HashMap<>();
+        saplingsLimited.put("dark_oak", new ArrayList<>(Arrays.asList("minecraft:dark_forest", "minecraft:dark_forest_hills")));
+        saplingsLimited.put("redwood", new ArrayList<>(Arrays.asList("minecraft:giant_tree_taiga", "biomesoplenty:redwood_forest")));
+        saplingsLimited.put("magic", new ArrayList<>(Arrays.asList("biomesoplenty:mystic_grove")));
+        saplingsLimited.put("jungle", new ArrayList<>(Arrays.asList("minecraft:jungle", "minecraft:jungle_hills"))); // couple more here? sparse edge?
+        saplingsLimited.put("cherry", new ArrayList<>(Arrays.asList("minecraft:cherry_grove")));  // check old one?
+        saplingsLimited.put("umbran", new ArrayList<>(Arrays.asList("biomesoplenty:ominous_woods")));
+//        saplingsLimited.put("lavender", new ArrayList<>(Arrays.asList("minecraft:flower_forest", "minecraft:flower_forest_hills")));
+
+        // todo remove hills off all names?
+
+        // this not working yet.
+        if (saplingsLimited.containsKey(shortName) && !saplingsLimited.get(shortName).contains(biomeName)) {
+            // Send notice to player.
+            MutableComponent component = Component.translatable("§eYou cannot plant " + stack.getHoverName().getString() + " in this biome.");
+            playerSource.displayClientMessage(component, false);
+
+            // Cancel event and return now.
+            event.setCanceled(true);
+        }
+
+        int goodChance = 10;
+
+
+        // STEP 5: Roll random chance of failure, if not in a nursery.
+        String plotType = getPlotType(clickedPos, level);
+        if (plotType.equals("nursery")) {
+            LOGGER.info("DEBUG: allowSapling target block is in a nursery plot, adding bonus. ");
+            goodChance = 65;
+        }
+
+        // STEP 6: If a fruit tree always allow, expensive those.
+        // Check item mod name fom pam
+        if (stackName.contains("pamhc2trees")) {
+            LOGGER.info("DEBUG: allowSapling target block is a fruit tree sapling, adding bonus. ");
+            goodChance = 100;
+        }
+
+        // STEP X: add in players level.
+        goodChance += playerSource.experienceLevel / 2;
+
+        // STEP 6: Roll to see if allowed.
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum >= goodChance) {
+            LOGGER.info("DEBUG: NOT allowing sapling plant " + goodChance);
+            // Remove one of the item from hands.
+            stack.shrink(1);
+            event.setCanceled(true);
+            // TODO send a failure message on occasion if havnt since logged in.
+            return;
+        }
+        LOGGER.info("DEBUG: allowing sapling plant " + goodChance);
+
+    }
+
+
 }
-
-

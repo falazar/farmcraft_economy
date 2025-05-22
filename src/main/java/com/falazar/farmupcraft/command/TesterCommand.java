@@ -1,9 +1,5 @@
 package com.falazar.farmupcraft.command;
 
-import com.falazar.farmupcraft.data.PlayerData;
-import com.falazar.farmupcraft.data.VillageData;
-import com.falazar.farmupcraft.database.DataBase;
-import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -12,32 +8,41 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.StringTag;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.Container;
+import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.block.entity.BarrelBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.npc.VillagerData;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
-import net.minecraft.world.phys.AABB;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.*;
 
@@ -119,13 +124,33 @@ public class TesterCommand {
                 );
         builder.then(findStructuresBuilder);
 
+        // Define the "findneareststructure" sub-command, ADMIN permissions only!
+        LiteralArgumentBuilder<CommandSourceStack> findNearestStructureBuilder = Commands.literal("findneareststructure")
+                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
+                .executes(context -> {
+                    // Call the method to find the nearest structure
+                    findNearestStructureCom(context.getSource());
+                    return 0;
+                });
+        builder.then(findNearestStructureBuilder);
+
+        // Define the "testcloseststructure" sub-command, ADMIN permissions only!
+        LiteralArgumentBuilder<CommandSourceStack> testClosestStructureBuilder = Commands.literal("testcloseststructure")
+                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
+                .executes(context -> {
+                    // Call the method to find the closest structure
+                    testClosestStructure(context.getSource());
+                    return 0;
+                });
+        builder.then(testClosestStructureBuilder);
+
         // Find all chests in nearest structure.
         // Define the findchests subcommand. ADMIN perms only.
         LiteralArgumentBuilder<CommandSourceStack> findChestsBuilder = Commands.literal("findchests")
                 .requires(stack -> stack.hasPermission(2)) // Require permission level 2
                 .executes(context -> {
                     // Call the method to find chests in the nearest structure
-                    findChestsInNearestStructure(context.getSource());
+                    findChestsInStructure(context.getSource(), "structory:graveyard", 270582939571L);
                     return 0;
                 });
         builder.then(findChestsBuilder);
@@ -135,8 +160,102 @@ public class TesterCommand {
         pDispatcher.register(builder);
     }
 
+
+    // Find the closest structure to the player.
+    // Add a written book to a chest.
+    public static int testClosestStructure(CommandSourceStack source) {
+        try {
+
+            // Get the player's current position
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            BlockPos playerPos = playerSource.blockPosition();
+
+            // STEP 1: Find the nearest structure
+            Map.Entry<String, Long> nearestStructure = findNearestStructure(playerPos, (ServerLevel) source.getLevel(), source);
+            LOGGER.info("Nearest structure key(type?): " + nearestStructure.getKey());
+            LOGGER.info("Nearest structure value: " + nearestStructure.getValue());
+
+            // Load structure and show it.
+//            BoundingBox boundingBox = loadStructure(source, nearestStructure.getKey(), nearestStructure.getValue());
+//            LOGGER.info("Bounding box: " + boundingBox);
+
+            // STEP 2: Find all chests now.
+            //findChestsInStructure(source, nearestStructure.getKey(), nearestStructure.getValue());
+
+            // STEP 2: Find closest chest now, also does barrels.
+            BlockPos nearestContainer = findNearestChestInStructure(source, nearestStructure.getKey(), nearestStructure.getValue());
+            LOGGER.info("Nearest chest found at " + nearestContainer);
+            if (nearestContainer.equals(null)) {
+                source.sendSystemMessage(Component.literal("No chests found in the structure.").withStyle(ChatFormatting.RED));
+                return 0;
+            }
+
+            // STEP 4: Create a book with writing in it.
+            // Create a book item and put it in the chest.
+//            Item bookItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation("book"));
+//            ItemStack bookStack = new ItemStack(bookItem);
+            Item bookItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation("minecraft:written_book"));
+            ItemStack bookStack = new ItemStack(bookItem);
+            // Set the book's title and author
+            bookStack.getOrCreateTag().putString("title", "Family History");
+//            bookStack.getOrCreateTag().putString("author", playerSource.getName().getString());
+            bookStack.getOrCreateTag().putString("author", "Corbin Eldrin");
+
+            // Add some pages to the book
+//            List<Component> pages = new ArrayList<>();
+//            pages.add(Component.literal("This is a test book."));
+//            pages.add(Component.literal("Page 2: More test content."));
+//            pages.add(Component.literal("Page 3: Even more test content."));
+
+            // Add some pages to the book
+            ListTag pages = new ListTag();
+            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal("We, the Eldrin Family, carved this life from the jade cliffs, yet the stone remembers the sacrifices made to appease its hunger."))));
+            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal("The mystic lake offers solace, but its depths hold reflections of horrors we dared not speak, only to pass them down in our blood."))));
+            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal("This book is a testament not of glory, but of the burden carried by each Eldrin, a legacy entwined with the shadowed fate of this mountain."))));
+
+            // Attach the pages to the book
+            bookStack.getOrCreateTag().put("pages", pages);
+
+            // STEP 5: Put an item in the chest.
+            // Get the block entity at the chest position
+            BlockEntity blockEntity = source.getLevel().getBlockEntity(nearestContainer);
+            if (!(blockEntity instanceof ChestBlockEntity || blockEntity instanceof BarrelBlockEntity)) {
+                LOGGER.error("Block entity at " + nearestContainer + " is not a chest.");
+                // Say what it is.
+                LOGGER.info( "Block entity at " + nearestContainer + " is a " + blockEntity.getType().toString());
+                return 0;
+            }
+            // Cast to ChestBlockEntity or BarrelBlockEntity and insert.
+
+            RandomizableContainerBlockEntity containerEntity = (RandomizableContainerBlockEntity) blockEntity;
+//            ChestBlockEntity chestEntity = (ChestBlockEntity) blockEntity;
+            // TODO make helper method.
+            // Add the book to the chest inventory
+            for (int i = 0; i < containerEntity.getContainerSize(); i++) {
+                if (containerEntity.getItem(i).isEmpty()) {
+                    containerEntity.setItem(i, bookStack);
+                    LOGGER.info("Book added to container at " + nearestContainer);
+                    break;
+                }
+            }
+            // Mark the chest as updated
+            containerEntity.setChanged();
+
+            // Message chat to say location and that book was added.
+            source.sendSystemMessage(Component.literal("Added book to chest at " + nearestContainer.toShortString()).withStyle(ChatFormatting.GOLD));
+        } catch (Exception e) {
+            LOGGER.error("Error finding closest structure: " + e.getMessage());
+            source.sendSystemMessage(Component.literal("Error finding closest structure: " + e.getMessage()).withStyle(ChatFormatting.RED));
+        }
+
+        return 0;
+    }
+
+
     // Find nearby structures
     // NOTE: working for mineshafts and villages and ruined portals, need to test more for new mod structures.... hmmm
+    // NOTE dragon nest doesnt seem to show up here drats.
     public static int findNearbyStructures(CommandSourceStack source, String filter) {
         // REF: https://github.com/someaddons/structureessentials/blob/1.20.1/src/main/java/com/structureessentials/command/Command.java
 
@@ -300,6 +419,61 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
         return 0;
     }
 
+
+    // Find nearby structure from command, call method and write to chat.
+    public static int findNearestStructureCom(CommandSourceStack source) {
+        // Get the player's current position
+        Entity nullableSummoner = source.getEntity();
+        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+        BlockPos playerPos = playerSource.blockPosition();
+
+        // Find the nearest structure
+        Map.Entry<String, Long> nearestStructure = findNearestStructure(playerPos, (ServerLevel) source.getLevel(), source);
+        LOGGER.info("Nearest structure key(type?): " + nearestStructure.getKey());
+        LOGGER.info("Nearest structure value: " + nearestStructure.getValue());
+
+        // Show the result in chat
+        source.sendSystemMessage(Component.literal("Nearest structure: " + nearestStructure.getKey() + " ID: " + nearestStructure.getValue()).withStyle(ChatFormatting.GOLD));
+
+        return 0;
+    }
+
+    public static Map.Entry<String, Long> findNearestStructure(BlockPos blockPos, ServerLevel world, CommandSourceStack source) {
+        final Map<Structure, LongSet> structures = new HashMap<>();
+        final ChunkPos start = new ChunkPos(BlockPos.containing(source.getPosition()));
+
+        // STEP 1: Collect structures in a 10x10 chunk area
+        for (int x = -5; x < 5; x++) {
+            for (int z = -5; z < 5; z++) {
+                for (final Map.Entry<Structure, LongSet> entry : world.structureManager()
+                        .getAllStructuresAt(new BlockPos((start.x + x) << 4, 0, (start.z + z) << 4))
+                        .entrySet()) {
+                    structures.computeIfAbsent(entry.getKey(), k -> new LongOpenHashSet(entry.getValue())).addAll(entry.getValue());
+                }
+            }
+        }
+
+        // STEP 2: Collect structure positions with their type and Long id
+        Map<BlockPos, Map.Entry<String, Long>> structurePositions = new HashMap<>();
+        for (Map.Entry<Structure, LongSet> structureEntry : structures.entrySet()) {
+            world.structureManager().fillStartsForStructure(structureEntry.getKey(), structureEntry.getValue(),
+                    structureStart -> {
+                        String type = source.registryAccess().registry(Registries.STRUCTURE).get().getKey(structureEntry.getKey()).toString();
+                        for (long id : structureEntry.getValue()) {
+                            structurePositions.put(structureStart.getBoundingBox().getCenter(), new AbstractMap.SimpleEntry<>(type, id));
+                        }
+                    }
+            );
+        }
+
+        // STEP 3: Find the nearest structure
+        return structurePositions.entrySet().stream()
+                .min(Comparator.comparingDouble(entry -> entry.getKey().distSqr(blockPos)))
+                .map(Map.Entry::getValue) // Extract the Map.Entry<String, Long>
+                .orElse(null); // Return null if no structures are found
+    }
+
+
     // TODO make a method for chunk load entering the structure we know
     // send chat message for now to test. any chunk.
 
@@ -326,25 +500,25 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
         final ServerLevel world = source.getLevel();
 
         // Log the retrieved objects
-        LOGGER.info("TEST 2 Structure: " + structure);
-        LOGGER.info("TEST 2 LongSet: " + longSet);
+        LOGGER.info("Load: TEST 2 Structure: " + structure);
+        LOGGER.info("Load: TEST 2 LongSet: " + longSet);
         BoundingBox[] boundingBoxHolder = new BoundingBox[1];
         world.structureManager().fillStartsForStructure(structure, longSet, structureStart -> {
             // Access the StructureStart here
             boundingBoxHolder[0] = structureStart.getBoundingBox();
             BlockPos center = boundingBoxHolder[0].getCenter();
-            LOGGER.info("StructureStart found: " + structureStart);
-            LOGGER.info("BoundingBox: " + boundingBoxHolder[0]);
-            LOGGER.info("Center: " + center);
+            LOGGER.info("Load: StructureStart found: " + structureStart);
+            LOGGER.info("Load: BoundingBox: " + boundingBoxHolder[0]);
+            LOGGER.info("Load: Center: " + center);
 
             // Center chunk
             ChunkPos centerChunk = new ChunkPos(center.getX() >> 4, center.getZ() >> 4);
-            LOGGER.info("Center Chunk: " + centerChunk);
+            LOGGER.info("Load: Center Chunk: " + centerChunk);
         });
 
         // Retrieve the bounding box value after the lambda
         BoundingBox boundingBox = boundingBoxHolder[0];
-        LOGGER.info("Retrieved BoundingBox: " + boundingBox);
+        LOGGER.info("Load: Retrieved BoundingBox: " + boundingBox);
         return boundingBox;
 
         /* notes
@@ -364,7 +538,7 @@ Stretches out to chunk areas.
 
     }
 
-    public static int findChestsInNearestStructure(CommandSourceStack source) {
+    public static int findChestsInStructure(CommandSourceStack source, String type, Long id) {
         // TODO find all chests in the nearest structure.
         // TODO find all chests in a structure.
         // TODO find all chests in a chunk.
@@ -373,7 +547,8 @@ Stretches out to chunk areas.
         // Hardcoded 2 ids from earlier.
         // Graveyard near Faewild.
 //        loadStructure(source, "structory:graveyard", 270582939571L);
-        BoundingBox boundingBox = loadStructure(source, "structory:graveyard", 270582939571L);
+//        BoundingBox boundingBox = loadStructure(source, "structory:graveyard", 270582939571L);
+        BoundingBox boundingBox = loadStructure(source, type, id);
 
         // Loop over all blocks here and look for a chest, doublechest, or barrel
         for (int y = boundingBox.minY(); y < boundingBox.maxY(); y++) {
@@ -394,6 +569,59 @@ Stretches out to chunk areas.
         // TODO find all chests in a plot.
 
         return 0;
+    }
+
+    public static BlockPos findNearestChestInStructure(CommandSourceStack source, String type, Long id) {
+        LOGGER.info("DEBUG findNearestChestInStructure");
+
+        // Load the structure and get its bounding box
+        BoundingBox boundingBox = loadStructure(source, type, id);
+        if (boundingBox == null) {
+            LOGGER.error("BoundingBox is null for structure type: " + type + " and id: " + id);
+            return null;
+        }
+
+        // Get the player's position
+        Entity nullableSummoner = source.getEntity();
+        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+        if (playerSource == null) {
+            LOGGER.error("Player source is null.");
+            return null;
+        }
+        BlockPos playerPos = playerSource.blockPosition();
+
+        // Variables to track the nearest chest
+        BlockPos nearestChest = null;
+        double nearestDistance = Double.MAX_VALUE;
+
+        // Loop through the bounding box to find chests or barrels
+        for (int y = boundingBox.minY(); y <= boundingBox.maxY(); y++) {
+            for (int x = boundingBox.minX(); x <= boundingBox.maxX(); x++) {
+                for (int z = boundingBox.minZ(); z <= boundingBox.maxZ(); z++) {
+                    BlockPos pos = new BlockPos(x, y, z);
+                    Block block = source.getLevel().getBlockState(pos).getBlock();
+
+                    // Check if the block is a chest or barrel
+                    if (block == Blocks.CHEST || block == Blocks.BARREL) {
+                        double distance = pos.distSqr(playerPos);
+
+                        // Update the nearest chest if this one is closer
+                        if (distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearestChest = pos;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (nearestChest != null) {
+            LOGGER.info("Nearest chest found at " + nearestChest + " with distance " + Math.sqrt(nearestDistance));
+        } else {
+            LOGGER.info("No chests found in the structure.");
+        }
+
+        return nearestChest;
     }
 
     // Find all villagers in a village, or near the player.

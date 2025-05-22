@@ -55,8 +55,11 @@ public class PlotCommand {
                             builder2.suggest("plot");
                             builder2.suggest("nursery");
                             builder2.suggest("kitchen");
-                            builder2.suggest("restaurant");
                             builder2.suggest("house");
+                            builder2.suggest("restaurant");
+                            builder2.suggest("trainstation");
+                            builder2.suggest("graveyard");
+                            builder2.suggest("pasture");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
@@ -138,6 +141,7 @@ public class PlotCommand {
 //                    .append(Component.literal("Owned by: " + chunkData.getNameForPlayer(serverLevel) + ", "))
                     .append(Component.literal("Village: " + villageData.getName() + "\n").withStyle(ChatFormatting.WHITE))
                     .append(Component.literal("Type: " + chunkData.getType()+ "\n").withStyle(ChatFormatting.WHITE));
+            // todo if village show village unclaimed...
 
             // TODO get counts of biomes also.
             if (biomes.size() > 0) {

@@ -14,20 +14,39 @@ GENERAL SOON:
 
     DONE Add biomes info onto plot info and format and color it.
 
-    TODO - make planting saplings and getting saplings much harder.  easier in nursery.
+    TODO - make a book with writing in it.
 
-    TODO Make find structures command have a top bottom and all options. optional distance?
+    TODO - place a book in a chest.
+
+    TODO - show a description of village show in town center plot.
+        only show once an hour, cache show message.
+
+    TODO - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
+
+    TODO - change center plot to a "village center" name.
+
+    TODO - figure out how to control growth for village, population field?  bonus for taking over structures, bonus for villagers (limited maxs)
+
+    TODO - maybe save villager names to village to respawn them if we feed and breed a villager?
+
+    HALF DONE - make planting saplings and getting saplings much harder.  easier in nursery.
+
+    HALF -  Make find structures command have a top bottom and all options. optional distance?
      not quite working on some.
 
     TODO - Diamond Border change into a toggleAble command.
 
     TODO - Add clickable link in /player info that goes to the village info automatically.
 
+    TODO - buyable eggs for villagers if we have less than 3 alive?
+
     TODO - break up CropsManager into several other things.  should be events or?  check another project?
 
-    // Recipes and such
+    // Recipes and boosts and such
     TODO - make emu and duck eggs usable in cooking.
     TODO - make cows and animals use a new grain per village. alfalfa has a use then.
+    TODO - make tree planting fai often, except fruit ones?
+    TODO - give more bonus fruit for ones in an orchard!  great area to plant.
 
 
 MARKETS - Get them up and fully working.
