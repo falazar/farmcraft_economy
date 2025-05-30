@@ -36,7 +36,8 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
-    private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen", "restaurant", "house");
+    private static final List<String> VALID_PLOT_TYPES
+            = Arrays.asList("plot", "farm", "nursery", "kitchen", "restaurant", "house", "trainstation", "graveyard", "pasture");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -389,7 +390,10 @@ public class PlotCommand {
 
         // Plot Cost: 100 + 100 * plots TODO test
         // Plot Cost: 100 + 30 * plots TODO testing lower cost.
-        int totalCost = baseCost + 30 * plotCnt;
+        // Lowering from 30 to 25   Cost at our level was 730 a plot
+        // 730 / 30 = 24 plots
+        int totalCost = baseCost + 25 * plotCnt;
+        // make farm and some cost extra,
 
         return totalCost;
     }

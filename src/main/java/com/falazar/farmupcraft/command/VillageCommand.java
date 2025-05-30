@@ -577,8 +577,6 @@ public class VillageCommand {
             // STEP 6: Add new chunks.
             int newChunksCount = addNewVillageChunks(village, playerSource);
 
-            // TODO Draw out in text grid to test.
-
             villageDatabase.putData(village.getUUID(), village);
 
             // Build a response message
@@ -704,6 +702,10 @@ public class VillageCommand {
             playerSource.sendSystemMessage(message);
         }
 
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+
         return newChunksCount;
     }
 
@@ -722,6 +724,7 @@ public class VillageCommand {
             // Subtract daily upkeep cost from village coins.
             int dailyCost = getDailyCost(village);
             village.subtractCoins(dailyCost);
+            villageDatabase.putData(village.getUUID(), village);
 
             // Build a response message.
             MutableComponent response = Component.literal("Village daily upkeep ran, charged " + dailyCost + " coins.");

@@ -23,7 +23,11 @@ GENERAL SOON:
 
     TODO - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
 
-    TODO - change center plot to a "village center" name.
+    DONE - change center plot to a "village center" name.
+
+    TODO - make tester method to find all nearby biomes to village as well.  Just get center BlockPos for each one out to
+        range X, and store them all with village, this will allow us to pick nearby biomes for village quests.
+
 
     TODO - Create a /house command for house gethouse in front of you all allow copy with worlededit? or get dims to call worldedit commands
         push back 3 type command.

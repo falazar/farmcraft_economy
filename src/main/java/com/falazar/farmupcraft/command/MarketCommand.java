@@ -293,55 +293,55 @@ public class MarketCommand {
     public static Map<String, Integer> getMarketBuyItems(String type) {
         if (type.equals("food")) {
             String foodString = """
-                    pamhc2foodcore:butteredbakedpotatoitem\t5
-                    pamhc2foodextended:bbqsauceitem\t5
-                    pamhc2foodextended:pineapplesmoothieitem\t6
-                    pamhc2foodcore:epicbaconitem\t6
-                    pamhc2foodextended:raspberryjellysandwichitem\t6
-                    pamhc2foodextended:duriansmoothieitem\t6
-                    pamhc2foodextended:strawberrypieitem\t7
-                    pamhc2foodcore:baconandeggsitem\t8
-                    pamhc2foodextended:imitationcrabsticksitem\t9
-                    pamhc2foodcore:doughitem\t6
-                    pamhc2foodextended:mochicakeitem\t9
-                    pamhc2foodextended:soursopjellytoastitem\t10
-                    pamhc2foodextended:pralinesitem\t10
-                    pamhc2foodextended:slawdogitem\t12
-                    pamhc2foodextended:gardensoupitem\t8
+                    pamhc2foodextended:gooseberryjellysandwichitem\t5
+                    pamhc2foodcore:caramelappleitem\t5
+                    pamhc2foodextended:cashewbutteritem\t5
+                    pamhc2foodextended:heartybreakfastitem\t6
+                    pamhc2foodextended:peanutchocolatebaritem\t6
+                    pamhc2foodextended:breadedporkchopitem\t7
+                    pamhc2foodextended:cactusfruitpieitem\t8
+                    pamhc2foodextended:bbqsauceitem\t9
+                    pamhc2foodextended:pineapplesmoothieitem\t9
+                    pamhc2foodcore:epicbaconitem\t9
+                    pamhc2foodextended:raspberryjellysandwichitem\t9
+                    pamhc2foodextended:strawberrypieitem\t8
+                    pamhc2foodextended:imitationcrabsticksitem\t12
+                    pamhc2foodextended:soursopjellytoastitem\t13
+                    pamhc2foodextended:gardensoupitem\t9
                     """;
             return parseItemsFromString(foodString);
         } else if (type.equals("wood")) {
             // Use a text block string here:
             String woodString = """
-                    cfm:stripped_acacia_cabinet\t5
-                    valhelsia_structures:stripped_mangrove_post\t6
-                    biomesoplenty:mahogany_fence_gate\t10
-                    biomesoplenty:stripped_palm_wood\t12
-                    cfm:mangrove_kitchen_drawer	20
+                    minecraft:birch_door\t5
+                    valhelsia_structures:stripped_mangrove_post\t9
+                    biomesoplenty:mahogany_fence_gate\t13
+                    biomesoplenty:stripped_palm_wood\t15
+                    cfm:mangrove_kitchen_drawer	23
                     """;
             // Parse that into our items now.
             return parseItemsFromString(woodString);
         } else if (type.equals("stone")) {
             String stoneString = """
-                    philipsruins:red_sand_stone_brick\t5
-                    gravestone:gravestone\t6
-                    minecraft:end_stone_brick_stairs\t8
-                    minecraft:stone_brick_stairs\t8
-                    valhelsia_structures:cyan_metal_framed_glass\t11
+                    biomesoplenty:orange_sandstone\t6
+                    minecraft:red_sandstone_wall\t7
+                    philipsruins:red_sand_stone_brick\t9
+                    minecraft:stone_brick_stairs\t9
+                    valhelsia_structures:cyan_metal_framed_glass\t8
                     """;
             return parseItemsFromString(stoneString);
         } else if (type.equals("general")) {
-            String generalString = """      
-                    minecraft:sculk\t5
-                    valhelsia_structures:white_sleeping_bag\t5
-                    cfm:cyan_grill\t8
-                    minecraft:waxed_weathered_cut_copper\t7
-                    minecraft:lily_of_the_valley\t6
-                    valhelsia_structures:brown_glazed_jar\t9
-                    cfm:white_kitchen_counter\t9
-                    cfm:cyan_cooler\t12
-                    minecraft:light_gray_banner\t19
-                    minecraft:wither_rose\t18
+            String generalString = """          
+                    minecraft:prismarine_brick_stairs\t5
+                    minecraft:lime_wool\t5
+                    valhelsia_structures:purple_sleeping_bag\t6
+                    minecraft:yellow_banner\t6
+                    minecraft:cyan_wool\t7
+                    minecraft:sculk\t8
+                    valhelsia_structures:white_sleeping_bag\t9
+                    cfm:cyan_grill\t9
+                    minecraft:lily_of_the_valley\t9
+                    cfm:cyan_cooler\t15
                     """;
             return parseItemsFromString(generalString);
         } else {

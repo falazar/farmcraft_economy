@@ -238,7 +238,7 @@ public class CropsManager {
         }
         // Get item from new name.
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
-        LOGGER.info("DEBUG: item is " + item);
+//        LOGGER.info("DEBUG: item is " + item);
 
         // Our base success rate.
         int successPercent = 40;
@@ -250,7 +250,7 @@ public class CropsManager {
         int timesHarvested = timesPickedUp - timesDropped;
         // TODO can you hack stats or do they come from multiple servers?
         successPercent += (timesHarvested / 100) * 2; // 2% per 100 harvested.
-        LOGGER.info("DEBUG: timesharvested " + timesHarvested + " times. successPercent is " + successPercent);
+        LOGGER.info("DEBUG: "+itemName+" timesharvested " + timesHarvested + " times. successPercent is " + successPercent);
 
 
         // STEP 6: Calc a percent chance of success or failure, and fruit dies.
@@ -264,10 +264,22 @@ public class CropsManager {
         // STEP 7: Add in percent if they are in a nursery.
         // TODO cleanup method.
         // TODO add nursery level.
-        if (getPlotType(event.getPos(), level).equals("nursery")) {
+        if (getPlotType(event.getPos(), level).equals( "nursery")) {
             successPercent += 20;
-            LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus. successPercent is " + successPercent);
+            LOGGER.info("DEBUG3: target fruit is in a nursery plot, adding bonus. successPercent is " + successPercent);
         }
+        // TODO make small helper method!!!!!!
+        // TODO make small helper method!!!!!!
+        // TODO make small helper method!!!!!!
+        // TODO make small helper method!!!!!!
+        Biome biome = level.getBiome(event.getPos()).value();
+        ResourceLocation biomeRes = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+        String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
+        if (biomeName.equals( "orchard")) {
+            successPercent += 20;
+            LOGGER.info("DEBUG3: target fruit is in a orchard plot, adding bonus. successPercent is " + successPercent);
+        }
+        // todo test working???
 
 
         // STEP 8: Roll for success or failure.
