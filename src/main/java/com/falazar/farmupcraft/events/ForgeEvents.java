@@ -114,8 +114,6 @@ public class ForgeEvents {
             DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             UUID uuid = ((ServerPlayer) event.getEntity()).getUUID();
             if(!playerDatabase.containsKey(uuid)) {
-
-
                 CoinStack bronzeStack = new CoinStack(CoinRegistry.getCoin(CoinRegistry.BRONZE_COIN), 10);
                 playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), UUID.randomUUID(), new Wallet(List.of(bronzeStack))));
             }

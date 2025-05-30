@@ -1,10 +1,7 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
-import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.PlayerData;
-import com.falazar.farmupcraft.data.VillageData;
-import com.falazar.farmupcraft.data.WorldData;
+import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.database.*;
 import com.falazar.farmupcraft.database.serializers.*;
@@ -49,6 +46,12 @@ public class ModEvents {
             .autoSync()
             .build();
 
+    private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database"))
+            .setKeySerializer(new StringDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(GoodsData.CODEC))
+            .autoSync()
+            .build();
+
     private static final DataBaseAccess<Integer, WorldData> WORLD_DATA_DATABASE = new DataBaseBuilder<Integer, WorldData>(prefix("world_data_database"))
             .setKeySerializer(new IntDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(WorldData.CODEC))
@@ -90,12 +93,16 @@ public class ModEvents {
         return getDatabase(BIOME_RULES_DATABASE);
     }
 
-    public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
-        return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
-    }
-
     public static DataBase<UUID, VillageData> getVillageDatabase(Level level) {
         return getDatabase(VILLAGE_DATABASE, level);
+    }
+
+    public static DataBase<String, GoodsData> getGoodsDataDatabase() {
+        return getDatabase(GOODS_DATA_DATABASE);
+    }
+
+    public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
+        return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
 
     public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access, Level level) {
@@ -111,6 +118,7 @@ public class ModEvents {
                     DataBaseManager.registerDataBaseAccess(CHUNK_DATA_DATABASE.getDatabaseName(), CHUNK_DATA_DATABASE);
                     DataBaseManager.registerDataBaseAccess(PLAYER_DATABASE.getDatabaseName(), PLAYER_DATABASE);
                     DataBaseManager.registerDataBaseAccess(VILLAGE_DATABASE.getDatabaseName(), VILLAGE_DATABASE);
+                    DataBaseManager.registerDataBaseAccess(GOODS_DATA_DATABASE.getDatabaseName(), GOODS_DATA_DATABASE);
                     DataBaseManager.registerDataBaseAccess(WORLD_DATA_DATABASE.getDatabaseName(), WORLD_DATA_DATABASE);
                 }
         );

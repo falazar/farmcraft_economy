@@ -1,13 +1,9 @@
 package com.falazar.farmupcraft.command;
 
-import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.PlayerData;
+import com.falazar.farmupcraft.data.GoodsData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
-import com.falazar.farmupcraft.registry.CoinRegistry;
-import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -16,27 +12,24 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.NonNullList;
-import net.minecraft.core.Registry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
-import net.minecraftforge.common.world.ForgeChunkManager;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.function.Supplier;
-
-import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
 import net.minecraftforge.registries.ForgeRegistries;
+import org.apache.commons.io.FileUtils;
+import org.jetbrains.annotations.Nullable;
 
 
 public class MarketCommand {
@@ -142,6 +135,47 @@ public class MarketCommand {
                 }));
         builder.then(removeOldItemsBuilder);
 
+        // Register the "importtxt" sub-command for ADMIN only.
+        LiteralArgumentBuilder<CommandSourceStack> importTxtBuilder = Commands.literal("importtxt")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("type", StringArgumentType.string())
+                        .executes(context -> {
+                            String type = StringArgumentType.getString(context, "type");
+                            // Call the method to import items based on the type
+                            importMarketItemsTXT(context.getSource(), type);
+                            return 0;
+                        }));
+        builder.then(importTxtBuilder);
+
+        // Register the "setactive" sub-command for ADMIN only, to set active or inactive status of an item, given "active" or "inactive" and itemId string.
+        LiteralArgumentBuilder<CommandSourceStack> setActiveBuilder = Commands.literal("setactive")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("itemId", StringArgumentType.string())
+                        .then(Commands.argument("status", StringArgumentType.string())
+                                .executes(context -> {
+                                    String itemId = StringArgumentType.getString(context, "itemId");
+                                    String status = StringArgumentType.getString(context, "status");
+                                    // Call the method to set active status of an item
+                                    GoodsData.setActiveStatusOfItem(context.getSource(), itemId, status);
+                                    return 0;
+                                })));
+        builder.then(setActiveBuilder);
+
+        // Register the "setcost" sub-command for ADMIN only, to set the price of an item.
+        LiteralArgumentBuilder<CommandSourceStack> setCostBuilder = Commands.literal("setcost")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("itemId", StringArgumentType.string())
+                        .then(Commands.argument("cost", StringArgumentType.string())
+                                .executes(context -> {
+                                    String itemId = StringArgumentType.getString(context, "itemId");
+                                    String costStr = StringArgumentType.getString(context, "cost");
+                                    int cost = Integer.parseInt(costStr);
+                                    // Call the method to set the price of an item
+                                    GoodsData.setCostOfItem(context.getSource(), itemId, cost);
+                                    return 0;
+                                })));
+        builder.then(setCostBuilder);
+
         // Register the main "market" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -167,29 +201,62 @@ public class MarketCommand {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            Map<String, Integer> items = getMarketBuyItems(type);
-
-            // Loop over all items and prices to chat.
             MutableComponent response = Component.literal("Market " + type + " items: \n").withStyle(ChatFormatting.YELLOW);
-            for (Map.Entry<String, Integer> entry : items.entrySet()) {
-                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+
+
+//            Map<String, Integer> items = getMarketBuyItems(type);
+//
+//            // Loop over all items and prices to chat.
+//            for (Map.Entry<String, Integer> entry : items.entrySet()) {
+//                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+//                // Highlight ones in your inventory now.
+//                boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
+//
+//                if (item != null) {
+//                    // Get the display name of the item
+//                    String itemName = item.getDescription().getString();
+//                    if (!inInventory) {
+//                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+//                    } else {
+//                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.GREEN));
+//                    }
+//                } else {
+//                    response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+//                }
+//            }
+//            MutableComponent finalResponse = response;
+//            source.sendSuccess(() -> finalResponse, false);
+
+
+            // TEST VERSION 1 DEBUG AREA SHOW GOODS DATA ITEMS.
+            // TEST VERSION 2 DEBUG AREA SHOW GOODS DATA ITEMS.
+            Collection<GoodsData> goodsDataList = getFilteredActiveGoods(type);
+            if (goodsDataList == null || goodsDataList.isEmpty()) {
+                return 0;
+            }
+
+            // Show the final list.
+            MutableComponent goodsResponse = Component.literal("GoodsData items:\n").withStyle(ChatFormatting.YELLOW);
+            for (GoodsData good : goodsDataList) {
+                goodsResponse = goodsResponse.append(Component.literal(" - " + good.getItem().getDescription().getString() + ": " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
                 // Highlight ones in your inventory now.
+                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(good.getItem().getDescriptionId()));
                 boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
 
                 if (item != null) {
                     // Get the display name of the item
                     String itemName = item.getDescription().getString();
                     if (!inInventory) {
-                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
                     } else {
-                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.GREEN));
+                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins\n").withStyle(ChatFormatting.GREEN));
                     }
                 } else {
-                    response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    response = response.append(Component.literal(" -Unknown Item: " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
                 }
             }
-            MutableComponent finalResponse = response;
-            source.sendSuccess(() -> finalResponse, false);
+            MutableComponent finalGoodsResponse = goodsResponse;
+            source.sendSuccess(() -> finalGoodsResponse, false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Show Market List Exception thrown - see log"));
             ex.printStackTrace();
@@ -197,31 +264,76 @@ public class MarketCommand {
         return 0;
     }
 
+    // Grab all items from the DB, filter by type.
+    private static @Nullable Collection<GoodsData> getFilteredGoods(String type) {
+        // STEP 1: Grab all items from the DB.
+        DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+        Collection<GoodsData> goodsDataList = goodsDataDataBase.getValues();
+        if (goodsDataList.isEmpty()) {
+            return null;
+        }
+
+        // STEP 2: Filter on type.
+        List<GoodsData> goodsData = new ArrayList<>();
+        for (GoodsData goods : goodsDataList) {
+            if (goods.getMarketType().equals(type)) {
+                goodsData.add(goods);
+            }
+        }
+
+        return goodsData;
+    }
+
+    // Grab all items from the DB, filter by type and active status.
+    private static @Nullable Collection<GoodsData> getFilteredActiveGoods(String type) {
+        // STEP 1: Grab all items from the DB.
+        DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+        Collection<GoodsData> goodsDataList = goodsDataDataBase.getValues();
+        if (goodsDataList.isEmpty()) {
+            return null;
+        }
+
+        // STEP 2: Filter on type and active status.
+        List<GoodsData> goodsData = new ArrayList<>();
+        for (GoodsData goods : goodsDataList) {
+            if (goods.getMarketType().equals(type) && goods.isActive()) {
+                goodsData.add(goods);
+            }
+        }
+
+        // STEP 3: Sort by dateAddedToMarket newest to oldest.
+        goodsData.sort(Comparator.comparing(GoodsData::getDateAddedToMarket).reversed());
+        return goodsData;
+    }
+
+
     // Given a market type sell all items sellable from inventory.
     public static void sellMarketItems(CommandSourceStack source, String type) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            Map<String, Integer> items = getMarketBuyItems(type);
+//            Map<String, Integer> items = getMarketBuyItems(type);
+            Collection<GoodsData> items = getFilteredActiveGoods(type);
 
             int totalCoins = 0;
             // Loop over all items and sell all we have.
             MutableComponent response = Component.literal("Selling Market items: \n").withStyle(ChatFormatting.YELLOW); // TODO TEST
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
-            for (Map.Entry<String, Integer> entry : items.entrySet()) {
-                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+            for (GoodsData entry : items) {
+//                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+                Item item = entry.getItem();
                 boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
                 if (!inInventory) {
                     continue;
                 }
 
                 if (item != null) {
-                    int coins = sellAllItemInInventory(source, playerSource, item, entry.getValue());
+                    int coins = sellAllItemInInventory(source, playerSource, item, entry.getCost());
                     totalCoins += coins;
                 } else {
-                    MutableComponent response2 = Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE);
+                    MutableComponent response2 = Component.literal(" -Unknown Item: " + entry.getCost() + " coins\n").withStyle(ChatFormatting.WHITE);
                     MutableComponent finalResponse2 = response2;
                     source.sendSuccess(() -> finalResponse2, false);
                 }
@@ -333,7 +445,7 @@ public class MarketCommand {
         } else if (type.equals("general")) {
             String generalString = """          
                     minecraft:prismarine_brick_stairs\t5
-                    minecraft:lime_wool\t5
+                    minecraft:lime_wool\t5w
                     valhelsia_structures:purple_sleeping_bag\t6
                     minecraft:yellow_banner\t6
                     minecraft:cyan_wool\t7
@@ -580,7 +692,7 @@ public class MarketCommand {
         return 0;
     }
 
-    // TEST METHOD
+    // TEST METHOD partially done.
     public static int getNewMarketItems(CommandSourceStack source, String type) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -590,21 +702,45 @@ public class MarketCommand {
                 return 0;
             }
 
+            // STEP 1: Remove a few old items.
             // Get market list
-            Map<String, Integer> items = getMarketBuyItems(type);
-
+//            Map<String, Integer> items = getMarketBuyItems(type);
+            Collection<GoodsData> items = getFilteredActiveGoods(type);
             // Shuffle and remove 1 item per 5 existing.
-            List<String> shuffledItems = new ArrayList<>(items.keySet());
+            ArrayList<GoodsData> shuffledItems = new ArrayList<>(items);
             Collections.shuffle(shuffledItems);
 
             // Print out the ones we are removing.
-            MutableComponent response = Component.literal("Removing "+type+" Market items("+shuffledItems.size()+"): \n").withStyle(ChatFormatting.YELLOW);
-            for (int i = 0; i < shuffledItems.size() / 5; i++) {  // mod 5
-                String itemName = shuffledItems.get(i);
+            MutableComponent response = Component.literal("Removing " + type + " Market items(" + shuffledItems.size() + "): \n").withStyle(ChatFormatting.YELLOW);
+            int count = shuffledItems.size() / 5; // Remove 1 item per 5 existing items.
+            for (int i = 0; i < count; i++) {  // mod 5
+//                String itemName = shuffledItems.get(i);
+                GoodsData good = shuffledItems.get(i);
+                String itemName = good.getItem().getDescription().getString();
                 response = response.append(Component.literal("- " + itemName + "\n"));
+                good.setActive(Boolean.valueOf(false)); // Set active status to false
+                ModEvents.getGoodsDataDatabase().putData(good.getItem().getDescriptionId(), good);
+                // TODO test.
             }
 
-            // TODO and add new items.
+            // TODO TEST and add new items.
+            // STEP 2: Add in new items.
+            Collection<GoodsData> newItems = getFilteredGoods(type);
+            // Shuffle the new items and take the first count.
+            ArrayList<GoodsData> newItemsList = new ArrayList<>(newItems);
+            Collections.shuffle(newItemsList);
+            for (int i = 0; i < count; i++) {
+                GoodsData good = newItemsList.get(i);
+                String itemName = good.getItem().getDescription().getString();
+                // Add the new item to the response.
+                response = response.append(Component.literal("+ " + itemName + "\n"));
+                // TODO add to market, set active and cost.
+                good.setActive(Boolean.valueOf(true)); // Set active status
+                good.setCost(5); // Set a default cost, can be changed later.
+                good.setDateAddedToMarket( java.time.LocalDate.now().toString());
+                ModEvents.getGoodsDataDatabase().putData(good.getItem().getDescriptionId(), good);
+            }
+
 
             // Notify the player.
             MutableComponent finalResponse = response;
@@ -615,6 +751,56 @@ public class MarketCommand {
         }
         return 0;
     }
+
+    public static void importMarketItemsTXT(CommandSourceStack source, String type) {
+        try {
+            InputStream inputStream = MarketCommand.class.getClassLoader().getResourceAsStream("data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt");
+            if (inputStream == null) {
+                throw new FileNotFoundException("Resource not found: data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt");
+            }
+            // java.io.FileNotFoundException: Resource not found: farmupcraft/market/market_stone_items.txt
+            String fileContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            // Parse the file content into a list of item names, unordered array of strings.
+            String[] itemsArray = fileContent.split("\n");
+
+            // NOTE: for now an item can be in only ONE market type. may update later to allow multiple types.
+            DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+
+            // DEBUG output results to logger
+            LOGGER.info("DEBUG Importing Market Items for type: " + type);
+            for (String itemStr : itemsArray) {
+                // Trim whitespace and check if the line is not empty
+                String trimmedItem = itemStr.trim();
+                if (!trimmedItem.isEmpty()) {
+                    LOGGER.info("DEBUG Item: " + trimmedItem);
+                    // Step 2: Create an object to hold as a GoodsData object.
+                    GoodsData goodsData = goodsDataDataBase.getData(trimmedItem);
+                    if (goodsData == null) {
+                        // STEP 3: Insert into DB, ignore if an old one exists.
+                        // Dont create dupes, just insert new ones.
+                        // Create an item first.
+                        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(trimmedItem));
+                        goodsData = new GoodsData(item, 5, 0, "common", false, type, "");
+                        goodsDataDataBase.putData(trimmedItem, goodsData);
+                    } else {
+                        // ignore for now.
+                        // set cost correctly.
+                        goodsData.setCost(5);
+                        goodsDataDataBase.putData(trimmedItem, goodsData);
+                    }
+
+                }
+            }
+
+
+            // NOTE: This wont remove and older ones, manually do that.
+
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Import Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
 }
 
 /* sample data found
