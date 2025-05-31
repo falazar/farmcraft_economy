@@ -1,8 +1,5 @@
 package com.falazar.farmupcraft.data;
 
-import com.falazar.farmupcraft.command.MarketCommand;
-import com.falazar.farmupcraft.currency.CoinStack;
-import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
@@ -10,27 +7,31 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraftforge.registries.ForgeRegistries;
-import org.apache.logging.log4j.spi.LoggerRegistry;
 
 public class GoodsData {
     public static final CustomLogger LOGGER = new CustomLogger(GoodsData.class.getSimpleName());
 
     public static final Codec<GoodsData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
-                    BuiltInRegistries.ITEM.byNameCodec().fieldOf("item").forGetter(GoodsData::getItem),
-                    Codec.INT.fieldOf("cost").forGetter(g -> Integer.valueOf(g.getCost())),
-                    Codec.INT.optionalFieldOf("amountSold", Integer.valueOf(0)).forGetter(g -> Integer.valueOf(g.getAmountSold())),
-                    Codec.STRING.optionalFieldOf("rarity", "common").forGetter(GoodsData::getRarity),
-                    Codec.BOOL.optionalFieldOf("active", Boolean.FALSE).forGetter(g -> Boolean.valueOf(g.isActive())),
-                    Codec.STRING.optionalFieldOf("marketType", "").forGetter(GoodsData::getMarketType),
-                    Codec.STRING.optionalFieldOf("dateAddedToMarket", "").forGetter(GoodsData::getDateAddedToMarket)
+//                    BuiltInRegistries.ITEM.byNameCodec().fieldOf("item").forGetter(GoodsData::getItem),
+                    Codec.STRING.fieldOf("itemId").forGetter(GoodsData::getItemId),
+                    Codec.INT.fieldOf("cost").forGetter(GoodsData::getCost),
+                    Codec.INT.fieldOf("amountSold").forGetter(GoodsData::getAmountSold),
+                    Codec.STRING.fieldOf("rarity").forGetter(GoodsData::getRarity),
+                    Codec.BOOL.fieldOf("active").forGetter(GoodsData::isActive),
+                    Codec.STRING.fieldOf("marketType").forGetter(GoodsData::getMarketType),
+                    Codec.STRING.fieldOf("dateAddedToMarket").forGetter(GoodsData::getDateAddedToMarket)
             ).apply(instance, GoodsData::new)
     );
 
-    private final Item item; // Saves as a registry name, so it can be serialized, but allows use to use as Item.
+    // TODO deprecate this one.
+//    private final Item item; // Saves as a registry name, so it can be serialized, but allows use to use as Item.
+    // TODO add this one
+    private final String itemId; // Saves as a registry key.
     private String marketType; // One of 4 or more types, "wood", "stone", "food", "general" etc.
     private boolean active;  // Is the item currently active in a market.
     private String rarity; // common, uncommon, rare. TODO UNUSED FOR NOW.
@@ -38,8 +39,9 @@ public class GoodsData {
     private int cost; // current coins to sell item for.
     private int amountSold; // How many items sold so far.
 
-    public GoodsData(Item item, int cost, int amountSold, String rarity, boolean active, String marketType, String dateAddedToMarket) {
-        this.item = item;
+    public GoodsData(String itemId, int cost, int amountSold, String rarity, boolean active, String marketType, String dateAddedToMarket) {
+//        this.item = item;
+        this.itemId = itemId;
         this.cost = cost;
         this.amountSold = amountSold;
         this.rarity = rarity;
@@ -48,8 +50,13 @@ public class GoodsData {
         this.dateAddedToMarket = dateAddedToMarket;
     }
 
+    public String getItemId() {
+        return itemId;
+    }
+
+    // Loads the actual item on demand using the registry name.
     public Item getItem() {
-        return item;
+        return ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemId));
     }
 
     public int getCost() {
@@ -57,6 +64,10 @@ public class GoodsData {
     }
 
     public void setCost(int cost) {
+        if (cost < 0) {
+            LOGGER.error("Cost cannot be negative. Setting to 0.");
+            cost = 0; // Prevent negative cost.
+        }
         this.cost = cost;
     }
 
@@ -80,28 +91,31 @@ public class GoodsData {
         return active;
     }
 
-    public void setActive(Boolean active) {
+    public void setActive(boolean active) {
         this.active = active;
     }
 
     // TODO how to do these with optional command sources????
     public static void setActiveStatusOfItem(CommandSourceStack source, String itemName, String active) {
-//        Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
-//        if (item == null) {
-////            source.sendFailure(() -> "Item not found: " + itemName);w
-//            LOGGER.error("Item not found: " + itemName);
-//            return;
-//        }
-
         DataBase <String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
         GoodsData goodsData = goodsDataDataBase.getData(itemName);
         if (goodsData == null) {
-//            source.sendFailure(() -> "GoodsData not found for item: " + itemName);
+            source.sendFailure(Component.literal("GoodsData not found for item: " + itemName));
             LOGGER.error("GoodsData not found for item: " + itemName);
             return;
         }
 
-        goodsData.setActive(Boolean.valueOf(Boolean.parseBoolean(active)));
+        if (active.equals("true") || active.equals("1") || active.equalsIgnoreCase("yes")) {
+            goodsData.setActive(true);
+        } else if (active.equals("false") || active.equals("0") || active.equalsIgnoreCase("no")) {
+            goodsData.setActive(false);
+        } else {
+            LOGGER.error("Invalid active status: " + active + ". Must be true/false or 1/0.");
+            source.sendFailure(Component.literal("Invalid active status: " + active));
+            return;
+        }
+        goodsData.setActive(Boolean.parseBoolean(active));
+
         if (goodsData.isActive()) {
             // Save date string as system date in YYYY-MM-DD format.
             goodsData.setDateAddedToMarket( java.time.LocalDate.now().toString());
@@ -110,6 +124,14 @@ public class GoodsData {
         }
         goodsDataDataBase.putData(itemName, goodsData);
         LOGGER.info("Set active status of item: " + itemName + " to " + active);
+        source.sendSuccess(() -> Component.literal("Set active status of item: " + itemName + " to " + active), true);
+
+        // get the active setting and show her for logging debug.
+        if (goodsData.isActive()) {
+            LOGGER.info("Item " + itemName + " is now active in the market.");
+        } else {
+            LOGGER.info("Item " + itemName + " is now inactive in the market.");
+        }
     }
 
     public static void setCostOfItem(CommandSourceStack source, String itemName, int cost) {
@@ -117,11 +139,18 @@ public class GoodsData {
         GoodsData goodsData = goodsDataDataBase.getData(itemName);
         if (goodsData == null) {
             LOGGER.error("GoodsData not found for item: " + itemName);
+            if (source != null) {
+                source.sendFailure(Component.literal("GoodsData not found for item: " + itemName));
+            }
             return;
         }
         goodsData.setCost(cost);
         goodsDataDataBase.putData(itemName, goodsData);
         LOGGER.info("Set cost of item: " + itemName + " to " + cost);
+        // If source output to chat now
+        if (source != null) {
+            source.sendSuccess(() -> Component.literal("Set cost of item: " + itemName + " to " + cost), true);
+        }
     }
 
     public String getMarketType() {

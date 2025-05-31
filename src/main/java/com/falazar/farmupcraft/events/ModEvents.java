@@ -15,6 +15,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
+import java.util.ArrayList;
 import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
@@ -46,7 +47,8 @@ public class ModEvents {
             .autoSync()
             .build();
 
-    private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database"))
+    // NOTE: temp changed to NEW to avoid conflicts with old database.
+    private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database_NEW"))
             .setKeySerializer(new StringDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(GoodsData.CODEC))
             .autoSync()
@@ -118,7 +120,21 @@ public class ModEvents {
                     DataBaseManager.registerDataBaseAccess(CHUNK_DATA_DATABASE.getDatabaseName(), CHUNK_DATA_DATABASE);
                     DataBaseManager.registerDataBaseAccess(PLAYER_DATABASE.getDatabaseName(), PLAYER_DATABASE);
                     DataBaseManager.registerDataBaseAccess(VILLAGE_DATABASE.getDatabaseName(), VILLAGE_DATABASE);
+
+                    // NOTE: Comment out to load without this DB which has size issue.
                     DataBaseManager.registerDataBaseAccess(GOODS_DATA_DATABASE.getDatabaseName(), GOODS_DATA_DATABASE);
+
+                    // Clear the database after loading - didnt work
+//                    DataBase<String, GoodsData> goodsDb = getDatabase(GOODS_DATA_DATABASE);
+//                    goodsDb.clearDataBase(true); // This removes all entries
+
+                    // Clear only the goods database - didnt work
+//                    DataBase<String, GoodsData> goodsDb = getDatabase(GOODS_DATA_DATABASE);
+//                    for (Object key : new ArrayList<>(goodsDb.getKeys())) {
+//                        goodsDb.removeDataAsync(key.toString(), null);
+//                    }
+//                    goodsDb.setDirty();
+
                     DataBaseManager.registerDataBaseAccess(WORLD_DATA_DATABASE.getDatabaseName(), WORLD_DATA_DATABASE);
                 }
         );
