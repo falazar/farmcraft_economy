@@ -4,6 +4,7 @@ import com.falazar.farmupcraft.FarmUpCraft;
 import com.falazar.farmupcraft.currency.CoinStack;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.*;
+import com.falazar.farmupcraft.database.message.DataBaseChunkS2C;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.DataBaseAccess;
@@ -12,7 +13,9 @@ import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
 import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.util.AsyncLocator;
+import io.netty.buffer.Unpooled;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -84,6 +87,7 @@ public class ForgeEvents {
 
 
     }
+
     @SubscribeEvent
     public static void serverStopped(final ServerStoppedEvent event) {
         DataBaseManager.shutDownDataBases(event.getServer().overworld());
@@ -102,10 +106,9 @@ public class ForgeEvents {
     public static void onRegisterReloadListeners(AddReloadListenerEvent event) {
         event.addListener(new CropBlockDataJsonManager());
         event.addListener(new CropItemDataJsonManager());
-        event.addListener(new MarketDataJsonManager());
+        //event.addListener(new MarketDataJsonManager());
         event.addListener(new BiomeRulesDataJsonManager());
     }
-
 
     @SubscribeEvent
     public static void onLoginEvent(PlayerEvent.PlayerLoggedInEvent event) {
@@ -113,7 +116,8 @@ public class ForgeEvents {
 
             DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             UUID uuid = ((ServerPlayer) event.getEntity()).getUUID();
-            if(!playerDatabase.containsKey(uuid)) {
+
+            if (!playerDatabase.containsKey(uuid)) {
                 CoinStack bronzeStack = new CoinStack(CoinRegistry.getCoin(CoinRegistry.BRONZE_COIN), 10);
                 playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), UUID.randomUUID(), new Wallet(List.of(bronzeStack))));
             }
@@ -121,22 +125,25 @@ public class ForgeEvents {
             for (ResourceLocation dataBaseName : DataBaseManager.getDataBasesToSync()) {
                 DataBaseAccess<?, ?> dataBaseAccess = DataBaseManager.getDataBaseAccess(dataBaseName);
 
-                // Run saving operation asynchronously
                 CompletableFuture.runAsync(() -> {
                     DataBase<?, ?> dataBase = dataBaseAccess.get(level);
+                    List<CompoundTag> chunks = dataBase.saveChunked(50); // ← send always in chunks
 
-                    // Perform the save operation (this may take time)
-                    CompoundTag tag = dataBase.save(new CompoundTag());
-
-                    // Send the saved data back to the main thread for sending to the player
                     level.getServer().execute(() -> {
-                        EDBMessages.sendToPlayer(new DataBaseFullS2C<>(tag, dataBase.getDatabaseName()), (ServerPlayer) event.getEntity());
+                        ServerPlayer player = (ServerPlayer) event.getEntity();
+                        for (int i = 0; i < chunks.size(); i++) {
+                            EDBMessages.sendToPlayer(new DataBaseChunkS2C<>(
+                                    chunks.get(i),
+                                    dataBase.getDatabaseName(),
+                                    i,
+                                    chunks.size()
+                            ), player);
+                        }
                     });
                 });
             }
         }
     }
-
 
 
 }

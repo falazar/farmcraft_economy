@@ -659,6 +659,54 @@ public class DataBase<M, V> extends SavedData {
     //    exportDataBase(filePath, "");
     //}
 
+    public int getSerializedSize() {
+        try {
+            CompoundTag tag = save(new CompoundTag());
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            NbtIo.writeCompressed(tag, out);
+            return out.size();
+        } catch (IOException e) {
+            LOGGER.error("[{}] Failed to measure serialized size", databaseName, e);
+            return Integer.MAX_VALUE; // fallback to chunked if error
+        }
+    }
+
+
+    public List<CompoundTag> saveChunked(int entriesPerChunk) {
+        List<CompoundTag> chunks = new ArrayList<>();
+        List<Map.Entry<M, V>> entries;
+
+        readWriteLock.readLock().lock();
+        try {
+            entries = new ArrayList<>(data.entrySet());
+        } finally {
+            readWriteLock.readLock().unlock();
+        }
+
+        for (int i = 0; i < entries.size(); i += entriesPerChunk) {
+            ListTag listTag = new ListTag();
+            CompoundTag chunkTag = new CompoundTag();
+            chunkTag.putString("database_name", databaseName);
+
+            for (int j = i; j < i + entriesPerChunk && j < entries.size(); j++) {
+                Map.Entry<M, V> entry = entries.get(j);
+                CompoundTag entryTag = new CompoundTag();
+                CompoundTag keyTag = keySerializer.serialize(entry.getKey());
+                CompoundTag valueTag = valueSerializer.serialize(entry.getValue());
+                if (keyTag != null && valueTag != null) {
+                    entryTag.put("key", keyTag);
+                    entryTag.put("value", valueTag);
+                    listTag.add(entryTag);
+                }
+            }
+
+            chunkTag.put("map_entry", listTag);
+            chunks.add(chunkTag);
+        }
+
+        return chunks;
+    }
+
 
     public void exportDataBase(Path filePath, FileFormat format) {
         readWriteLock.readLock().lock();
