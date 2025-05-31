@@ -5,6 +5,7 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "farmupcraft.refmap.json",
   "mixins": [
+    "StructureTemplateMixin"
   ],
   "client": [
     "client.LevelRendererMixin"
