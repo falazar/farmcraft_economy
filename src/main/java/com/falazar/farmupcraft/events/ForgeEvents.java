@@ -130,23 +130,30 @@ public class ForgeEvents {
                 Vec3 upFromStart = start.add(0, 10, 0);
                 Vec3 downToEnd = end.add(0, 10, 0);
 
-                MotionCurve upward = new LinearCurve(start, upFromStart);
-                MotionCurve arc = new VerticalHopCurve(upFromStart, downToEnd, 3.5);
-                MotionCurve downward = new LinearCurve(downToEnd, end);
+                //MotionCurve upward = new EasedLinearMotionCurve(start, upFromStart, Easing.ELASTIC_OUT);
+                //MotionCurve arc = new EasedMotionCurve(new VerticalHopCurve(upFromStart, downToEnd, 3.5), Easing.BOUNCE_OUT);
+                //MotionCurve downward = new EasedLinearMotionCurve(downToEnd, end, Easing.ELASTIC_IN);
+                MotionCurve upward = new EasedLinearMotionCurve(start, upFromStart, Easing.SINE_IN); // gentle lift
+                MotionCurve arc = new EasedMotionCurve(new VerticalHopCurve(upFromStart, downToEnd, 3), Easing.BOUNCE_OUT); // accelerating travel
+                MotionCurve downward = new EasedLinearMotionCurve(downToEnd, end, Easing.SINE_OUT); // bounce on impact
 
                 MotionCurve fullCurve = new ChainedMotionCurve()
                         .addSegment(upward, 0.1)
-                        .addSegment(arc, 0.85)
-                        .addSegment(downward, 0.05);
+                        .addSegment(arc, 0.8)
+                        .addSegment(downward, 0.1);
+
+
+                //MotionCurve easedFull = new EasedMotionCurve(fullCurve, Easing.CUBIC_OUT);
 
                 // 3. Spawn entity
                 FlyingBlockChunkEntity entity = new FlyingBlockChunkEntity(
                         level,
                         fullCurve,
                         blockState,
-                        40 + i * 3, // slight delay between launches
+                        60, // slight delay between launches
                         true
                 );
+                entity.setShowTrail(true);
                 level.addFreshEntity(entity);
             }
 

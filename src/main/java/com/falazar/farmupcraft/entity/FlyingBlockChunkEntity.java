@@ -86,7 +86,7 @@ public class FlyingBlockChunkEntity extends Entity {
 
         if (level().isClientSide) {
 
-            if (level().isClientSide && age % 2 == 0 && showTrail) {
+            if (level().isClientSide && age % 2 == 0 ) {
                 level().addParticle(ParticleTypes.CLOUD, getX(), getY(), getZ(), 0, 0.01, 0);
             }
 
@@ -111,8 +111,9 @@ public class FlyingBlockChunkEntity extends Entity {
         checkBlockCollision();
 
         if (landed) {
-
-            onImpact();
+            if(!level().getBlockState(blockPosition().below()).isAir()) {
+                onImpact();
+            }
 
             if (shouldPlaceBlock) {
 
@@ -140,7 +141,7 @@ public class FlyingBlockChunkEntity extends Entity {
         age++;
     }
 
-
+    //todo fix onImpact only when there is something below it
     public void onImpact() {
         if (impactHandled) return;
         impactHandled = true;
