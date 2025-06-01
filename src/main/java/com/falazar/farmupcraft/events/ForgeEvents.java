@@ -20,16 +20,21 @@ import com.falazar.farmupcraft.structure.BuildableStructureRegistry;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.BlockParticleOption;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.AddReloadListenerEvent;
@@ -82,7 +87,30 @@ public class ForgeEvents {
                 ForgeClientEvents.PREVIEW_MANAGER.clearAll();
             }
         }
+        if(stack.is(Items.WOODEN_SWORD) && event.getHand() == InteractionHand.MAIN_HAND) {
+            EarthQuakeParticle(level, event.getPos(), player);
+        }
     }
+
+    private static void EarthQuakeParticle(Level level, BlockPos pos, Player player) {
+        if (level.isClientSide) {
+            RandomSource randomSource = level.getRandom();
+            BlockState block = level.getBlockState(pos.below());
+            for (int i1 = 0; i1 < 20 + randomSource.nextInt(12); i1++) {
+                double DeltaMovementX = randomSource.nextGaussian() * 0.07D;
+                double DeltaMovementY = randomSource.nextGaussian() * 0.07D;
+                double DeltaMovementZ = randomSource.nextGaussian() * 0.07D;
+                float angle = (0.01745329251F * player.yBodyRot) + i1;
+                double extraX = 4F * Mth.sin((float) (Math.PI + angle));
+                double extraY = 0.3F;
+                double extraZ = 4F * Mth.cos(angle);
+                if (block.getRenderShape() != RenderShape.INVISIBLE) {
+                    level.addParticle(new BlockParticleOption(ParticleTypes.BLOCK, block), pos.getX() + extraX, pos.getY() + extraY, pos.getZ() + extraZ, DeltaMovementX, DeltaMovementY, DeltaMovementZ);
+                }
+            }
+        }
+    }
+
 
     @SubscribeEvent
     public static void serverTickEvent(TickEvent.ServerTickEvent event) {

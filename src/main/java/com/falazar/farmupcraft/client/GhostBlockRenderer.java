@@ -77,14 +77,22 @@ public class GhostBlockRenderer {
         dirtyChunks.addAll(chunkBuffers.keySet());
     }
 
+    private static final int MAX_CHUNKS_PER_TICK = 4;
+
     public void tick() {
         if (dirtyChunks.isEmpty()) return;
 
-        for (ChunkPos chunk : dirtyChunks) {
+        Iterator<ChunkPos> it = dirtyChunks.iterator();
+        int count = 0;
+
+        while (it.hasNext() && count < MAX_CHUNKS_PER_TICK) {
+            ChunkPos chunk = it.next();
             rebuildChunk(chunk);
+            it.remove();
+            count++;
         }
-        dirtyChunks.clear();
     }
+
 
 
     private void rebuildChunk(ChunkPos chunkPos) {
@@ -112,7 +120,7 @@ public class GhostBlockRenderer {
 
             for (RenderType layer : getRenderLayers(state)) {
                 RenderType filtered = sanitizeRenderLayer(layer);
-                BufferBuilder bb = builders.computeIfAbsent(filtered, rt -> new BufferBuilder(512));
+                BufferBuilder bb = builders.computeIfAbsent(filtered, rt -> new BufferBuilder(16 * 1024));
                 if (!bb.building()) bb.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.BLOCK);
 
                 BakedModel model = dispatcher.getBlockModel(state);
@@ -211,6 +219,14 @@ public class GhostBlockRenderer {
     public void setAlpha(float alpha) {
         this.alpha = Mth.clamp(alpha, 0.0f, 1.0f);
     }
+
+
+    public void clear() {
+        dispose();
+        ghostBlocks.clear();
+        dirtyChunks.clear();
+    }
+
 
     public void dispose() {
         chunkBuffers.values().forEach(map -> map.values().forEach(VertexBuffer::close));
