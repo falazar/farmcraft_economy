@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.setup;
 
+import com.falazar.farmupcraft.entity.FUCEntities;
 import com.falazar.farmupcraft.registry.CropRulesRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
@@ -19,6 +20,6 @@ public class Registration {
 
         FUCRegistries.CROP_RULES_TYPE_SERIALIZER.register(bus);
         CropRulesRegistry.CROP_RULE.register(bus);
-
+        FUCEntities.ENTITY_TYPES.register(bus);
     }
 }

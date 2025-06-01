@@ -49,7 +49,7 @@ public class GhostStructureRenderer {
     }
 
     public void clear() {
-        internal.clearGhostBlocks();
+        internal.clear();
     }
 
     public void setAlpha(float alpha) {

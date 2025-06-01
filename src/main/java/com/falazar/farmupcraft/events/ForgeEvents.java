@@ -1,29 +1,29 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
-import com.falazar.farmupcraft.client.ClientEvents;
 import com.falazar.farmupcraft.client.ForgeClientEvents;
 import com.falazar.farmupcraft.currency.CoinStack;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.message.DataBaseChunkS2C;
+import com.falazar.farmupcraft.entity.FlyingBlockChunkEntity;
+import com.falazar.farmupcraft.entity.MotionCurve;
+import com.falazar.farmupcraft.entity.curves.*;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.DataBaseAccess;
 import com.falazar.farmupcraft.database.DataBaseManager;
-import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
 import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.structure.BuildableStructure;
 import com.falazar.farmupcraft.structure.BuildableStructureInstance;
 import com.falazar.farmupcraft.structure.BuildableStructureRegistry;
 import com.falazar.farmupcraft.util.AsyncLocator;
-import io.netty.buffer.Unpooled;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -37,6 +37,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -45,11 +47,9 @@ import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import java.awt.event.ItemEvent;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -91,6 +91,109 @@ public class ForgeEvents {
             EarthQuakeParticle(level, event.getPos(), player);
         }
     }
+
+
+    @SubscribeEvent
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        Player player = event.getEntity();
+        Level level = player.level();
+
+        if (level.isClientSide || event.getHand() != InteractionHand.MAIN_HAND) return;
+
+        ItemStack stack = event.getItemStack();
+
+        // Use wooden shovel to trigger the test
+        if (stack.is(Items.WOODEN_SHOVEL)) {
+
+            BlockPos sourcePos = event.getPos(); // Illager's current position
+            Vec3 start = Vec3.atBottomCenterOf(sourcePos);
+
+            RandomSource random = level.getRandom();
+
+            BlockState blockState = level.getBlockState(sourcePos);
+            level.removeBlock(sourcePos, false); // remove only once
+
+            int count = 20; // number of chunks to launch
+            int range = 10;
+
+            for (int i = 0; i < count; i++) {
+                // 1. Random nearby position
+                int dx = random.nextInt(-range, range + 1);
+                int dz = random.nextInt(-range, range + 1);
+                BlockPos.MutableBlockPos mutableTarget = new BlockPos.MutableBlockPos(sourcePos.getX() + dx, 0, sourcePos.getZ() + dz);
+
+                int topY = level.getHeightmapPos(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, mutableTarget).getY();
+                BlockPos targetPos = new BlockPos(mutableTarget.getX(), topY, mutableTarget.getZ());
+
+                // 2. Motion curve from start to target
+                Vec3 end = Vec3.atBottomCenterOf(targetPos);
+                Vec3 upFromStart = start.add(0, 10, 0);
+                Vec3 downToEnd = end.add(0, 10, 0);
+
+                MotionCurve upward = new LinearCurve(start, upFromStart);
+                MotionCurve arc = new VerticalHopCurve(upFromStart, downToEnd, 3.5);
+                MotionCurve downward = new LinearCurve(downToEnd, end);
+
+                MotionCurve fullCurve = new ChainedMotionCurve()
+                        .addSegment(upward, 0.1)
+                        .addSegment(arc, 0.85)
+                        .addSegment(downward, 0.05);
+
+                // 3. Spawn entity
+                FlyingBlockChunkEntity entity = new FlyingBlockChunkEntity(
+                        level,
+                        fullCurve,
+                        blockState,
+                        40 + i * 3, // slight delay between launches
+                        true
+                );
+                level.addFreshEntity(entity);
+            }
+
+
+
+
+
+
+
+
+            /**
+            BlockPos clickedPos = event.getPos();
+            BlockState blockState = level.getBlockState(clickedPos);
+
+            // Remove the block being launched
+            level.removeBlock(clickedPos, false);
+
+            // Compute start and end positions
+            Vec3 start = Vec3.atBottomCenterOf(clickedPos);
+            BlockPos targetPos = clickedPos; // For example, 4 blocks east, 2 blocks up, 2 blocks south
+            Vec3 middle = start.add(0, 10, 0); // up
+
+            Vec3 end = start;
+            MotionCurve upward = new LinearCurve(start, middle);
+            MotionCurve arc = new VerticalHopCurve(middle, end, 1.5);
+            MotionCurve curve = new SpiralCurve(middle, 10, 1);
+            MotionCurve chained = new ChainedMotionCurve()
+                    .addSegment(upward, 0.3)   // 30% of time
+                    .addSegment(curve, 0.7);     // 70% of time
+            // Create a nice hopping motion
+
+
+
+            // Create and spawn the flying block entity
+            FlyingBlockChunkEntity flyingBlock = new FlyingBlockChunkEntity(
+                    level,
+                    chained,
+                    blockState,
+                    30, // Duration in ticks
+                    false
+            );
+
+            level.addFreshEntity(flyingBlock);*/
+            //player.sendSystemMessage(Component.literal("Launched block from " + clickedPos + " to " + targetPos));
+        }
+    }
+
 
     private static void EarthQuakeParticle(Level level, BlockPos pos, Player player) {
         if (level.isClientSide) {

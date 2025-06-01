@@ -54,6 +54,8 @@ public class StructurePreviewManager {
         }
 
         for (UUID id : pendingRemovals) {
+            GhostStructureRenderer renderer = activePreviews.get(id);
+            renderer.clear();
             activePreviews.remove(id);
         }
         pendingRemovals.clear();
