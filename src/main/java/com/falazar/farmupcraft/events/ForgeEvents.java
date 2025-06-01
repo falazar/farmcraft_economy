@@ -1,6 +1,8 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.client.ClientEvents;
+import com.falazar.farmupcraft.client.ForgeClientEvents;
 import com.falazar.farmupcraft.currency.CoinStack;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.*;
@@ -29,6 +31,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -63,14 +66,21 @@ public class ForgeEvents {
     public static void structurePlaceItem(PlayerInteractEvent.RightClickItem event) {
         Player player = event.getEntity();
         Level level = player.level();
-        if (!(level instanceof ServerLevel serverLevel)) return;
+        //if (!(level instanceof ServerLevel serverLevel)) return;
 
         ItemStack stack = event.getItemStack();
-        // Replace with your actual structure and condition
+
         if (stack.is(Items.STICK) && event.getHand() == InteractionHand.MAIN_HAND) {
             BlockPos origin = event.getPos();
             BuildableStructureInstance instance = new BuildableStructureInstance(BuildableStructureRegistry.get(TEST_ID), origin, Rotation.CLOCKWISE_90);
-            ACTIVE_BUILDS.add(instance);
+            //ACTIVE_BUILDS.add(instance);
+            BuildableStructure structure = BuildableStructureRegistry.get(TEST_ID);
+
+            ForgeClientEvents.PREVIEW_MANAGER.showPreview(instance);
+
+            if (player.isShiftKeyDown()) {
+                ForgeClientEvents.PREVIEW_MANAGER.clearAll();
+            }
         }
     }
 
@@ -120,8 +130,12 @@ public class ForgeEvents {
         CropBlockDataJsonManager.populateCropBlockEntries(event.getServer().overworld());
         CropItemDataJsonManager.populateCropItemEntries(event.getServer().overworld());
         BiomeRulesDataJsonManager.populateBiomeRulesInstances(event.getServer().overworld());
-        BuildableStructure testStructure = new BuildableStructure(new ResourceLocation("minecraft", "village/plains/houses/plains_small_house_1"));
+        BuildableStructure testStructure = new BuildableStructure(new ResourceLocation("minecraft", "ancient_city/city_center/city_center_1"));
         BuildableStructureRegistry.register(TEST_ID, testStructure);
+
+
+
+
         BuildableStructureRegistry.getStructures().values().forEach(buildableStructure -> buildableStructure.gatherAndPopulateStructureData(event.getServer().overworld()));
     }
 

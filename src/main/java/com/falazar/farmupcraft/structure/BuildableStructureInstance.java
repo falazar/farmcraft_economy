@@ -32,7 +32,7 @@ public class BuildableStructureInstance {
             BuildableStructure.StructureBuildTask task = structure.blockTasks.get(progress);
 
             // Rotate relative position
-            BlockPos rotatedRelPos = rotatePos(task.relativePos, rotation, structure.structureSize);
+            BlockPos rotatedRelPos = rotate(task.relativePos);
             BlockPos placePos = origin.offset(rotatedRelPos);
 
             // Rotate block state
@@ -56,22 +56,18 @@ public class BuildableStructureInstance {
         }
     }
 
-    private BlockPos rotatePos(BlockPos pos, Rotation rotation, Vec3i size) {
-        switch (rotation) {
-            case CLOCKWISE_90:
-                return new BlockPos(size.getZ() - 1 - pos.getZ(), pos.getY(), pos.getX());
-            case CLOCKWISE_180:
-                return new BlockPos(size.getX() - 1 - pos.getX(), pos.getY(), size.getZ() - 1 - pos.getZ());
-            case COUNTERCLOCKWISE_90:
-                return new BlockPos(pos.getZ(), pos.getY(), size.getX() - 1 - pos.getX());
-            case NONE:
-            default:
-                return pos;
-        }
+    public BlockPos rotate(BlockPos pos) {
+        return switch (rotation) {
+            case CLOCKWISE_90 -> new BlockPos(structure.structureSize.getZ() - 1 - pos.getZ(), pos.getY(), pos.getX());
+            case CLOCKWISE_180 -> new BlockPos(structure.structureSize.getX() - 1 - pos.getX(), pos.getY(), structure.structureSize.getZ() - 1 - pos.getZ());
+            case COUNTERCLOCKWISE_90 -> new BlockPos(pos.getZ(), pos.getY(), structure.structureSize.getX() - 1 - pos.getX());
+            default -> pos;
+        };
     }
 
 
-    private void spawnEntities(ServerLevel level) {
+
+    public void spawnEntities(ServerLevel level) {
         for (BuildableStructure.StructureEntityTask entityTask : structure.entityTasks) {
             CompoundTag entityTag = entityTask.entityData.copy();
             entityTag.putDouble("PosX", origin.getX() + entityTask.pos.x());
@@ -98,6 +94,14 @@ public class BuildableStructureInstance {
 
     public int getProgress() {
         return progress;
+    }
+
+    public BuildableStructure getStructure() {
+        return structure;
+    }
+
+    public Rotation getRotation() {
+        return rotation;
     }
 }
 
