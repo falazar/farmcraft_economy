@@ -28,7 +28,6 @@ import java.util.*;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 
-
 public class MarketCommand {
     public static final CustomLogger LOGGER = new CustomLogger(MarketCommand.class.getSimpleName());
 
@@ -114,23 +113,6 @@ public class MarketCommand {
                 });
         builder.then(runDailyBuilder);
 
-        // TEST admin command.
-        // Define the "removeolditems" sub-command for food, wood, stone, and general.
-        LiteralArgumentBuilder<CommandSourceStack> removeOldItemsBuilder = Commands.literal("removeolditems")
-                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
-                .then(Commands.literal("food").executes(context -> {
-                    return getNewMarketItems(context.getSource(), "food");
-                }))
-                .then(Commands.literal("wood").executes(context -> {
-                    return getNewMarketItems(context.getSource(), "wood");
-                }))
-                .then(Commands.literal("stone").executes(context -> {
-                    return getNewMarketItems(context.getSource(), "stone");
-                }))
-                .then(Commands.literal("general").executes(context -> {
-                    return getNewMarketItems(context.getSource(), "general");
-                }));
-        builder.then(removeOldItemsBuilder);
 
         // Register the "importtxt" sub-command for ADMIN only.
         LiteralArgumentBuilder<CommandSourceStack> importTxtBuilder = Commands.literal("importtxt")
@@ -192,6 +174,19 @@ public class MarketCommand {
                     return 0;
                 });
         builder.then(clearAllBuilder);
+
+
+        // Register an "addrandom" sub-command for ADMIN only, to add a random item to the market for the given type.
+        LiteralArgumentBuilder<CommandSourceStack> addRandomBuilder = Commands.literal("addrandom")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("type", StringArgumentType.string())
+                        .executes(context -> {
+                            String type = StringArgumentType.getString(context, "type");
+                            // Call the method to add a random item to the market for the given type
+                            addRandomItemToMarket(context.getSource(), type);
+                            return 0;
+                        }));
+        builder.then(addRandomBuilder);
 
         // TODO MAKE AN ADD, and COMMAND REMOVE ITEM COMMAND
 
@@ -297,7 +292,12 @@ public class MarketCommand {
         }
 
         // STEP 3: Sort by dateAddedToMarket newest to oldest.
-        goodsData.sort(Comparator.comparing(GoodsData::getDateAddedToMarket).reversed());
+//        goodsData.sort(Comparator.comparing(GoodsData::getDateAddedToMarket).reversed());
+        // STEP 3: Sort by dateAddedToMarket newest to oldest, then by cost ascending.
+        goodsData.sort(
+                Comparator.comparing(GoodsData::getDateAddedToMarket).reversed()
+                        .thenComparingInt(GoodsData::getCost)
+        );
         return goodsData;
     }
 
@@ -550,9 +550,6 @@ game
 //    }
 
 
-
-
-
     // General searchability method to find items, test one to play around with.
     public static int findMarketItems(CommandSourceStack source, String keyword) {
         try {
@@ -765,6 +762,8 @@ game
     }
 
     // TODO TEST
+    // TODO failing in a couple categories hitting an AIR item... report hit and pick a new item instead
+    // then i can fix those individual items.
     // TEST METHOD partially done.
     // Second half of rundaily task.
     // This will remove old items, increase cost of existing items, and add new items.
@@ -888,6 +887,42 @@ game
             source.sendSuccess(() -> Component.literal("All market items cleared."), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Clear All Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static void addRandomItemToMarket(CommandSourceStack source, String type) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return;
+            }
+
+            // Get a random item from the filtered goods.
+            Collection<GoodsData> goods = getFilteredGoods(type);
+            if (goods.isEmpty()) {
+                source.sendFailure(Component.literal("No goods found for type: " + type));
+                return;
+            }
+
+            Random random = new Random();
+            GoodsData randomGood = goods.stream()
+                    .skip(random.nextInt(goods.size())) // Skip a random number of items
+                    .findFirst() // Get the first item after skipping
+                    .orElse(null); // If no item found, return null
+
+            if (randomGood != null) {
+                randomGood.setActive(true); // Set it active
+                randomGood.setCost(5); // Set a default cost
+                ModEvents.getGoodsDataDatabase().putData(randomGood.getItemId(), randomGood);
+                source.sendSuccess(() -> Component.literal("Added random item to market: " + randomGood.getItem().getDescription().getString()), false);
+            } else {
+                source.sendFailure(Component.literal("No valid item found to add to market."));
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Add Random Item to Market Exception thrown - see log"));
             ex.printStackTrace();
         }
     }

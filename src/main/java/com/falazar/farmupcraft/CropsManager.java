@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
@@ -250,7 +251,7 @@ public class CropsManager {
         int timesHarvested = timesPickedUp - timesDropped;
         // TODO can you hack stats or do they come from multiple servers?
         successPercent += (timesHarvested / 100) * 2; // 2% per 100 harvested.
-        LOGGER.info("DEBUG: "+itemName+" timesharvested " + timesHarvested + " times. successPercent is " + successPercent);
+        LOGGER.info("DEBUG: " + itemName + " timesharvested " + timesHarvested + " times. successPercent is " + successPercent);
 
 
         // STEP 6: Calc a percent chance of success or failure, and fruit dies.
@@ -264,7 +265,7 @@ public class CropsManager {
         // STEP 7: Add in percent if they are in a nursery.
         // TODO cleanup method.
         // TODO add nursery level.
-        if (getPlotType(event.getPos(), level).equals( "nursery")) {
+        if (getPlotType(event.getPos(), level).equals("nursery")) {
             successPercent += 20;
             LOGGER.info("DEBUG3: target fruit is in a nursery plot, adding bonus. successPercent is " + successPercent);
         }
@@ -275,7 +276,7 @@ public class CropsManager {
         Biome biome = level.getBiome(event.getPos()).value();
         ResourceLocation biomeRes = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
         String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
-        if (biomeName.equals( "orchard")) {
+        if (biomeName.equals("orchard")) {
             successPercent += 20;
             LOGGER.info("DEBUG3: target fruit is in a orchard plot, adding bonus. successPercent is " + successPercent);
         }
@@ -668,66 +669,53 @@ public class CropsManager {
         if (manager.hasItems()) {
             // TODO Get all this farms biomes, compare and note.
             // TODO Get all this villages biomes, compare and note now.
-            // Get the village data for the player.
-            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
-            PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
-            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
-            // Get the list of biomes in the village.
-            Map<String, Integer> biomes = getVillageBiomes(villageData);
-            // Map to a single set of biomes.
-            Set<String> biomeSet = new HashSet<>();
-            for (String biomeString : biomes.keySet()) {
-                biomeSet.add(biomeString);
-            }
 
+            // Player playerSource, BiomeRulesManager manager, Item cropItem
+            Component biomesListShow = ShowBiomesCommand.getBiomeCropsChat(playerSource, manager, stack.getItem());
 
-            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component.
-//            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-//                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-//                    .map(Component::getString) // Convert to plain text for uniqueness check
+//            // Get the village data for the player.
+//            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+//            PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
+//            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+//
+//            // Get the list of biomes in the village.
+//            Map<String, Integer> biomes = getVillageBiomes(villageData);
+//            // Map to a single set of biomes.
+//            Set<String> biomeSet = new HashSet<>();
+//            for (String biomeString : biomes.keySet()) {
+//                biomeSet.add(biomeString);
+//            }
+//
+//
+//            // Step 1: Get the list of formatted biome components
+//            LOGGER.info("DEBUG1 biomeSet=" + biomeSet);
+//            LOGGER.info("DEBUG2 biomesForItem=" + manager.getBiomesForItem(stack.getItem()));
+//
+//            List<MutableComponent> biomeComponents = manager.getBiomesForItem(stack.getItem()).stream()
+//                    .map(b -> {
+//                        String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
+////                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
+//                        String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
+//                        biomeName2 = biomeName2.replace(".", ":");
+////                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
+//
+//                        ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
+//                        return Component.translatable(biomeName).withStyle(color);
+//                    })
 //                    .distinct() // Ensure each biome is unique
-//                    .sorted() // Sort the biomes alphabetically
-//                    .map(name -> Component.literal(name)) // Convert back to Component
+//                    .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
+//                    .toList();
+//
+//            // Step 2: Combine the components into a single component
+//            Component biomesListShow = biomeComponents.stream()
 //                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
 //                    .orElse(Component.literal("None"));
-
-
-            // Step 1: Get the list of formatted biome components
-            LOGGER.info("DEBUG1 biomeSet=" + biomeSet);
-            LOGGER.info("DEBUG2 biomesForItem=" + manager.getBiomesForItem(stack.getItem()));
-
-            List<MutableComponent> biomeComponents = manager.getBiomesForItem(stack.getItem()).stream()
-                    .map(b -> {
-                        String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
-                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
-                        String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
-                        biomeName2 = biomeName2.replace(".", ":");
-                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
-
-                        ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
-                        return Component.translatable(biomeName).withStyle(color);
-                    })
-                    .distinct() // Ensure each biome is unique
-                    .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
-                    .toList();
-
-            // Step 2: Combine the components into a single component
-            Component biomesListShow = biomeComponents.stream()
-                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
-                    .orElse(Component.literal("None"));
 
 
             // Create the final message component
 //            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
             component = Component.literal("Biomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
+
 
             playerSource.displayClientMessage(component, false);
         }
@@ -777,10 +765,13 @@ public class CropsManager {
 //                    + " exhaustion level: " + player.getFoodData().getExhaustionLevel());
         }
 
-        // Test now to disable regeneration if it is on.
-        // How often does the regeneration check happen? 1 in 4 minutes.  8 minutes
-        if (random.nextInt(11000) == 1) {
-            // Disable regeneration if it is on.
+        // Note: this also affect potions and such though, oops.
+        // Disable regeneration if it is on.
+        // The higher the player's experience level, the less often this check happens.
+        int baseInterval = 11000;
+        int intervalPerLevel = 1000; // Increase interval by 1000 per exp level
+        int regenCheckInterval = baseInterval + (player.experienceLevel * intervalPerLevel);
+        if (random.nextInt(regenCheckInterval) == 1) {            // Disable regeneration if it is on.
 //            LOGGER.info("DEBUG: REGEN: Disabling regeneration now.");
 
             // See if it is on, then turn it off.
@@ -1015,34 +1006,44 @@ public class CropsManager {
 
         // STEP 1: Calculate SuccessRate.
         int baseSuccessRate = 40;  // 40% chance to get drops at start.
+        int successRate = baseSuccessRate;
 
         // Make generic skills?
 //            // CHECK 1: Add skill percent now.
 //            if (player.hasSkill("moreStoneDrops")) {
-//                baseSuccessRate += player.getRoleLevel("miner") * 4;
+//                successRate += player.getRoleLevel("miner") * 4;
 //            }
 //            else {
         // STEP 2: Add basic smaller skill percent now for non-loggers.
-        baseSuccessRate += player.experienceLevel;
+        successRate += player.experienceLevel;
+        LOGGER.info("DEBUG3: added player exp successRate = " + successRate);
 //            }
 
         // STEP 3: Add in bonus for nursery plots.
         Level level = event.getPlayer().getCommandSenderWorld();
         if (getPlotType(event.getPos(), level).equals("nursery")) {
-            LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus. ");
-            baseSuccessRate += 20;
+            successRate += 20;
+            LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus.  successRate = " + successRate);
+
+            // STEP 4: If in nursery, add in for certain biomes.
+            // For birch if in any birch biome, add bonus.
+            String biomeName = level.getBiome(event.getPos()).unwrapKey().map(ResourceKey::location).map(ResourceLocation::getPath).orElse("unknown");
+            if (biomeName.contains("birch")) {
+                // Add bonus for birch and forest biomes.
+                successRate += 20;
+                LOGGER.info("DEBUG3: target block is in a birch biome, adding bonus. " + biomeName + " successRate = " + successRate);
+            }
         }
 
-        // STEP 4: TODO add in bonus for logs itemsBroken, like in fruit trees method,
-        //  so we get better over time!
+        // STEP 5: TODO add in bonus for logs itemsBroken, like in fruit trees method,
+        //  so we get better over time!=
 
         // For Falazar now, increase as faking a skill...
 //        successRate = 100;
 
-        // STEP 4: Roll and check for success.
+        // STEP 6: Roll and check for success.
         // TODO make roll a mini method.
-        int successRate = baseSuccessRate;
-//        LOGGER.info("DEBUG: LOG successRate = " + successRate);
+        LOGGER.info("DEBUG: LOG successRate = " + successRate);
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
         if (randomNum >= successRate) {
@@ -1054,7 +1055,23 @@ public class CropsManager {
         }
 //        LOGGER.info("DEBUG3: ALLOWING log block drops...");
 
+        // TODO TEST
         // TODO later give bonus wood if high score.
+        // STEP 7: Add bonus wood for high rolls.
+        randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum <= successRate / 6) {
+            // Give bonus wood.
+            int bonusWood = 1;
+            ItemStack stack = new ItemStack(Items.OAK_LOG, bonusWood);
+            player.addItem(stack);
+            // Only show this message 1 out of 10 times.
+            randomNum = rand.nextInt(10); // 10% 0-9
+            if (randomNum == 0) {
+                player.displayClientMessage(Component.literal("You got " + bonusWood + " bonus logs!"), false);
+            }
+            LOGGER.info("DEBUG: Giving bonus wood: " + bonusWood + " at " + event.getPos());
+        }
+
 
     }
 

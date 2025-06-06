@@ -27,6 +27,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -39,6 +40,7 @@ import java.text.NumberFormat;
 import java.util.*;
 
 import static com.falazar.farmupcraft.command.PlotCommand.calculatePlotCost;
+import static com.falazar.farmupcraft.command.PlotCommand.getCropsPlanted;
 
 public class VillageCommand {
     public static final CustomLogger LOGGER = new CustomLogger(VillageCommand.class.getSimpleName());
@@ -127,6 +129,12 @@ public class VillageCommand {
                 });
         builder.then(villageBiomesBuilder);
 
+        // Define the "farms" sub-command to show farm and biome info.
+        LiteralArgumentBuilder<CommandSourceStack> villageFarmsBuilder = Commands.literal("farms")
+                .executes(context -> {
+                    return showVillagefarms(context.getSource());
+                });
+        builder.then(villageFarmsBuilder);
 
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
@@ -783,6 +791,10 @@ public class VillageCommand {
     }
 
     public static Map<String, Integer> getVillageBiomes(VillageData villageData) {
+        if (villageData == null) {
+            LOGGER.error("Village data is null, cannot get biomes.");
+            return Collections.emptyMap();
+        }
         Level level = Minecraft.getInstance().level;
 
         // Loop over each chunk in territory.
@@ -828,7 +840,90 @@ public class VillageCommand {
     }
 
 
+    public static int showVillagefarms(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Get the home village.
+            DataBase<UUID, PlayerData> playerDataDB = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDB.getData(summoner.getUUID());
+            if (playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("Player is not in a village right now."));
+                return 0;
+            }
+
+            // Get the village data.
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(source.getLevel());
+            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+
+            // Get the list of farms in the village.
+            List<ChunkPos> farmChunks = getVillageFarms(villageData);
+
+            // Show the list of farms.
+            MutableComponent response = Component.literal("Farms in village: ");
+            ServerLevel level = source.getLevel();
+            for (ChunkPos chunkPos : farmChunks) {
+                response.append(Component.literal(chunkPos.toString() + "\n "));
+
+                // Get y highest point in center of chunk, not motion blocking.
+                BlockPos blockPos = chunkPos.getMiddleBlockPosition(64); // default height notice.
+                int height = level.getHeight(Heightmap.Types.WORLD_SURFACE, blockPos.getX(), blockPos.getZ());
+                blockPos = chunkPos.getMiddleBlockPosition(height); // default height notice.
+                LOGGER.info("DEBUG Chunk " + chunkPos.toString() + " has height " + height);
+                // TODO TEST
+
+
+                // Get all biomes in this chunk at surface level.
+                // todo make another helper that actually has the count also!!!
+                // TODO this is showing lush caves, our y value is still off somehow....
+                 PlotCommand.getChunkBiomes(blockPos, level)
+                        .forEach((biomeName) -> {
+//                            response.append(Component.literal(biomeName + " (" + biomeCount + "), "));
+                            response.append(Component.literal(biomeName + ", "));
+                        });
+                 // TODO add line break..
+
+                BlockPos cropBlockPos = chunkPos.getMiddleBlockPosition(height);
+                String crops = getCropsPlanted(cropBlockPos, level);
+                if (crops != null && !crops.isEmpty()) {
+                    response.append(Component.literal("\n with crops: " + crops + ".\n"));
+                } else {
+                    response.append(Component.literal(" with no crops planted.\n"));
+                }
+            }
+            // Show all veggies you can or cannot plant?  thats alot, sub command?
+            // And currently planted counts :}  if on flat farm.
+
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
     // Helper methods
+    public static List<ChunkPos> getVillageFarms(VillageData villageData) {
+        // Get the list of claimed chunks in the village.
+        List<ChunkPos> claimedChunks = villageData.getClaimedChunks();
+        List<ChunkPos> farmChunks = new ArrayList<>();
+
+        // Loop over each chunk and check if it is a farm.
+        for (ChunkPos chunkPos : claimedChunks) {
+            ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(chunkPos.toLong());
+            if (chunkData != null && chunkData.getType().equalsIgnoreCase("farm")) {
+                farmChunks.add(chunkPos);
+            }
+        }
+
+        return farmChunks;
+    }
 
     // Make sure at least one neighbor is a village chunk we own.
     public static boolean touchingVillageChunk(VillageData village, ChunkPos chunkPos) {

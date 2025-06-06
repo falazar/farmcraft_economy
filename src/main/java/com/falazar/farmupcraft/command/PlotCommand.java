@@ -9,6 +9,7 @@ import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.FUCTags;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -25,6 +26,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
@@ -109,11 +111,10 @@ public class PlotCommand {
                 return 0;
             }
 
-
             ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
             // Get all biomes for all blocks in this chunk.
             ServerLevel serverLevel = context.getSource().getLevel();
-            List<String> biomes = getChunkBiomes(chunkPos, serverLevel);
+            List<String> biomes = getChunkBiomes(playerSource.blockPosition(), serverLevel);
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ChunkData chunkData = dataBase.getData(chunkPos.toLong());
 
@@ -151,6 +152,12 @@ public class PlotCommand {
                 response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.WHITE));
             }
 
+            // If farm plot show all crops planted.
+            if (chunkData.getType().equalsIgnoreCase("farm")) {
+                // NOTE must be standing ON the crops directly y values.
+                response.append(Component.literal("Farm plot with crops planted: " + getCropsPlanted(playerSource.blockPosition().above(), serverLevel) + "\n").withStyle(ChatFormatting.GREEN));
+            }
+
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -160,24 +167,65 @@ public class PlotCommand {
         return 0;
     }
 
-    // Another helper method to get all biomes in this chunk based on blockPos
-    public static List<String> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
-        ChunkPos chunkPos = new ChunkPos(blockPos);
-        List<String> biomes = PlotCommand.getChunkBiomes(chunkPos, serverLevel);
+    // Get all crops planted in the chunk at this position.
+    public static String getCropsPlanted(BlockPos blockPos, ServerLevel serverLevel) {
+        LOGGER.info("DEBUGGER Crops planted at " + blockPos);
 
-        return biomes;
+        // Loop over each block in chunk at our feet and add crops to a set and increment counts.
+        Map<String, Integer> cropsCounts = new HashMap<>();
+        ChunkPos chunkPos = new ChunkPos(blockPos);
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                // Get the block at the given chunk position
+                BlockPos blockPos2 = new BlockPos(chunkPos.x * 16 + x, blockPos.getY(), chunkPos.z * 16 + z);
+                // Check if the crop has a proper tag.
+                // FUCTags.VANILLA_AND_MODDED_CROPS
+                ItemStack itemStack = serverLevel.getBlockState(blockPos2).getBlock().asItem().getDefaultInstance();
+                if (itemStack.is(FUCTags.VANILLA_AND_MODDED_CROPS)) {
+                    String cropName = itemStack.getDescriptionId();
+                    // Add to crops set.
+                    // Remove the modid prefix if it exists. and "seeditem" suffix.
+                    // Break first two dotted names spaces out.
+                    cropName = cropName.replaceFirst("^[^.]+\\.[^.]+\\.", "").replaceAll("seeditem$", "");
+                    cropsCounts.put(cropName, cropsCounts.getOrDefault(cropName, 0) + 1);
+                }
+            }
+        }
+
+        // Alphabetize hashmap and keep counts.
+        StringBuilder cropsString = new StringBuilder();
+        List<Map.Entry<String, Integer>> sortedCrops = new ArrayList<>(cropsCounts.entrySet());
+        // Create a string from the sorted crops.
+        sortedCrops.sort(Map.Entry.comparingByKey());
+        for (Map.Entry<String, Integer> entry : sortedCrops) {
+            String cropName = entry.getKey();
+            int count = entry.getValue();
+            if (cropsString.length() > 0) {
+                cropsString.append(", ");
+            }
+            cropsString.append(cropName).append(" (").append(count).append(")");
+        }
+
+        // Return the crops string.
+        if (cropsString.length() == 0) {
+            return "No crops planted.";
+        } else {
+            return cropsString.toString();
+        }
     }
 
-    public static List<String> getChunkBiomes(ChunkPos chunkPos, ServerLevel serverLevel) {
-        List<String> biomes = new ArrayList<>();
+    // Given current block position, get all biomes in the chunk at this y level.
+    public static List<String> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
+        ChunkPos chunkPos = new ChunkPos(blockPos);
 
+        List<String> biomes = new ArrayList<>();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 // Get the biome at the given chunk position
                 int biomeX = chunkPos.x * 16 + x;
                 int biomeZ = chunkPos.z * 16 + z;
-                BlockPos blockPos = new BlockPos(biomeX, 0, biomeZ);
-                Biome biome = serverLevel.getBiome(blockPos).value();
+                BlockPos blockPos2 = new BlockPos(biomeX, blockPos.getY(), biomeZ);
+                Biome biome = serverLevel.getBiome(blockPos2).value();
                 ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
                 String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
                 if (!biomes.contains(biomeName.toString())) {

@@ -51,7 +51,7 @@ public class ModEvents {
     private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database_NEW"))
             .setKeySerializer(new StringDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(GoodsData.CODEC))
-            .autoSync()
+            .autoSync()  // TODO TEST TODO TEMP DISABLED DUE TO SIZE ISSUES SCOUTER.
             .build();
 
     private static final DataBaseAccess<Integer, WorldData> WORLD_DATA_DATABASE = new DataBaseBuilder<Integer, WorldData>(prefix("world_data_database"))
