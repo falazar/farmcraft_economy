@@ -1100,57 +1100,7 @@ public class CropsManager {
 
     }
 
-    // TODO For leaf decay we need more logic, hmmm custom block?
 
-    // NOTICE does not work for leaves, for some reason, fun.
-    // Catch leaves as they decay
-//    @SubscribeEvent
-//    public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
-//        // Exit early if the event is on the client side
-
-    /// /        if (event.getLevel().isClientSide()) {
-    /// /            return;
-    /// /        }
-//
-//        // Check if the block is a leaf
-//        BlockState state = event.getState();
-//        LOGGER.info("DEBUG1: leaf check state= " + state);
-//        if (!state.is(BlockTags.LEAVES)) {
-//            return;
-//        }
-//
-//        // Exit early on 90% random chance, since happens often?
-//        Random rand = new Random();
-//        int r = rand.nextInt(100); // 100% 0-99
-//        LOGGER.info("DEBUG2: leaf check rand= " + r);
-//        if (r < 30) { // TODO TEST
-//            return;
-//        }
-//
-//        BlockPos pos = event.getPos();
-//        Level level = (Level) event.getLevel();
-//
-//
-//        // Check the distance property
-//        if (state.hasProperty(BlockStateProperties.DISTANCE)) {
-//            int distance = state.getValue(BlockStateProperties.DISTANCE);
-//
-//            // Leaves decay if distance > 7 and not persistent
-//            if (distance > 7 && !state.getValue(BlockStateProperties.PERSISTENT)) {
-//                LOGGER.info("DEBUGB: Leaves are TRYING to decaying naturally at " + pos);
-//
-//                // Optionally, perform additional actions here
-//                // For example, prevent decay or modify drops
-//                if (!allowSapling(pos, (ServerLevel) level)) {
-//                    LOGGER.info("DEBUGB: DESTROYING leaves block, no drops...");
-//                    level.destroyBlock(pos, false);
-//                    event.setCanceled(true);
-//                } else {
-//                    LOGGER.info("DEBUGB: ALLOWING leaves block drops...");
-//                }
-//            }
-//        }
-//    }
     public static boolean allowSaplingDrop(BlockPos pos, ServerLevel level) {
         // STEP 1: Set base rate for success.
         int successRate = 20;  // 20% chance to get drops at start.

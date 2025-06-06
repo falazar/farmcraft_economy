@@ -102,7 +102,6 @@ public class PlayerCommand {
             PlayerData player = getPlayer(source);
             ServerLevel serverLevel = source.getLevel();
 
-            LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
             source.sendSuccess(() -> Component.literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()) + " ----------")

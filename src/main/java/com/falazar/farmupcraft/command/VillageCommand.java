@@ -4,6 +4,7 @@ import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.GameStructure;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
@@ -267,16 +268,16 @@ public class VillageCommand {
         return 0;
     }
 
-    // Show the village that current player is in.
+    // Show the village that current player has home in.
     public static int showVillageInfo(CommandSourceStack source, String villageName) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            // TODO MAKE HELPER METHOD.
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
             VillageData village = null;
+            // Find by name or player data.  (break these two up, might be slightly different later)
             if (villageName == null) {
                 UUID villageId = playerData.getHomeVillageUUID();
                 DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
@@ -289,7 +290,7 @@ public class VillageCommand {
                 return 0;
             }
 
-            // Build a response message
+            // STEP 1: Build a response message with basic info.
             NumberFormat numberFormat = NumberFormat.getInstance();
             MutableComponent response = Component.literal("")
                     .append(Component.literal("---------- Village Name: " + village.getName() + " ----------\n").withStyle(ChatFormatting.YELLOW)) // Yellow
@@ -298,9 +299,8 @@ public class VillageCommand {
                             .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if negative, white otherwise
                     .append(Component.literal(" at " + village.getPosition().getWorldPosition().toShortString() + " \n")) // White
                     .append(Component.literal(" with claimed chunks = " + village.getClaimedChunks().size() + "\n")); // White
-            //            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
 
-            // Loop over all plots and count them, and farms.
+            // STEP 2: Loop over all plots and count them, and farms.
             int plotCnt = getPlotCount(village);
             int farmCnt = 0;
             for (ChunkPos pos : village.getClaimedChunks()) {
@@ -313,25 +313,52 @@ public class VillageCommand {
             }
             response = response.append(Component.literal(" with " + plotCnt + " plots and " + farmCnt + " farms. \n"));
 
-            // Plot Cost: 100 + 30 * plots TODO testing
+            // Step 3: Show plot and daily costs.
             int plotCost = PlotCommand.calculatePlotCost(village, "plot");
             response = response.append(Component.literal(" Plot cost: " + numberFormat.format(plotCost) + " coins. \n"));
-
-            // TODO MAKE METHOD
-            // Daily Cost: villageLevel * 100 + 50 per plot? TODO test lowered 50>30
-//            int dailyCost = village.getLevel() * 100 + plotCnt * 30;
             int dailyCost = getDailyCost(village);
             response = response.append(Component.literal(" Daily cost: " + numberFormat.format(dailyCost) + " coins. \n"));
+
+            // STEP 4: Show nearby structures, and claimed ones.
+            // Note some underground are not showing in right area.
+            response = response.append(Component.literal(" Nearby structures: \n"));
+            // TODO add these to village object earlier on in another method, just show them here....
+            // Loop over list: id, show name, position, and if on claimed plot or not.
+            // TODO
+//            List<String, String, ChunkPos, String, Boolean> = village.getNearbyStructures();
+            // Loop over list: id, show name, position, and if on claimed plot or not.
+            // TODO make it its own object instead of inside village?  ya probably?
+            List<GameStructure> structures = getGameStructures(village.getUUID());
+            for (GameStructure structure : structures) {
+                String claimedText = structure.isOnClaimedPlot() ? " (on claimed plot)" : "";
+                response = response.append(Component.literal(" - " + structure.getName() + " at " + structure.getPosition() + claimedText + "\n"));
+            }
+            // visited flag? if a player from city has visited the chunk, maybe...
+            // How to handle underground ones, dont want to give out their locations.
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("Exception  in show village info - see logs"));
+            source.sendFailure(Component.literal("Exception in show village info - see logs"));
             ex.printStackTrace();
         }
         return 0;
     }
 
+    // TODO Create getGameStructures method stub.
+    public static List<GameStructure> getGameStructures(UUID villageId) {
+        // Get all near the village.
+
+        // TODO: Implement logic to return nearby or owned structures
+
+        // Fill in two fake ones
+        // cemetery and armorers house
+        List<GameStructure> structures = new ArrayList<>();
+        structures.add(new GameStructure("cemetery", "Cemetery", new BlockPos(0, 0, 0), "village", true));
+        structures.add(new GameStructure("armorers_house", "Armorer's House", new BlockPos(1, 1, 1), "village", false));
+
+        return structures;
+    }
     public static int getDailyCost(VillageData village) {
         int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
 
