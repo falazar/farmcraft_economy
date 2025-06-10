@@ -93,6 +93,9 @@ public class CropsManager {
         // Return if clicked block is not farmland
         boolean isFarmBelow = false;
 
+        // Notice allowing some planting in non farm plot areas, if already plowed.
+
+
         // Return if the placement would be on top of farmland (if face is known)
         if (event.getFace() != null) {
             BlockPos placementPos = clickedPos.relative(event.getFace());
@@ -103,15 +106,23 @@ public class CropsManager {
                 isFarmBelow = true;
             }
         }
-
         if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
             return;
         }
 
-        // TODO sugarcane and sweetberries.
 
-        // STEP 3: Test if holding a vanilla or harvestcraft item, if not leave.
+        // STEP 3: If sugarcane or sweetberries, make sure they are on a farm plot only.
         ItemStack stack = event.getItemStack();
+        // TODO TEST sugarcane and sweetberries.
+        if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
+            LOGGER.info("DEBUG: sugarcane or sweetberries, farm check.");
+            if (!getPlotType(clickedPos, level).equals("farm")) {
+                event.setCanceled(true);
+                return;
+            }
+        }
+
+        // STEP 4: Test if holding a vanilla or harvestcraft item, if not leave.
         if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
             return;
         }
@@ -121,7 +132,7 @@ public class CropsManager {
         //not needed anymore, is defined in CropItemDataJsonManager
         //setupBiomeCrops(event);  // TEMP TESTER AREA.
 
-        // STEP 4: Get current biome the block is in.
+        // STEP 5: Get current biome the block is in.
         Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
 
         // The biome has rules defined for what can happen in it or not!
@@ -1217,6 +1228,5 @@ public class CropsManager {
         LOGGER.info("DEBUG: allowing sapling plant " + goodChance);
 
     }
-
 
 }

@@ -5,6 +5,9 @@ TODO BUGS: not saving player coins correctly, not showing. change to just coins.
     Not showing wallet correctly on overlay
     Overlay not updating after an action, like buy plot or village?
     GIVE player a UUID field properly
+
+    fIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
+    
 END BUGS AREA
 
 
