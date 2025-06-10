@@ -22,6 +22,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
@@ -136,6 +137,14 @@ public class VillageCommand {
                     return showVillagefarms(context.getSource());
                 });
         builder.then(villageFarmsBuilder);
+
+        // Define the "testcleanupVillageChunks" ADMIN sub-command to test cleanup of village chunks.
+        LiteralArgumentBuilder<CommandSourceStack> testCleanupBuilder = Commands.literal("testcleanupVillageChunks")
+                .executes(context -> {
+                    Player playerSource = context.getSource().getPlayerOrException();
+                    return cleanupVillageChunks(playerSource);  // TODO TEST ENABLE THEN REMOVE ME.
+                })
+                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
 
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
@@ -604,7 +613,7 @@ public class VillageCommand {
             player.getWallet().remove(bronzeCoin, levelUpCost);
             ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
 
-            // check any other requirements.
+            // Future: check any other requirements.
 
             // STEP 5: Update level in db.
             village.setLevel(currLevel + 1);
@@ -658,6 +667,7 @@ public class VillageCommand {
             int z = centerChunkPos.z + (int) ((Math.random() * 2 - 1) * range);
             ChunkPos chunkPos = new ChunkPos(x, z);
 
+            // TODO MAKE METHOD.
             // RULE 1: Must be touching claims.
             if (!touchingVillageChunk(village, chunkPos)) {
 //                LOGGER.info("DEBUG not adding chunk not near claims... " + chunkPos.toString());
@@ -681,6 +691,7 @@ public class VillageCommand {
             if (village.getClaimedChunks().contains(chunkPos)) {
                 continue;
             }
+            
             // RULE 3: If claimed by another village 50% chance to take it over.
             // If taking over another village chunk send text to world chat now.
             // Get chunk village.
@@ -736,12 +747,67 @@ public class VillageCommand {
             message.withStyle(ChatFormatting.RED);
             playerSource.sendSystemMessage(message);
         }
+        villageDatabase.putData(village.getUUID(), village); // Save back.
 
         // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
         // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
         // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+
+        cleanupVillageChunks(playerSource);
 
         return newChunksCount;
+    }
+
+    // TODO make this a command to test it with...
+    // dont actually claim until test is good and clear.
+    public static int cleanupVillageChunks(Player playerSource) {
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+        // Loop over all chunks in the area near village by radius,
+        // and check if they have 3+ sides claimed.
+        // If so, claim them also.
+//        DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+        DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+        VillageData village = villageDatabase.getData(playerData.getHomeVillageUUID());
+
+        int cleanedUpCount = 0;
+        int radius = 10 + 3 * village.getLevel(); // Increase radius with level.
+
+        for (int y=-radius; y <= radius; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                ChunkPos chunkPos = new ChunkPos(village.getPosition().x + x, village.getPosition().z + y);
+
+                // Check if chunk is already claimed.
+                if (village.getClaimedChunks().contains(chunkPos)) {
+                    continue; // Skip already claimed chunks.
+                }
+
+                // Check how many sides are claimed.
+                int sidesClaimed = 0;
+                // Check all 4 horizontal sides of the chunk.
+                for (Direction direction : Direction.Plane.HORIZONTAL) {
+                    ChunkPos neighborChunk = new ChunkPos(chunkPos.x + direction.getStepX(), chunkPos.z + direction.getStepZ());                    if (village.getClaimedChunks().contains(neighborChunk)) {
+                        sidesClaimed++;
+                    }
+                }
+                
+                // If 3 or more sides are claimed, claim this chunk.
+                if (sidesClaimed >= 3) {
+                    LOGGER.info("DEBUG Reclaiming chunk " + chunkPos.toString()+ " with " + sidesClaimed + " sides claimed.");
+
+//                    ChunkData chunkData = new ChunkData("village", playerSource.getId(), village.getUUID());
+//                    chunkDatabase.putData(chunkPos.toLong(), chunkData);
+//                    village.addClaimedChunk(chunkPos);
+                    cleanedUpCount++;
+                }
+            }
+        }
+
+        // Save the updated village data.
+        villageDatabase.putData(village.getUUID(), village);
+
+        return cleanedUpCount;
     }
 
     public static int runVillageDailyUpkeep(CommandSourceStack source) {

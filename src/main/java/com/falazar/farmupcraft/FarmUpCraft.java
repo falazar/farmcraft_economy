@@ -101,6 +101,7 @@ public class FarmUpCraft {
         VillageCommand.register(e.getDispatcher());
         MarketCommand.register(e.getDispatcher());
         TesterCommand.register(e.getDispatcher());
+        NpcCommand.register(e.getDispatcher());
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {

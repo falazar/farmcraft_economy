@@ -51,13 +51,20 @@ public class ModEvents {
     private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database_NEW"))
             .setKeySerializer(new StringDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(GoodsData.CODEC))
-            .autoSync()  // TODO TEST TODO TEMP DISABLED DUE TO SIZE ISSUES SCOUTER.
+            .autoSync()
             .build();
 
     private static final DataBaseAccess<Integer, WorldData> WORLD_DATA_DATABASE = new DataBaseBuilder<Integer, WorldData>(prefix("world_data_database"))
             .setKeySerializer(new IntDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(WorldData.CODEC))
             .build();
+
+    private static final DataBaseAccess<UUID, NpcData> NPC_DATABASE = new DataBaseBuilder<UUID, NpcData>(prefix("npc_database"))
+            .setKeySerializer(new UUIDDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(NpcData.CODEC))
+            .autoSync()
+            .build();
+
 
     public static WorldData getWorldData() {
         return getWorldDataDatabase().getOrCreate(0, WorldData::new);
@@ -103,6 +110,10 @@ public class ModEvents {
         return getDatabase(GOODS_DATA_DATABASE);
     }
 
+    public static DataBase<UUID, NpcData> getNpcDatabase() {
+        return getDatabase(NPC_DATABASE);
+    }
+
     public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
         return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
@@ -136,6 +147,8 @@ public class ModEvents {
 //                    goodsDb.setDirty();
 
                     DataBaseManager.registerDataBaseAccess(WORLD_DATA_DATABASE.getDatabaseName(), WORLD_DATA_DATABASE);
+
+                    DataBaseManager.registerDataBaseAccess(NPC_DATABASE.getDatabaseName(), NPC_DATABASE);
                 }
         );
 

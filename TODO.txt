@@ -6,7 +6,7 @@ TODO BUGS: not saving player coins correctly, not showing. change to just coins.
     Overlay not updating after an action, like buy plot or village?
     GIVE player a UUID field properly
 
-    fIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
+    DONE TEST - fIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
     
 END BUGS AREA
 
@@ -20,6 +20,10 @@ GENERAL SOON:
     DONE - make a book with writing in it.
 
     DONE - place a book in a chest.
+
+    TODO - make a cow that attacks.
+
+    TODO - make a skeleton that doesnt attack. Turn him into an NPC.
 
     TODO - show a description of village show in town center plot.
         only show once an hour, cache show message.

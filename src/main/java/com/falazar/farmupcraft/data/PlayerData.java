@@ -1,6 +1,8 @@
 package com.falazar.farmupcraft.data;
 
 import com.falazar.farmupcraft.currency.Wallet;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.UUIDUtil;
@@ -23,7 +25,7 @@ public class PlayerData {
 //            ).apply(instance, (Integer id1, String homeVillageId, Integer coins1) -> new PlayerData(id1, homeVillageId, coins1))
     );
 
-    // TODO change to string.
+    // TODO change to UUID
     @Nonnull
     private final int id;
     @Nonnull
@@ -75,6 +77,13 @@ public class PlayerData {
      */
     public UUID getHomeVillageUUID() {
         return homeVillageUUID;
+    }
+
+    // Get player home village.
+    public VillageData getHomeVillage() {
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+        VillageData village = villageDataDB.getData(homeVillageUUID);
+        return village;
     }
 
     @Nonnull
