@@ -1,13 +1,8 @@
 package com.falazar.farmupcraft.command;
 
-import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.PlayerData;
-import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.data.GoodsData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
-import com.falazar.farmupcraft.registry.CoinRegistry;
-import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -16,28 +11,22 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.NonNullList;
-import net.minecraft.core.Registry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
-import net.minecraftforge.common.world.ForgeChunkManager;
 
+import java.io.FileNotFoundException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.function.Supplier;
-
-import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
 import net.minecraftforge.registries.ForgeRegistries;
-
+import org.jetbrains.annotations.Nullable;
 
 public class MarketCommand {
     public static final CustomLogger LOGGER = new CustomLogger(MarketCommand.class.getSimpleName());
@@ -124,6 +113,83 @@ public class MarketCommand {
                 });
         builder.then(runDailyBuilder);
 
+
+        // Register the "importtxt" sub-command for ADMIN only.
+        LiteralArgumentBuilder<CommandSourceStack> importTxtBuilder = Commands.literal("importtxt")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("type", StringArgumentType.string())
+                        .executes(context -> {
+                            String type = StringArgumentType.getString(context, "type");
+                            // Call the method to import items based on the type
+                            importMarketItemsTXT(context.getSource(), type);
+                            return 0;
+                        }));
+        builder.then(importTxtBuilder);
+
+        // Register the "setactive" sub-command for ADMIN only, to set active or inactive status of an item, given "active" or "inactive" and itemId string.
+        LiteralArgumentBuilder<CommandSourceStack> setActiveBuilder = Commands.literal("setactive")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("itemId", StringArgumentType.string())
+                        .then(Commands.argument("status", StringArgumentType.string())
+                                .executes(context -> {
+                                    String itemId = StringArgumentType.getString(context, "itemId");
+                                    String status = StringArgumentType.getString(context, "status");
+                                    // Call the method to set active status of an item
+                                    GoodsData.setActiveStatusOfItem(context.getSource(), itemId, status);
+                                    return 0;
+                                })));
+        builder.then(setActiveBuilder);
+
+        // Register the "setcost" sub-command for ADMIN only, to set the price of an item.
+        LiteralArgumentBuilder<CommandSourceStack> setCostBuilder = Commands.literal("setcost")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("itemId", StringArgumentType.string())
+                        .then(Commands.argument("cost", StringArgumentType.string())
+                                .executes(context -> {
+                                    String itemId = StringArgumentType.getString(context, "itemId");
+                                    String costStr = StringArgumentType.getString(context, "cost");
+                                    int cost = Integer.parseInt(costStr);
+                                    // Call the method to set the price of an item
+                                    GoodsData.setCostOfItem(context.getSource(), itemId, cost);
+                                    return 0;
+                                })));
+        builder.then(setCostBuilder);
+
+        // Register a "clearall" sub-command for ADMIN only, to clear all items from the market.
+        LiteralArgumentBuilder<CommandSourceStack> clearAllBuilder = Commands.literal("clearall")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("confirm", StringArgumentType.string())
+                        .executes(context -> {
+                            String confirm = StringArgumentType.getString(context, "confirm");
+                            if ("forreal".equals(confirm)) {
+                                clearAllMarketItems(context.getSource());
+                                return 0;
+                            } else {
+                                context.getSource().sendFailure(Component.literal("WARNING: This will clear ALL market items! If you are sure, type: /market clearall forreal"));
+                                return 0;
+                            }
+                        }))
+                .executes(context -> {
+                    context.getSource().sendFailure(Component.literal("WARNING: This will clear ALL market items! If you are sure, type: /market clearall forreal"));
+                    return 0;
+                });
+        builder.then(clearAllBuilder);
+
+
+        // Register an "addrandom" sub-command for ADMIN only, to add a random item to the market for the given type.
+        LiteralArgumentBuilder<CommandSourceStack> addRandomBuilder = Commands.literal("addrandom")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("type", StringArgumentType.string())
+                        .executes(context -> {
+                            String type = StringArgumentType.getString(context, "type");
+                            // Call the method to add a random item to the market for the given type
+                            addRandomItemToMarket(context.getSource(), type);
+                            return 0;
+                        }));
+        builder.then(addRandomBuilder);
+
+        // TODO MAKE AN ADD, and COMMAND REMOVE ITEM COMMAND
+
         // Register the main "market" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -149,25 +215,33 @@ public class MarketCommand {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            Map<String, Integer> items = getMarketBuyItems(type);
+            // STEP 1: Get filtered sorted list of GoodsData by type.
+            Collection<GoodsData> goodsDataList = getFilteredActiveGoods(type);
+            if (goodsDataList == null || goodsDataList.isEmpty()) {
+                source.sendFailure(Component.literal("No items found for market type: " + type));
+                return 0;
+            }
+            MutableComponent response = Component.literal("Market " + type + " items (" + goodsDataList.size() + "): \n").withStyle(ChatFormatting.YELLOW);
 
-            // Loop over all items and prices to chat.
-            MutableComponent response = Component.literal("Market " + type + " items: \n").withStyle(ChatFormatting.YELLOW);
-            for (Map.Entry<String, Integer> entry : items.entrySet()) {
-                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+            // Missing an item in here.
+
+            // STEP 2: Show the final list, highlight if in our inventory.
+            for (GoodsData good : goodsDataList) {
+                LOGGER.info("DEBUG: Showing market item: " + good.getItemId() + ", cost = " + good.getCost() + ", amountSold = " + good.getAmountSold());
+
                 // Highlight ones in your inventory now.
-                boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
-
+                Item item = good.getItem();
                 if (item != null) {
-                    // Get the display name of the item
+                    boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
                     String itemName = item.getDescription().getString();
-                    if (!inInventory) {
-                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    if (inInventory) {
+                        int count = playerSource.getInventory().countItem(item);
+                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins (" + count + " cnt)\n").withStyle(ChatFormatting.GREEN));
                     } else {
-                        response = response.append(Component.literal(" -" + itemName + ": " + entry.getValue() + " coins\n").withStyle(ChatFormatting.GREEN));
+                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
                     }
                 } else {
-                    response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    response = response.append(Component.literal(" -Unknown Item: " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
                 }
             }
             MutableComponent finalResponse = response;
@@ -179,34 +253,85 @@ public class MarketCommand {
         return 0;
     }
 
+    // Grab all items from the DB, filter by type.
+    private static @Nullable Collection<GoodsData> getFilteredGoods(String type) {
+        // STEP 1: Grab all items from the DB.
+        DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+        Collection<GoodsData> goodsDataList = goodsDataDataBase.getValues();
+        if (goodsDataList.isEmpty()) {
+            return null;
+        }
+
+        // STEP 2: Filter on type.
+        List<GoodsData> goodsData = new ArrayList<>();
+        for (GoodsData goods : goodsDataList) {
+            if (goods.getMarketType().equals(type)) {
+                goodsData.add(goods);
+            }
+        }
+
+        return goodsData;
+    }
+
+    // Grab all items from the DB, filter by type and active status.
+    private static @Nullable Collection<GoodsData> getFilteredActiveGoods(String type) {
+        // STEP 1: Grab all items from the DB.
+        DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+        Collection<GoodsData> goodsDataList = goodsDataDataBase.getValues();
+        if (goodsDataList.isEmpty()) {
+            LOGGER.info("DEBUG: No goods data found in database for type: " + type);
+            return null;
+        }
+
+        // STEP 2: Filter on type and active status.
+        List<GoodsData> goodsData = new ArrayList<>();
+        for (GoodsData goods : goodsDataList) {
+            if (goods.getMarketType().equals(type) && goods.isActive()) {
+                goodsData.add(goods);
+            }
+        }
+
+        // STEP 3: Sort by dateAddedToMarket newest to oldest.
+//        goodsData.sort(Comparator.comparing(GoodsData::getDateAddedToMarket).reversed());
+        // STEP 3: Sort by dateAddedToMarket newest to oldest, then by cost ascending.
+        goodsData.sort(
+                Comparator.comparing(GoodsData::getDateAddedToMarket).reversed()
+                        .thenComparingInt(GoodsData::getCost)
+        );
+        return goodsData;
+    }
+
+
     // Given a market type sell all items sellable from inventory.
     public static void sellMarketItems(CommandSourceStack source, String type) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            Map<String, Integer> items = getMarketBuyItems(type);
+//            Map<String, Integer> items = getMarketBuyItems(type);
+            Collection<GoodsData> goods = getFilteredActiveGoods(type);
 
             int totalCoins = 0;
             // Loop over all items and sell all we have.
             MutableComponent response = Component.literal("Selling Market items: \n").withStyle(ChatFormatting.YELLOW); // TODO TEST
-            for (Map.Entry<String, Integer> entry : items.entrySet()) {
-                Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(entry.getKey()));
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+            for (GoodsData good : goods) {
+                Item item = good.getItem();
                 boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
                 if (!inInventory) {
                     continue;
                 }
 
                 if (item != null) {
-                    int coins = sellAllItemInInventory(source, playerSource, item, entry.getValue());
+                    int coins = sellAllItemInInventory(source, playerSource, item);
                     totalCoins += coins;
                 } else {
-                    response = response.append(Component.literal(" -Unknown Item: " + entry.getValue() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    MutableComponent response2 = Component.literal(" -Unknown Item: " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE);
+                    MutableComponent finalResponse2 = response2;
+                    source.sendSuccess(() -> finalResponse2, false);
                 }
             }
-
-            MutableComponent finalResponse = response;
-            source.sendSuccess(() -> finalResponse, false);
 
             // TODO TEST playerData and coins. - failing on save
             PlayerCommand.givePlayerCoins(source, totalCoins);
@@ -216,39 +341,122 @@ public class MarketCommand {
         }
     }
 
-    public static int sellAllItemInInventory(CommandSourceStack source, Player playerSource, Item item, int coins) {
+    // Sell all items of a given type in the player's inventory.
+    // Lower the price by 1 for each set of 32 sold.
+    // Randomly increase the price of another item by 1 for each set of 64 sold.
+    public static int sellAllItemInInventory(CommandSourceStack source, Player playerSource, Item item) {
         // Find all items matching in inventory and sell them.
 
-        // Look over player inventory now and count items.
+        // STEP 1: Look over player inventory now and count matching items.
         int count = playerSource.getInventory().countItem(item);
-        int coinsTotal = count * coins;
+        LOGGER.info("DEBUG: Selling " + count + " of " + item.getDescriptionId());
 
-        // Remove all items.
+        // STEP 2: Remove all items.
         ItemStack itemStack = item.getDefaultInstance();
+//        LOGGER.info("DEBUG: Removing " + count + " of " + item.getDescriptionId() + " from inventory.");
         removeItem(playerSource.getInventory(), itemStack, count);
 
-        // Send chat to player.
+        // STEP 3: Calculate coins earned and decrease price.
+        String itemKey = ForgeRegistries.ITEMS.getKey(item).toString();
+        GoodsData good = ModEvents.getGoodsDataDatabase().getData(itemKey);
+        LOGGER.info("DEBUG: Found GoodsData for item: " + itemKey + ", cost = " + good.getCost() + ", amountSold = " + good.getAmountSold());
+        int coinsTotal = getCoinsTotalForItem(good, count);
+
+        // STEP 4: Randomly update other items.
+        increaseOtherGoods(item, good, count);
+
+        // Update the amount sold for this item.
+        good.setAmountSold(good.getAmountSold() + count);
+        ModEvents.getGoodsDataDatabase().putData(itemKey, good);
+
+        // STEP 5: Send final chat to player.
         String itemName = item.getDescription().getString();
         MutableComponent response = Component.literal(" - Sold " + count + " of " + itemName + " for " + coinsTotal + " coins\n").withStyle(ChatFormatting.GREEN);
         MutableComponent finalResponse = response;
         source.sendSuccess(() -> finalResponse, false);
 
-        // Return coins earned.
+        // NOTE: Will sell 0 coin values and just take for free, but that is ok for now.
+
+        return coinsTotal;
+    }
+
+    // Increase the cost of another item randomly by 1 for each set of 64 sold.
+    private static void increaseOtherGoods(Item item, GoodsData good, int count) {
+        // If greater than 64 increments crossed, raise 1 other cost randomly by 1.
+        int startCount64 = good.getAmountSold() % 64; // Get the current sold count modulo 64.
+        int newCount64 = startCount64 + count; // Add the new count to it.
+        int sets64 = newCount64 / 64; // Calculate how many sets of 64 we have.
+        // TODO test
+        LOGGER.info("DEBUG: sets64 = " + sets64);
+
+        // TODO test can increase cost of SAME item, probably dont want that.
+
+        for (int i = 0; i < sets64; i++) {
+            // Get a random item from the active filtered list.
+            Collection<GoodsData> allGoods = getFilteredActiveGoods(good.getMarketType());
+            Random random = new Random();
+            GoodsData randomGood = allGoods.stream()
+                    .skip(random.nextInt(allGoods.size())) // Skip a random number of items
+                    .findFirst() // Get the first item after skipping
+                    .orElse(null); // If no item found, return null
+            // Dont raise same good cost, find another good, without increasing counter.
+            if (randomGood == null || randomGood.getItemId().equals(good.getItemId())) {
+                // If we got the same good or null, skip this iteration.
+                LOGGER.info("DEBUG: Skipping cost increase for " + good.getItem().getDescriptionId() + " as it is the same or null.");
+                i--; // Decrement i to retry this iteration.
+                continue;
+            }
+
+            randomGood.setCost(randomGood.getCost() + 1); // Increase the cost by 1.
+            ModEvents.getGoodsDataDatabase().putData(randomGood.getItemId(), randomGood);
+            LOGGER.info("DEBUG: Raising cost of " + randomGood.getItem().getDescriptionId() + " to " + randomGood.getCost());
+        }
+    }
+
+    // Get coins earned for selling X count of an item.
+    // Side effect: Lowers the price of the item by 1 for each set of 32 sold.
+    private static int getCoinsTotalForItem(GoodsData good, int count) {
+        int coinsTotal = 0;
+        int cost = good.getCost();
+        int sold = good.getAmountSold() % 32;
+
+        LOGGER.info("DEBUG: Starting getCoinsTotalForItem for " + good.getItemId() + " with count=" + count + ", cost=" + cost + ", sold=" + sold);
+
+        while (count > 0) {
+            int toNextDrop = 32 - sold;
+            int sellNow = Math.min(count, toNextDrop);
+
+            coinsTotal += cost * sellNow;
+            LOGGER.info("DEBUG: Sold " + sellNow + " items at cost " + cost + ", coinsTotal now " + coinsTotal);
+
+            sold += sellNow;
+            count -= sellNow;
+
+            if (sold == 32) {
+                cost = Math.max(0, cost - 1);
+                LOGGER.info("DEBUG: Lowered cost to " + cost);
+                sold = 0;
+            }
+        }
+
+        good.setCost(cost);
+        ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
+        LOGGER.info("DEBUG: Finished getCoinsTotalForItem for " + good.getItemId() + ", final coinsTotal=" + coinsTotal + ", final cost=" + cost);
+
         return coinsTotal;
     }
 
     // TODO remove out to proper home. player maybe.
     // Remove all items from inventory that match item.
-    public static void removeItem(Inventory inventory, ItemStack pStack, Integer count) {
+    public static void removeItem(Inventory inventory, ItemStack pStack, int count) {
         // Regular inventory
         for (ItemStack itemStack : inventory.items) { // 36 items here.
             if (itemStack.isEmpty()) {
                 continue;
             }
             // Check if the itemStack matches the pStack
-            LOGGER.info("DEBUG comparing items: " + itemStack.getItem() + " == " + pStack.getItem());
             if (itemStack.getItem() == pStack.getItem()) {
-                LOGGER.info("FOUND, removing now!");
+//                LOGGER.info("FOUND, removing now!");
                 itemStack.setCount(0); // Set to 0 to remove it
                 continue;
             }
@@ -266,87 +474,81 @@ public class MarketCommand {
         }
     }
 
-    // TODO notice put all new ones at TOP of the list.
-    // We will hard code a list here now to play with.
-    // Fields needed: itemId, cost, amountSold
-    // TODO start using MarketData and GoodsData objects instead.
-    public static Map<String, Integer> getMarketBuyItems(String type) {
-        if (type.equals("food")) {
-            String foodString = """
-                    pamhc2foodextended:raisinsitem\t5
-                    pamhc2foodextended:slawdogitem\t5
-                    pamhc2foodextended:rawtofaconitem\t5
-                    pamhc2foodextended:grapepieitem\t6
-                    pamhc2foodextended:misosoupitem\t6
-                    pamhc2foodextended:celeryandpeanutbutteritem\t6
-                    pamhc2foodextended:quesadillaitem\t7
-                    pamhc2foodcore:butteritem\t7
-                    pamhc2foodextended:cinnamontoastitem\t8
-                    pamhc2foodcore:pumpkinsoupitem\t8
-                    pamhc2foodextended:kiwismoothieitem\t11
-                    pamhc2foodextended:pomegranatejuiceitem\t13
-                    pamhc2foodextended:energydrinkitem\t10
-                    pamhc2foodextended:honeysoyribsitem\t13
-                    pamhc2foodextended:gardensoupitem\t9
-                    """;
-            return parseItemsFromString(foodString);
-        } else if (type.equals("wood")) {
-            // Use a text block string here:
-            String woodString = """
-                    biomesoplenty:stripped_palm_wood\t5
-                    cfm:jungle_park_bench\t6
-                    minecraft:spruce_log\t8
-                    cfm:mangrove_kitchen_drawer	13
-                    valhelsia_structures:bundled_mangrove_posts	20
-                    """;
-            // Parse that into our items now.
-            return parseItemsFromString(woodString);
-        } else if (type.equals("stone")) {
-            String stoneString = """
-                    minecraft:stone_stairs\t5
-                    minecraft:end_stone\t6
-                    valhelsia_structures:cyan_metal_framed_glass\t8
-                    mcwbridges:deepslate_brick_bridge_stair\t10
-                    minecraft:polished_andesite_stairs\t8
-                    """;
-            return parseItemsFromString(stoneString);
-        } else if (type.equals("general")) {  // those two in stone maybe only?
-            String generalString = """
-                    cfm:red_kitchen_drawer\t5
-                    cfm:cyan_cooler\t5
-                    minecraft:bookshelf\t6
-                    minecraft:amethyst_block\t7
-                    minecraft:gray_wool\t8
-                    minecraft:rabbit_foot\t8
-                    minecraft:snowball\t9
-                    minecraft:magenta_concrete_powder\t9
-                    minecraft:light_gray_banner\t10
-                    minecraft:wither_rose\t11
-                    """;
-            // maybe no concrete, only powder? too annoying?  maybe no stained glass panes, yes removed both.
-            // copper one is broken, odd.
-            return parseItemsFromString(generalString);
-        } else {
-            LOGGER.info("DEBUG unknown market type: " + type);
-            return new HashMap<>(); // Return an empty map if the type is unknown
-        }
-    }
+//    // TODO: notice put all new ones at TOP of the list - not sure how we do that?
+//    // We will hard code a list here now to play with.
+//    // Fields needed: itemId, cost, amountSold
+//    // TODO start using GoodsData objects instead.
+//    // Scan db of items, find all of this type, and active.
+//    // TODO delete unused method.
+//    public static Map<String, Integer> getMarketBuyItems(String type) {
+//        if (type.equals("food")) {
+//            String foodString = """
+//                    pamhc2foodextended:gooseberryjellysandwichitem\t5
+//                    pamhc2foodcore:caramelappleitem\t5
+//                    pamhc2foodextended:cashewbutteritem\t5
+//                    pamhc2foodextended:heartybreakfastitem\t6
+//                    pamhc2foodextended:peanutchocolatebaritem\t6
+//                    pamhc2foodextended:breadedporkchopitem\t7
+//                    pamhc2foodextended:cactusfruitpieitem\t8
+//                    pamhc2foodextended:bbqsauceitem\t9
+//                    pamhc2foodextended:pineapplesmoothieitem\t9
+//                    pamhc2foodcore:epicbaconitem\t9
+//                    pamhc2foodextended:raspberryjellysandwichitem\t9
+//                    pamhc2foodextended:strawberrypieitem\t8
+//                    pamhc2foodextended:imitationcrabsticksitem\t12
+//                    pamhc2foodextended:soursopjellytoastitem\t13
+//                    pamhc2foodextended:gardensoupitem\t9
+//                    """;
+//            return parseItemsFromString(foodString);
+//        } else if (type.equals("wood")) {
+//            // Use a text block string here:
+//            String woodString = """
+//                    minecraft:birch_door\t5
+//                    valhelsia_structures:stripped_mangrove_post\t9
+//                    biomesoplenty:mahogany_fence_gate\t13
+//                    biomesoplenty:stripped_palm_wood\t15
+//                    cfm:mangrove_kitchen_drawer	23
+//                    """;
+//            // Parse that into our items now.
+//            return parseItemsFromString(woodString);
+//        } else if (type.equals("stone")) {
+//            String stoneString = """
+//                    biomesoplenty:orange_sandstone\t6
+//                    minecraft:red_sandstone_wall\t7
+//                    philipsruins:red_sand_stone_brick\t9
+//                    minecraft:stone_brick_stairs\t9
+//                    valhelsia_structures:cyan_metal_framed_glass\t8
+//                    """;
+//            return parseItemsFromString(stoneString);
+//        } else if (type.equals("general")) {
+//            String generalString = """
+//                    minecraft:prismarine_brick_stairs\t5
+//                    minecraft:lime_wool\t5
+//                    valhelsia_structures:purple_sleeping_bag\t6
+//                    minecraft:yellow_banner\t6
+//                    minecraft:cyan_wool\t7
+//                    minecraft:sculk\t8
+//                    valhelsia_structures:white_sleeping_bag\t9
+//                    cfm:cyan_grill\t9
+//                    minecraft:lily_of_the_valley\t9
+//                    cfm:cyan_cooler\t15
+//                    """;
+//            return parseItemsFromString(generalString);
+//        } else {
+//            LOGGER.info("DEBUG unknown market type: " + type);
+//            return new HashMap<>(); // Return an empty map if the type is unknown
+//        }
+    // two item snot showing, fireandice:crackeld stone somethign and prismarine steps.
+    /*
 
-    // Temp helper method.
-    private static Map<String, Integer> parseItemsFromString(String input) {
-        Map<String, Integer> items = new LinkedHashMap<>(); // Use LinkedHashMap to maintain order
-        String[] lines = input.split("\n");
-        for (String line : lines) {
-            String[] parts = line.split("\t");
-            if (parts.length == 2) {
-                String item = parts[0].trim();
-                int price = Integer.parseInt(parts[1].trim());
-                items.put(item, price);
-            }
-        }
-        LOGGER.info("DEBUG items = " + items);
-        return items;
-    }
+09:02:11.284
+game
+ Item iceandfire:crackled_stone is now active in the market.
+
+     */
+
+//    }
+
 
     // General searchability method to find items, test one to play around with.
     public static int findMarketItems(CommandSourceStack source, String keyword) {
@@ -533,7 +735,8 @@ public class MarketCommand {
         return 0;
     }
 
-    // TODO run daily task for all markets.
+    // TODO test and Move to new home.
+    // Run daily task for all markets, removing old items, and adding new items.
     public static int runDailyTask(CommandSourceStack source) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -543,1324 +746,194 @@ public class MarketCommand {
                 return 0;
             }
 
-            // Run the daily task for all markets.
-            // TODO
-            // TODO Loop over each market and add cost
-            // TODO and change new items.
-
+            // Run the daily task for each market.
+            getNewMarketItems(source, "food");
+            getNewMarketItems(source, "wood");
+            getNewMarketItems(source, "stone");
+            getNewMarketItems(source, "general");
 
             // Notify the player
-            source.sendSuccess((Supplier<Component>) Component.literal("Daily task completed for all markets."), false);
+            source.sendSuccess(() -> Component.literal("Daily task completed for all markets."), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Run Daily Task Exception thrown - see log"));
             ex.printStackTrace();
         }
         return 0;
     }
+
+    // TODO TEST
+    // TODO failing in a couple categories hitting an AIR item... report hit and pick a new item instead
+    // then i can fix those individual items.
+    // TEST METHOD partially done.
+    // Second half of rundaily task.
+    // This will remove old items, increase cost of existing items, and add new items.
+    public static int getNewMarketItems(CommandSourceStack source, String type) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // STEP 1: Remove a few old items.
+            // Get market list
+            Collection<GoodsData> activeGoods = getFilteredActiveGoods(type);
+            // Shuffle and remove 1 item per 5 existing.
+            ArrayList<GoodsData> shuffledItems = new ArrayList<>(activeGoods);
+            Collections.shuffle(shuffledItems);
+
+            // Print out the ones we are removing.
+            MutableComponent response = Component.literal("Removing " + type + " Market items(" + shuffledItems.size() + "): \n").withStyle(ChatFormatting.YELLOW);
+            int count = shuffledItems.size() / 5; // Remove 1 item per 5 existing items.
+            for (int i = 0; i < count; i++) {  // mod 5
+//                String itemName = shuffledItems.get(i);
+                GoodsData good = shuffledItems.get(i);
+                String itemName = good.getItem().getDescription().getString();
+                response = response.append(Component.literal("- " + itemName + "\n"));
+                good.setActive(Boolean.valueOf(false)); // Set active status to false
+                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
+                // TODO test.
+            }
+
+            // TODO TEST
+            // STEP 2: Increase cost of each item by 1.
+            for (GoodsData good : activeGoods) {
+                good.setCost(good.getCost() + 1);
+                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
+                LOGGER.info("DEBUG: Raising cost of " + good.getItem().getDescriptionId() + " to " + good.getCost());
+            }
+
+            // TODO TEST and add new items.
+            // STEP 3: Add in new items.
+            Collection<GoodsData> newItems = getFilteredGoods(type);
+            // Shuffle the new items and take the first count.
+            ArrayList<GoodsData> newItemsList = new ArrayList<>(newItems);
+            Collections.shuffle(newItemsList);
+            for (int i = 0; i < count; i++) {
+                GoodsData good = newItemsList.get(i);
+                // TODO MAKE METHOD on goodsData
+                String itemName = good.getItem().getDescription().getString();
+                // Add the new item to the response.
+                response = response.append(Component.literal("+ " + itemName + "\n"));
+                // TODO test add to market, set active and cost.
+                good.setActive(Boolean.valueOf(true)); // Set active status
+                good.setCost(5); // Set a default cost, can be changed later.
+                good.setDateAddedToMarket(java.time.LocalDate.now().toString());
+                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
+            }
+
+            // Notify the player.
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Get New Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static void importMarketItemsTXT(CommandSourceStack source, String type) {
+        try {
+            InputStream inputStream = MarketCommand.class.getClassLoader().getResourceAsStream("data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt");
+            if (inputStream == null) {
+                throw new FileNotFoundException("Resource not found: data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt");
+            }
+            String fileContent = new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            // Parse the file content into a list of item names, unordered array of strings.
+            String[] itemsArray = fileContent.split("\n");
+
+            // NOTE: for now an item can be in only ONE market type. may update later to allow multiple types.
+            DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+
+            // DEBUG output results to logger
+            LOGGER.info("DEBUG Importing Market Items for type: " + type);
+            int importedCount = 0;
+            for (String itemStr : itemsArray) {
+                // Trim whitespace and check if the line is not empty
+                String trimmedItem = itemStr.trim();
+                if (!trimmedItem.isEmpty()) {
+                    LOGGER.info("DEBUG Item: " + trimmedItem);
+                    // Step 2: Create an object to hold as a GoodsData object.
+                    GoodsData goodsData = goodsDataDataBase.getData(trimmedItem);
+                    if (goodsData == null) {
+                        // STEP 3: Insert into DB, ignore if an old one exists.
+                        // Dont create dupes, just insert new ones.
+                        goodsData = new GoodsData(trimmedItem, 5, 0, "common", false, type, "");
+                        goodsDataDataBase.putData(trimmedItem, goodsData);
+                        importedCount++;
+                    } else {
+                        // ignore for now.
+                    }
+                }
+            }
+
+            int finalImportedCount = importedCount;
+            source.sendSuccess(() -> Component.literal("Imported " + finalImportedCount + " items for market type: " + type), false);
+
+            // NOTE: This wont remove any older ones, manually do that.
+
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Import Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static void clearAllMarketItems(CommandSourceStack source) {
+        try {
+            // Clear all market items from the database.
+            DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+            goodsDataDataBase.clearDataBase(true);
+            source.sendSuccess(() -> Component.literal("All market items cleared."), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Clear All Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static void addRandomItemToMarket(CommandSourceStack source, String type) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return;
+            }
+
+            // Get a random item from the filtered goods.
+            Collection<GoodsData> goods = getFilteredGoods(type);
+            if (goods.isEmpty()) {
+                source.sendFailure(Component.literal("No goods found for type: " + type));
+                return;
+            }
+
+            Random random = new Random();
+            GoodsData randomGood = goods.stream()
+                    .skip(random.nextInt(goods.size())) // Skip a random number of items
+                    .findFirst() // Get the first item after skipping
+                    .orElse(null); // If no item found, return null
+
+            if (randomGood != null) {
+                randomGood.setActive(true); // Set it active
+                randomGood.setCost(5); // Set a default cost
+                ModEvents.getGoodsDataDatabase().putData(randomGood.getItemId(), randomGood);
+                source.sendSuccess(() -> Component.literal("Added random item to market: " + randomGood.getItem().getDescription().getString()), false);
+            } else {
+                source.sendFailure(Component.literal("No valid item found to add to market."));
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Add Random Item to Market Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
 }
 
-/* sample data found
-
-
-#####################################################################################
-Wood Market Type
-
-jungle:
-[12:53:31] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] Items matching "jungle":\n- minecraft:jungle_boat\n- minecraft:jungle_button\n- minecraft:jungle_chest_boat\n- minecraft:jungle_door\n- minecraft:jungle_fence\n- minecraft:jungle_fence_gate\n- minecraft:jungle_hanging_sign\n- minecraft:jungle_leaves\n- minecraft:jungle_log\n- minecraft:jungle_planks\n- minecraft:jungle_pressure_plate\n- minecraft:jungle_sapling\n- minecraft:jungle_sign\n- minecraft:jungle_slab\n- minecraft:jungle_stairs\n- minecraft:jungle_trapdoor\n- minecraft:jungle_wood\n- minecraft:stripped_jungle_log\n- minecraft:stripped_jungle_wood\n
-
-[12:53:31] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] Items matching "jungle":
-minecraft:jungle_boat
-minecraft:jungle_button
-minecraft:jungle_chest_boat
-minecraft:jungle_door
-minecraft:jungle_fence
-minecraft:jungle_fence_gate
-minecraft:jungle_hanging_sign
-minecraft:jungle_leaves
-minecraft:jungle_log
-minecraft:jungle_planks
-minecraft:jungle_pressure_plate
-minecraft:jungle_sapling
-minecraft:jungle_sign
-minecraft:jungle_slab
-minecraft:jungle_stairs
-minecraft:jungle_trapdoor
-minecraft:jungle_wood
-minecraft:stripped_jungle_log
-minecraft:stripped_jungle_wood
-19 items with boat. and chest boat both gone now.
-
-
-TODO NO unstackable items... like boats, filter out all!
-no simple items, hmmm.....
-fences and doors all ok?
-no button?
-no pressure plate, or ok? or boring?  I think these are all ok cost wise actually.
-log and stripped are most expensive, and there are some viking ones later and furniture ones?
-
-Oak has dark oak and oak, but that is ok, on PROD game may have more though?
-38 oak_ found, but should be 36 with 4 boats removed, hmmm what is extra?
-potted flowering oak sapling  hmmm whats that cant find that item, weird... manually remove I guess.
-and petrified_oak slab, unobtainable, how to filter out those kinds?
-dark_oak_ looks good, potted one again
-birch_ looks good.
-
-_log will give us all our base types:
-"stripped" 41 log types,
-TODO search with big or string on all those and we will have full list.
-Should have approx 17*41 items for this marketType "wood"
-total = 697
-No slabs, too easy, doubles planks.
-TODO furniture
-With mods
-dark_oak - 65 valhall, bridge, furniture
-birch, spruce
-65*41 = 2665 items, hmmm maybe too many?
-
-List 41 log types:
-
-Items matching "_log":
-- biomesoplenty:dead_log
-- biomesoplenty:fir_log
-- biomesoplenty:hellbark_log
-- biomesoplenty:jacaranda_log
-- biomesoplenty:magic_log
-- biomesoplenty:mahogany_log
-- biomesoplenty:palm_log
-- biomesoplenty:redwood_log
-- biomesoplenty:umbran_log
-- biomesoplenty:willow_log
-- minecraft:acacia_log
-- minecraft:birch_log
-- minecraft:cherry_log
-- minecraft:dark_oak_log
-- minecraft:jungle_log
-- minecraft:mangrove_log
-- minecraft:oak_log
-- minecraft:spruce_log
-
-String:
-biomesoplenty:dead_log,biomesoplenty:fir_log,biomesoplenty:hellbark_log,biomesoplenty:jacaranda_log,biomesoplenty:magic_log,biomesoplenty:mahogany_log,biomesoplenty:palm_log,biomesoplenty:redwood_log,biomesoplenty:umbran_log,biomesoplenty:willow_log,minecraft:acacia_log,minecraft:birch_log,minecraft:cherry_log,minecraft:dark_oak_log,minecraft:jungle_log,minecraft:mangrove_log,minecraft:oak_log,minecraft:spruce_log
-
-
-// TODO burnable items only?? cherry0
-dead_ r fir_ might overmatch??? fir is ok  dead catches coral. 
-dead_log,fir_log,hellbark_log,jacaranda_log,magic_log,mahogany_log,palm_log,redwood_log,umbran_log,willow_log,acacia_log,birch_log,cherry_log,dark_oak_log,jungle_log,mangrove_log,oak_log,spruce_log
-
-dead_,fir_,hellbark_,jacaranda_,magic_,mahogany_,palm_,redwood_,umbran_,willow_,acacia_,birch_,cherry_,dark_oak_,jungle_,mangrove_,oak_,spruce_
-
-Now the Items:
-[System] [CHAT] Items matching:
-- alexsmobs:acacia_blossom
-- aquaculture:acacia_fish_mount
-- aquaculture:birch_fish_mount
-- aquaculture:dark_oak_fish_mount
-- aquaculture:jungle_fish_mount
-- aquaculture:oak_fish_mount
-- aquaculture:spruce_fish_mount
-- biomesoplenty:dead_branch
-- biomesoplenty:dead_button
-- biomesoplenty:dead_door
-- biomesoplenty:dead_fence
-- biomesoplenty:dead_fence_gate
-- biomesoplenty:dead_grass
-- biomesoplenty:dead_hanging_sign
-- biomesoplenty:dead_leaves
-- biomesoplenty:dead_log
-- biomesoplenty:dead_planks
-- biomesoplenty:dead_pressure_plate
-- biomesoplenty:dead_sapling
-- biomesoplenty:dead_sign
-- biomesoplenty:dead_stairs
-- biomesoplenty:dead_trapdoor
-- biomesoplenty:dead_wood
-- biomesoplenty:fir_button
-- biomesoplenty:fir_door
-- biomesoplenty:fir_fence
-- biomesoplenty:fir_fence_gate
-- biomesoplenty:fir_hanging_sign
-- biomesoplenty:fir_leaves
-- biomesoplenty:fir_log
-- biomesoplenty:fir_planks
-- biomesoplenty:fir_pressure_plate
-- biomesoplenty:fir_sapling
-- biomesoplenty:fir_sign
-- biomesoplenty:fir_stairs
-- biomesoplenty:fir_trapdoor
-- biomesoplenty:fir_wood
-- biomesoplenty:flowering_oak_leaves
-- biomesoplenty:flowering_oak_sapling
-- biomesoplenty:hellbark_button
-- biomesoplenty:hellbark_door
-- biomesoplenty:hellbark_fence
-- biomesoplenty:hellbark_fence_gate
-- biomesoplenty:hellbark_hanging_sign
-- biomesoplenty:hellbark_leaves
-- biomesoplenty:hellbark_log
-- biomesoplenty:hellbark_planks
-- biomesoplenty:hellbark_pressure_plate
-- biomesoplenty:hellbark_sapling
-- biomesoplenty:hellbark_sign
-- biomesoplenty:hellbark_stairs
-- biomesoplenty:hellbark_trapdoor
-- biomesoplenty:hellbark_wood
-- biomesoplenty:jacaranda_button
-- biomesoplenty:jacaranda_door
-- biomesoplenty:jacaranda_fence
-- biomesoplenty:jacaranda_fence_gate
-- biomesoplenty:jacaranda_hanging_sign
-- biomesoplenty:jacaranda_leaves
-- biomesoplenty:jacaranda_log
-- biomesoplenty:jacaranda_planks
-- biomesoplenty:jacaranda_pressure_plate
-- biomesoplenty:jacaranda_sapling
-- biomesoplenty:jacaranda_sign
-- biomesoplenty:jacaranda_stairs
-- biomesoplenty:jacaranda_trapdoor
-- biomesoplenty:jacaranda_wood
-- biomesoplenty:magic_button
-- biomesoplenty:magic_door
-- biomesoplenty:magic_fence
-- biomesoplenty:magic_fence_gate
-- biomesoplenty:magic_hanging_sign
-- biomesoplenty:magic_leaves
-- biomesoplenty:magic_log
-- biomesoplenty:magic_planks
-- biomesoplenty:magic_pressure_plate
-- biomesoplenty:magic_sapling
-- biomesoplenty:magic_sign
-- biomesoplenty:magic_stairs
-- biomesoplenty:magic_trapdoor
-- biomesoplenty:magic_wood
-- biomesoplenty:mahogany_button
-- biomesoplenty:mahogany_door
-- biomesoplenty:mahogany_fence
-- biomesoplenty:mahogany_fence_gate
-- biomesoplenty:mahogany_hanging_sign
-- biomesoplenty:mahogany_leaves
-- biomesoplenty:mahogany_log
-- biomesoplenty:mahogany_planks
-- biomesoplenty:mahogany_pressure_plate
-- biomesoplenty:mahogany_sapling
-- biomesoplenty:mahogany_sign
-- biomesoplenty:mahogany_stairs
-- biomesoplenty:mahogany_trapdoor
-- biomesoplenty:mahogany_wood
-- biomesoplenty:palm_button
-- biomesoplenty:palm_door
-- biomesoplenty:palm_fence
-- biomesoplenty:palm_fence_gate
-- biomesoplenty:palm_hanging_sign
-- biomesoplenty:palm_leaves
-- biomesoplenty:palm_log
-- biomesoplenty:palm_planks
-- biomesoplenty:palm_pressure_plate
-- biomesoplenty:palm_sapling
-- biomesoplenty:palm_sign
-- biomesoplenty:palm_stairs
-- biomesoplenty:palm_trapdoor
-- biomesoplenty:palm_wood
-- biomesoplenty:rainbow_birch_leaves
-- biomesoplenty:rainbow_birch_sapling
-- biomesoplenty:redwood_button
-- biomesoplenty:redwood_door
-- biomesoplenty:redwood_fence
-- biomesoplenty:redwood_fence_gate
-- biomesoplenty:redwood_hanging_sign
-- biomesoplenty:redwood_leaves
-- biomesoplenty:redwood_log
-- biomesoplenty:redwood_planks
-- biomesoplenty:redwood_pressure_plate
-- biomesoplenty:redwood_sapling
-- biomesoplenty:redwood_sign
-- biomesoplenty:redwood_stairs
-- biomesoplenty:redwood_trapdoor
-- biomesoplenty:redwood_wood
-- biomesoplenty:stripped_dead_log
-- biomesoplenty:stripped_dead_wood
-- biomesoplenty:stripped_fir_log
-- biomesoplenty:stripped_fir_wood
-- biomesoplenty:stripped_hellbark_log
-- biomesoplenty:stripped_hellbark_wood
-- biomesoplenty:stripped_jacaranda_log
-- biomesoplenty:stripped_jacaranda_wood
-- biomesoplenty:stripped_magic_log
-- biomesoplenty:stripped_magic_wood
-- biomesoplenty:stripped_mahogany_log
-- biomesoplenty:stripped_mahogany_wood
-- biomesoplenty:stripped_palm_log
-- biomesoplenty:stripped_palm_wood
-- biomesoplenty:stripped_redwood_log
-- biomesoplenty:stripped_redwood_wood
-- biomesoplenty:stripped_umbran_log
-- biomesoplenty:stripped_umbran_wood
-- biomesoplenty:stripped_willow_log
-- biomesoplenty:stripped_willow_wood
-- biomesoplenty:umbran_button
-- biomesoplenty:umbran_door
-- biomesoplenty:umbran_fence
-- biomesoplenty:umbran_fence_gate
-- biomesoplenty:umbran_hanging_sign
-- biomesoplenty:umbran_leaves
-- biomesoplenty:umbran_log
-- biomesoplenty:umbran_planks
-- biomesoplenty:umbran_pressure_plate
-- biomesoplenty:umbran_sapling
-- biomesoplenty:umbran_sign
-- biomesoplenty:umbran_stairs
-- biomesoplenty:umbran_trapdoor
-- biomesoplenty:umbran_wood
-- biomesoplenty:willow_button
-- biomesoplenty:willow_door
-- biomesoplenty:willow_fence
-- biomesoplenty:willow_fence_gate
-- biomesoplenty:willow_hanging_sign
-- biomesoplenty:willow_leaves
-- biomesoplenty:willow_log
-- biomesoplenty:willow_planks
-- biomesoplenty:willow_pressure_plate
-- biomesoplenty:willow_sapling
-- biomesoplenty:willow_sign
-- biomesoplenty:willow_stairs
-- biomesoplenty:willow_trapdoor
-- biomesoplenty:willow_vine
-- biomesoplenty:willow_wood
-- cfm:acacia_bedside_cabinet
-- cfm:acacia_blinds
-- cfm:acacia_cabinet
-- cfm:acacia_chair
-- cfm:acacia_coffee_table
-- cfm:acacia_crate
-- cfm:acacia_desk
-- cfm:acacia_desk_cabinet
-- cfm:acacia_hedge
-- cfm:acacia_kitchen_counter
-- cfm:acacia_kitchen_drawer
-- cfm:acacia_kitchen_sink_dark
-- cfm:acacia_kitchen_sink_light
-- cfm:acacia_mail_box
-- cfm:acacia_park_bench
-- cfm:acacia_table
-- cfm:acacia_upgraded_fence
-- cfm:acacia_upgraded_gate
-- cfm:birch_bedside_cabinet
-- cfm:birch_blinds
-- cfm:birch_cabinet
-- cfm:birch_chair
-- cfm:birch_coffee_table
-- cfm:birch_crate
-- cfm:birch_desk
-- cfm:birch_desk_cabinet
-- cfm:birch_hedge
-- cfm:birch_kitchen_counter
-- cfm:birch_kitchen_drawer
-- cfm:birch_kitchen_sink_dark
-- cfm:birch_kitchen_sink_light
-- cfm:birch_mail_box
-- cfm:birch_park_bench
-- cfm:birch_table
-- cfm:birch_upgraded_fence
-- cfm:birch_upgraded_gate
-- cfm:dark_oak_bedside_cabinet
-- cfm:dark_oak_blinds
-- cfm:dark_oak_cabinet
-- cfm:dark_oak_chair
-- cfm:dark_oak_coffee_table
-- cfm:dark_oak_crate
-- cfm:dark_oak_desk
-- cfm:dark_oak_desk_cabinet
-- cfm:dark_oak_hedge
-- cfm:dark_oak_kitchen_counter
-- cfm:dark_oak_kitchen_drawer
-- cfm:dark_oak_kitchen_sink_dark
-- cfm:dark_oak_kitchen_sink_light
-- cfm:dark_oak_mail_box
-- cfm:dark_oak_park_bench
-- cfm:dark_oak_table
-- cfm:dark_oak_upgraded_fence
-- cfm:dark_oak_upgraded_gate
-- cfm:jungle_bedside_cabinet
-- cfm:jungle_blinds
-- cfm:jungle_cabinet
-- cfm:jungle_chair
-- cfm:jungle_coffee_table
-- cfm:jungle_crate
-- cfm:jungle_desk
-- cfm:jungle_desk_cabinet
-- cfm:jungle_hedge
-- cfm:jungle_kitchen_counter
-- cfm:jungle_kitchen_drawer
-- cfm:jungle_kitchen_sink_dark
-- cfm:jungle_kitchen_sink_light
-- cfm:jungle_mail_box
-- cfm:jungle_park_bench
-- cfm:jungle_table
-- cfm:jungle_upgraded_fence
-- cfm:jungle_upgraded_gate
-- cfm:mangrove_bedside_cabinet
-- cfm:mangrove_blinds
-- cfm:mangrove_cabinet
-- cfm:mangrove_chair
-- cfm:mangrove_coffee_table
-- cfm:mangrove_crate
-- cfm:mangrove_desk
-- cfm:mangrove_desk_cabinet
-- cfm:mangrove_hedge
-- cfm:mangrove_kitchen_counter
-- cfm:mangrove_kitchen_drawer
-- cfm:mangrove_kitchen_sink_dark
-- cfm:mangrove_kitchen_sink_light
-- cfm:mangrove_mail_box
-- cfm:mangrove_park_bench
-- cfm:mangrove_table
-- cfm:mangrove_upgraded_fence
-- cfm:mangrove_upgraded_gate
-- cfm:oak_bedside_cabinet
-- cfm:oak_blinds
-- cfm:oak_cabinet
-- cfm:oak_chair
-- cfm:oak_coffee_table
-- cfm:oak_crate
-- cfm:oak_desk
-- cfm:oak_desk_cabinet
-- cfm:oak_hedge
-- cfm:oak_kitchen_counter
-- cfm:oak_kitchen_drawer
-- cfm:oak_kitchen_sink_dark
-- cfm:oak_kitchen_sink_light
-- cfm:oak_mail_box
-- cfm:oak_park_bench
-- cfm:oak_table
-- cfm:oak_upgraded_fence
-- cfm:oak_upgraded_gate
-- cfm:spruce_bedside_cabinet
-- cfm:spruce_blinds
-- cfm:spruce_cabinet
-- cfm:spruce_chair
-- cfm:spruce_coffee_table
-- cfm:spruce_crate
-- cfm:spruce_desk
-- cfm:spruce_desk_cabinet
-- cfm:spruce_hedge
-- cfm:spruce_kitchen_counter
-- cfm:spruce_kitchen_drawer
-- cfm:spruce_kitchen_sink_dark
-- cfm:spruce_kitchen_sink_light
-- cfm:spruce_mail_box
-- cfm:spruce_park_bench
-- cfm:spruce_table
-- cfm:spruce_upgraded_fence
-- cfm:spruce_upgraded_gate
-- cfm:stripped_acacia_bedside_cabinet
-- cfm:stripped_acacia_blinds
-- cfm:stripped_acacia_cabinet
-- cfm:stripped_acacia_chair
-- cfm:stripped_acacia_coffee_table
-- cfm:stripped_acacia_crate
-- cfm:stripped_acacia_desk
-- cfm:stripped_acacia_desk_cabinet
-- cfm:stripped_acacia_kitchen_counter
-- cfm:stripped_acacia_kitchen_drawer
-- cfm:stripped_acacia_kitchen_sink_dark
-- cfm:stripped_acacia_kitchen_sink_light
-- cfm:stripped_acacia_mail_box
-- cfm:stripped_acacia_park_bench
-- cfm:stripped_acacia_table
-- cfm:stripped_acacia_upgraded_fence
-- cfm:stripped_acacia_upgraded_gate
-- cfm:stripped_birch_bedside_cabinet
-- cfm:stripped_birch_blinds
-- cfm:stripped_birch_cabinet
-- cfm:stripped_birch_chair
-- cfm:stripped_birch_coffee_table
-- cfm:stripped_birch_crate
-- cfm:stripped_birch_desk
-- cfm:stripped_birch_desk_cabinet
-- cfm:stripped_birch_kitchen_counter
-- cfm:stripped_birch_kitchen_drawer
-- cfm:stripped_birch_kitchen_sink_dark
-- cfm:stripped_birch_kitchen_sink_light
-- cfm:stripped_birch_mail_box
-- cfm:stripped_birch_park_bench
-- cfm:stripped_birch_table
-- cfm:stripped_birch_upgraded_fence
-- cfm:stripped_birch_upgraded_gate
-- cfm:stripped_dark_oak_bedside_cabinet
-- cfm:stripped_dark_oak_blinds
-- cfm:stripped_dark_oak_cabinet
-- cfm:stripped_dark_oak_chair
-- cfm:stripped_dark_oak_coffee_table
-- cfm:stripped_dark_oak_crate
-- cfm:stripped_dark_oak_desk
-- cfm:stripped_dark_oak_desk_cabinet
-- cfm:stripped_dark_oak_kitchen_counter
-- cfm:stripped_dark_oak_kitchen_drawer
-- cfm:stripped_dark_oak_kitchen_sink_dark
-- cfm:stripped_dark_oak_kitchen_sink_light
-- cfm:stripped_dark_oak_mail_box
-- cfm:stripped_dark_oak_park_bench
-- cfm:stripped_dark_oak_table
-- cfm:stripped_dark_oak_upgraded_fence
-- cfm:stripped_dark_oak_upgraded_gate
-- cfm:stripped_jungle_bedside_cabinet
-- cfm:stripped_jungle_blinds
-- cfm:stripped_jungle_cabinet
-- cfm:stripped_jungle_chair
-- cfm:stripped_jungle_coffee_table
-- cfm:stripped_jungle_crate
-- cfm:stripped_jungle_desk
-- cfm:stripped_jungle_desk_cabinet
-- cfm:stripped_jungle_kitchen_counter
-- cfm:stripped_jungle_kitchen_drawer
-- cfm:stripped_jungle_kitchen_sink_dark
-- cfm:stripped_jungle_kitchen_sink_light
-- cfm:stripped_jungle_mail_box
-- cfm:stripped_jungle_park_bench
-- cfm:stripped_jungle_table
-- cfm:stripped_jungle_upgraded_fence
-- cfm:stripped_jungle_upgraded_gate
-- cfm:stripped_mangrove_bedside_cabinet
-- cfm:stripped_mangrove_blinds
-- cfm:stripped_mangrove_cabinet
-- cfm:stripped_mangrove_chair
-- cfm:stripped_mangrove_coffee_table
-- cfm:stripped_mangrove_crate
-- cfm:stripped_mangrove_desk
-- cfm:stripped_mangrove_desk_cabinet
-- cfm:stripped_mangrove_kitchen_counter
-- cfm:stripped_mangrove_kitchen_drawer
-- cfm:stripped_mangrove_kitchen_sink_dark
-- cfm:stripped_mangrove_kitchen_sink_light
-- cfm:stripped_mangrove_mail_box
-- cfm:stripped_mangrove_park_bench
-- cfm:stripped_mangrove_table
-- cfm:stripped_mangrove_upgraded_fence
-- cfm:stripped_mangrove_upgraded_gate
-- cfm:stripped_oak_bedside_cabinet
-- cfm:stripped_oak_blinds
-- cfm:stripped_oak_cabinet
-- cfm:stripped_oak_chair
-- cfm:stripped_oak_coffee_table
-- cfm:stripped_oak_crate
-- cfm:stripped_oak_desk
-- cfm:stripped_oak_desk_cabinet
-- cfm:stripped_oak_kitchen_counter
-- cfm:stripped_oak_kitchen_drawer
-- cfm:stripped_oak_kitchen_sink_dark
-- cfm:stripped_oak_kitchen_sink_light
-- cfm:stripped_oak_mail_box
-- cfm:stripped_oak_park_bench
-- cfm:stripped_oak_table
-- cfm:stripped_oak_upgraded_fence
-- cfm:stripped_oak_upgraded_gate
-- cfm:stripped_spruce_bedside_cabinet
-- cfm:stripped_spruce_blinds
-- cfm:stripped_spruce_cabinet
-- cfm:stripped_spruce_chair
-- cfm:stripped_spruce_coffee_table
-- cfm:stripped_spruce_crate
-- cfm:stripped_spruce_desk
-- cfm:stripped_spruce_desk_cabinet
-- cfm:stripped_spruce_kitchen_counter
-- cfm:stripped_spruce_kitchen_drawer
-- cfm:stripped_spruce_kitchen_sink_dark
-- cfm:stripped_spruce_kitchen_sink_light
-- cfm:stripped_spruce_mail_box
-- cfm:stripped_spruce_park_bench
-- cfm:stripped_spruce_table
-- cfm:stripped_spruce_upgraded_fence
-- cfm:stripped_spruce_upgraded_gate
-- iceandfire:jungle_myrmex_cocoon
-- iceandfire:myrmex_jungle_biolight
-- iceandfire:myrmex_jungle_chitin
-- iceandfire:myrmex_jungle_resin
-- iceandfire:myrmex_jungle_resin_block
-- iceandfire:myrmex_jungle_resin_glass
-- macawsbridgesbop:dead_bridge_pier
-- macawsbridgesbop:dead_log_bridge_middle
-- macawsbridgesbop:dead_log_bridge_stair
-- macawsbridgesbop:dead_rail_bridge
-- macawsbridgesbop:dead_rope_bridge_stair
-- macawsbridgesbop:fir_bridge_pier
-- macawsbridgesbop:fir_log_bridge_middle
-- macawsbridgesbop:fir_log_bridge_stair
-- macawsbridgesbop:fir_rail_bridge
-- macawsbridgesbop:fir_rope_bridge_stair
-- macawsbridgesbop:hellbark_bridge_pier
-- macawsbridgesbop:hellbark_log_bridge_middle
-- macawsbridgesbop:hellbark_log_bridge_stair
-- macawsbridgesbop:hellbark_rail_bridge
-- macawsbridgesbop:hellbark_rope_bridge_stair
-- macawsbridgesbop:jacaranda_bridge_pier
-- macawsbridgesbop:jacaranda_log_bridge_middle
-- macawsbridgesbop:jacaranda_log_bridge_stair
-- macawsbridgesbop:jacaranda_rail_bridge
-- macawsbridgesbop:jacaranda_rope_bridge_stair
-- macawsbridgesbop:magic_bridge_pier
-- macawsbridgesbop:magic_log_bridge_middle
-- macawsbridgesbop:magic_log_bridge_stair
-- macawsbridgesbop:magic_rail_bridge
-- macawsbridgesbop:magic_rope_bridge_stair
-- macawsbridgesbop:mahogany_bridge_pier
-- macawsbridgesbop:mahogany_log_bridge_middle
-- macawsbridgesbop:mahogany_log_bridge_stair
-- macawsbridgesbop:mahogany_rail_bridge
-- macawsbridgesbop:mahogany_rope_bridge_stair
-- macawsbridgesbop:palm_bridge_pier
-- macawsbridgesbop:palm_log_bridge_middle
-- macawsbridgesbop:palm_log_bridge_stair
-- macawsbridgesbop:palm_rail_bridge
-- macawsbridgesbop:palm_rope_bridge_stair
-- macawsbridgesbop:redwood_bridge_pier
-- macawsbridgesbop:redwood_log_bridge_middle
-- macawsbridgesbop:redwood_log_bridge_stair
-- macawsbridgesbop:redwood_rail_bridge
-- macawsbridgesbop:redwood_rope_bridge_stair
-- macawsbridgesbop:rope_dead_bridge
-- macawsbridgesbop:rope_fir_bridge
-- macawsbridgesbop:rope_hellbark_bridge
-- macawsbridgesbop:rope_jacaranda_bridge
-- macawsbridgesbop:rope_magic_bridge
-- macawsbridgesbop:rope_mahogany_bridge
-- macawsbridgesbop:rope_palm_bridge
-- macawsbridgesbop:rope_redwood_bridge
-- macawsbridgesbop:rope_umbran_bridge
-- macawsbridgesbop:rope_willow_bridge
-- macawsbridgesbop:umbran_bridge_pier
-- macawsbridgesbop:umbran_log_bridge_middle
-- macawsbridgesbop:umbran_log_bridge_stair
-- macawsbridgesbop:umbran_rail_bridge
-- macawsbridgesbop:umbran_rope_bridge_stair
-- macawsbridgesbop:willow_bridge_pier
-- macawsbridgesbop:willow_log_bridge_middle
-- macawsbridgesbop:willow_log_bridge_stair
-- macawsbridgesbop:willow_rail_bridge
-- macawsbridgesbop:willow_rope_bridge_stair
-- mcwbridges:acacia_bridge_pier
-- mcwbridges:acacia_log_bridge_middle
-- mcwbridges:acacia_log_bridge_stair
-- mcwbridges:acacia_rail_bridge
-- mcwbridges:acacia_rope_bridge_stair
-- mcwbridges:birch_bridge_pier
-- mcwbridges:birch_log_bridge_middle
-- mcwbridges:birch_log_bridge_stair
-- mcwbridges:birch_rail_bridge
-- mcwbridges:birch_rope_bridge_stair
-- mcwbridges:cherry_bridge_pier
-- mcwbridges:cherry_log_bridge_middle
-- mcwbridges:cherry_log_bridge_stair
-- mcwbridges:cherry_rail_bridge
-- mcwbridges:cherry_rope_bridge_stair
-- mcwbridges:dark_oak_bridge_pier
-- mcwbridges:dark_oak_log_bridge_middle
-- mcwbridges:dark_oak_log_bridge_stair
-- mcwbridges:dark_oak_rail_bridge
-- mcwbridges:dark_oak_rope_bridge_stair
-- mcwbridges:jungle_bridge_pier
-- mcwbridges:jungle_log_bridge_middle
-- mcwbridges:jungle_log_bridge_stair
-- mcwbridges:jungle_rail_bridge
-- mcwbridges:jungle_rope_bridge_stair
-- mcwbridges:mangrove_bridge_pier
-- mcwbridges:mangrove_log_bridge_middle
-- mcwbridges:mangrove_log_bridge_stair
-- mcwbridges:mangrove_rail_bridge
-- mcwbridges:mangrove_rope_bridge_stair
-- mcwbridges:oak_bridge_pier
-- mcwbridges:oak_log_bridge_middle
-- mcwbridges:oak_log_bridge_stair
-- mcwbridges:oak_rail_bridge
-- mcwbridges:oak_rope_bridge_stair
-- mcwbridges:rope_acacia_bridge
-- mcwbridges:rope_birch_bridge
-- mcwbridges:rope_cherry_bridge
-- mcwbridges:rope_dark_oak_bridge
-- mcwbridges:rope_jungle_bridge
-- mcwbridges:rope_mangrove_bridge
-- mcwbridges:rope_oak_bridge
-- mcwbridges:rope_spruce_bridge
-- mcwbridges:spruce_bridge_pier
-- mcwbridges:spruce_log_bridge_middle
-- mcwbridges:spruce_log_bridge_stair
-- mcwbridges:spruce_rail_bridge
-- mcwbridges:spruce_rope_bridge_stair
-- minecraft:acacia_button
-- minecraft:acacia_door
-- minecraft:acacia_fence
-- minecraft:acacia_fence_gate
-- minecraft:acacia_hanging_sign
-- minecraft:acacia_leaves
-- minecraft:acacia_log
-- minecraft:acacia_planks
-- minecraft:acacia_pressure_plate
-- minecraft:acacia_sapling
-- minecraft:acacia_sign
-- minecraft:acacia_stairs
-- minecraft:acacia_trapdoor
-- minecraft:acacia_wood
-- minecraft:birch_button
-- minecraft:birch_door
-- minecraft:birch_fence
-- minecraft:birch_fence_gate
-- minecraft:birch_hanging_sign
-- minecraft:birch_leaves
-- minecraft:birch_log
-- minecraft:birch_planks
-- minecraft:birch_pressure_plate
-- minecraft:birch_sapling
-- minecraft:birch_sign
-- minecraft:birch_stairs
-- minecraft:birch_trapdoor
-- minecraft:birch_wood
-- minecraft:cherry_button
-- minecraft:cherry_door
-- minecraft:cherry_fence
-- minecraft:cherry_fence_gate
-- minecraft:cherry_hanging_sign
-- minecraft:cherry_leaves
-- minecraft:cherry_log
-- minecraft:cherry_planks
-- minecraft:cherry_pressure_plate
-- minecraft:cherry_sapling
-- minecraft:cherry_sign
-- minecraft:cherry_stairs
-- minecraft:cherry_trapdoor
-- minecraft:cherry_wood
-- minecraft:dark_oak_button
-- minecraft:dark_oak_door
-- minecraft:dark_oak_fence
-- minecraft:dark_oak_fence_gate
-- minecraft:dark_oak_hanging_sign
-- minecraft:dark_oak_leaves
-- minecraft:dark_oak_log
-- minecraft:dark_oak_planks
-- minecraft:dark_oak_pressure_plate
-- minecraft:dark_oak_sapling
-- minecraft:dark_oak_sign
-- minecraft:dark_oak_stairs
-- minecraft:dark_oak_trapdoor
-- minecraft:dark_oak_wood
-- minecraft:dead_brain_coral
-- minecraft:dead_brain_coral_block
-- minecraft:dead_brain_coral_fan
-- minecraft:dead_bubble_coral
-- minecraft:dead_bubble_coral_block
-- minecraft:dead_bubble_coral_fan
-- minecraft:dead_bush
-- minecraft:dead_fire_coral
-- minecraft:dead_fire_coral_block
-- minecraft:dead_fire_coral_fan
-- minecraft:dead_horn_coral
-- minecraft:dead_horn_coral_block
-- minecraft:dead_horn_coral_fan
-- minecraft:dead_tube_coral
-- minecraft:dead_tube_coral_block
-- minecraft:dead_tube_coral_fan
-- minecraft:jungle_button
-- minecraft:jungle_door
-- minecraft:jungle_fence
-- minecraft:jungle_fence_gate
-- minecraft:jungle_hanging_sign
-- minecraft:jungle_leaves
-- minecraft:jungle_log
-- minecraft:jungle_planks
-- minecraft:jungle_pressure_plate
-- minecraft:jungle_sapling
-- minecraft:jungle_sign
-- minecraft:jungle_stairs
-- minecraft:jungle_trapdoor
-- minecraft:jungle_wood
-- minecraft:mangrove_button
-- minecraft:mangrove_door
-- minecraft:mangrove_fence
-- minecraft:mangrove_fence_gate
-- minecraft:mangrove_hanging_sign
-- minecraft:mangrove_leaves
-- minecraft:mangrove_log
-- minecraft:mangrove_planks
-- minecraft:mangrove_pressure_plate
-- minecraft:mangrove_propagule
-- minecraft:mangrove_roots
-- minecraft:mangrove_sign
-- minecraft:mangrove_stairs
-- minecraft:mangrove_trapdoor
-- minecraft:mangrove_wood
-- minecraft:muddy_mangrove_roots
-- minecraft:oak_button
-- minecraft:oak_door
-- minecraft:oak_fence
-- minecraft:oak_fence_gate
-- minecraft:oak_hanging_sign
-- minecraft:oak_leaves
-- minecraft:oak_log
-- minecraft:oak_planks
-- minecraft:oak_pressure_plate
-- minecraft:oak_sapling
-- minecraft:oak_sign
-- minecraft:oak_stairs
-- minecraft:oak_trapdoor
-- minecraft:oak_wood
-- minecraft:spruce_button
-- minecraft:spruce_door
-- minecraft:spruce_fence
-- minecraft:spruce_fence_gate
-- minecraft:spruce_hanging_sign
-- minecraft:spruce_leaves
-- minecraft:spruce_log
-- minecraft:spruce_planks
-- minecraft:spruce_pressure_plate
-- minecraft:spruce_sapling
-- minecraft:spruce_sign
-- minecraft:spruce_stairs
-- minecraft:spruce_trapdoor
-- minecraft:spruce_wood
-- minecraft:stripped_acacia_log
-- minecraft:stripped_acacia_wood
-- minecraft:stripped_birch_log
-- minecraft:stripped_birch_wood
-- minecraft:stripped_cherry_log
-- minecraft:stripped_cherry_wood
-- minecraft:stripped_dark_oak_log
-- minecraft:stripped_dark_oak_wood
-- minecraft:stripped_jungle_log
-- minecraft:stripped_jungle_wood
-- minecraft:stripped_mangrove_log
-- minecraft:stripped_mangrove_wood
-- minecraft:stripped_oak_log
-- minecraft:stripped_oak_wood
-- minecraft:stripped_spruce_log
-- minecraft:stripped_spruce_wood
-- pamhc2trees:cherry_sapling
-- valhelsia_structures:acacia_post
-- valhelsia_structures:birch_post
-- valhelsia_structures:bundled_acacia_posts
-- valhelsia_structures:bundled_birch_posts
-- valhelsia_structures:bundled_dark_oak_posts
-- valhelsia_structures:bundled_jungle_posts
-- valhelsia_structures:bundled_lapidified_jungle_posts
-- valhelsia_structures:bundled_mangrove_posts
-- valhelsia_structures:bundled_oak_posts
-- valhelsia_structures:bundled_spruce_posts
-- valhelsia_structures:bundled_stripped_acacia_posts
-- valhelsia_structures:bundled_stripped_birch_posts
-- valhelsia_structures:bundled_stripped_dark_oak_posts
-- valhelsia_structures:bundled_stripped_jungle_posts
-- valhelsia_structures:bundled_stripped_lapidified_jungle_posts
-- valhelsia_structures:bundled_stripped_mangrove_posts
-- valhelsia_structures:bundled_stripped_oak_posts
-- valhelsia_structures:bundled_stripped_spruce_posts
-- valhelsia_structures:cut_acacia_post
-- valhelsia_structures:cut_birch_post
-- valhelsia_structures:cut_dark_oak_post
-- valhelsia_structures:cut_jungle_post
-- valhelsia_structures:cut_lapidified_jungle_post
-- valhelsia_structures:cut_mangrove_post
-- valhelsia_structures:cut_oak_post
-- valhelsia_structures:cut_spruce_post
-- valhelsia_structures:cut_stripped_acacia_post
-- valhelsia_structures:cut_stripped_birch_post
-- valhelsia_structures:cut_stripped_dark_oak_post
-- valhelsia_structures:cut_stripped_jungle_post
-- valhelsia_structures:cut_stripped_lapidified_jungle_post
-- valhelsia_structures:cut_stripped_mangrove_post
-- valhelsia_structures:cut_stripped_oak_post
-- valhelsia_structures:cut_stripped_spruce_post
-- valhelsia_structures:dark_oak_post
-- valhelsia_structures:jungle_post
-- valhelsia_structures:lapidified_jungle_button
-- valhelsia_structures:lapidified_jungle_fence
-- valhelsia_structures:lapidified_jungle_fence_gate
-- valhelsia_structures:lapidified_jungle_log
-- valhelsia_structures:lapidified_jungle_planks
-- valhelsia_structures:lapidified_jungle_post
-- valhelsia_structures:lapidified_jungle_pressure_plate
-- valhelsia_structures:lapidified_jungle_stairs
-- valhelsia_structures:lapidified_jungle_wood
-- valhelsia_structures:mangrove_post
-- valhelsia_structures:oak_post
-- valhelsia_structures:spruce_post
-- valhelsia_structures:stripped_acacia_post
-- valhelsia_structures:stripped_birch_post
-- valhelsia_structures:stripped_dark_oak_post
-- valhelsia_structures:stripped_jungle_post
-- valhelsia_structures:stripped_lapidified_jungle_post
-- valhelsia_structures:stripped_mangrove_post
-- valhelsia_structures:stripped_oak_post
-- valhelsia_structures:stripped_spruce_post
-- villagersplus:acacia_horticulturist_table
-- villagersplus:birch_horticulturist_table
-- villagersplus:cherry_horticulturist_table
-- villagersplus:dark_oak_horticulturist_table
-- villagersplus:jungle_horticulturist_table
-- villagersplus:mangrove_horticulturist_table
-- villagersplus:oak_horticulturist_table
-- villagersplus:spruce_horticulturist_table
-Total items found: 744
-
-550 items after that
-
-
-
-
+/*
 
 #####################################################################################
-Food Market Type
 
-PAMS HARVESTCRAFT
-edible only.
-from 2 or 4 mods?  some extra jellies and things...
-"pams" 1420 items.
-
-4 mods
-pamhc2crops - some - seeds and crops, has 20 baked, roasted, and tea items, grab those.
-pamhc2foodcore - most - 171 has flour, dough, water, milk, salt, stock, vinegar, yogurt, and cookware items (these dont stack so will filter out)
-pamhc2foodextended - most - 871 has cornmeal, pepper, and rest recipes, grab all for now.
-pamhc2trees - some?  sandwiches jelly? - none - no recipes.
-regular minecraft foods - dont forget.
-any other mods - dont forget.
-Filter by edible instead?
-TODO remove word "item" off of each
-Get game friendly name off each? or use code?
-total = 871 + 171 + 20 = 1062
 TODO add egg?
-
-
-
-#####################################################################################
-Stone Market Types:
-
-1-5	search stone, plus?	 (blackstone, sandstone)
-"stone" 101 items (no slabs), has stonecutter too, thats ok.
-Shows: * for stone, sandstone, redstone, blackstone, mossy, glowstone, end_stone, brimstone.
-(minus infested ones)
-6-7	bricks? all types?  47
-8	diorite, granite, andesite 5, 5,
-10	nether - 21 ok
-11	redstone? - done above
-12	deepslate - 26
-13	silver?  for now? - hmmm maybe not
-14	clay: blocks only - 1 only
-15	terracotta - 33
-16	tuff (only one) "minecraft:tuff"	- 1 only
-	(skip lapis)	half chance only
-	Any weird special list?
-17	quartz - 13
-18	brimstone - done above
-19	calcite - 1 only
-20	basalt - 3
-21	sands - a bunch -sandwich
-22	glass - 36
-23	amethyst - 2 only - _bud minus a couple blocks,
-24	magma_block - 1
-25	obsidian - 2
-26 - mud - minus mud cake.
-500ish?
-
-
-#####################################################################################
-General Market Type:
-all flowers, dyes, tag?
-    dandelion
-    poppy
-    blue orchid
-    allium
-    oxeye_daisy
-    azure_bluet
-    red_tulip
-    orange_tulip
-    white_tulip
-    pink_tulip
-    cornflower
-    lily_of_the_valley
-    wither_rose
-    pink_petals
-    cactus
-    sunflower
-    lilac
-    rose_bush
-    peony
-    lily_pad
-    sea_grass
-    kelp
-
-dyes
-    minecraft:black_dye
-    minecraft:blue_dye
-    minecraft:brown_dye
-    minecraft:cyan_dye
-    minecraft:gray_dye
-    minecraft:green_dye
-    minecraft:light_blue_dye
-    minecraft:light_gray_dye
-    minecraft:lime_dye
-    minecraft:magenta_dye
-    minecraft:orange_dye
-    minecraft:pink_dye
-    minecraft:purple_dye
-    minecraft:red_dye
-    minecraft:white_dye
-    minecraft:yellow_dye
-
-red mushroom, brown mushroom
-    minecraft:brown_mushroom
-    minecraft:red_mushroom
-all concrete powders skip concrete, pain to wet
-    minecraft:black_concrete_powder
-    minecraft:blue_concrete_powder
-    minecraft:brown_concrete_powder
-    minecraft:cyan_concrete_powder
-    minecraft:gray_concrete_powder
-    minecraft:green_concrete_powder
-    minecraft:light_blue_concrete_powder
-    minecraft:light_gray_concrete_powder
-    minecraft:lime_concrete_powder
-    minecraft:magenta_concrete_powder
-    minecraft:orange_concrete_powder
-    minecraft:pink_concrete_powder
-    minecraft:purple_concrete_powder
-    minecraft:red_concrete_powder
-    minecraft:white_concrete_powder
-    minecraft:yellow_concrete_powder
-
-all non wooden furniture
-    sofa, trampoline odd skip!, cooler, grill, colored kitchen counters only,
-    colored kitchen drawers, and kitchen sink
-    stem] [CHAT] Items matching "sofa":
-    cfm:black_sofa
-    cfm:blue_sofa
-    cfm:brown_sofa
-    cfm:cyan_sofa
-    cfm:gray_sofa
-    cfm:green_sofa
-    cfm:light_blue_sofa
-    cfm:light_gray_sofa
-    cfm:lime_sofa
-    cfm:magenta_sofa
-    cfm:orange_sofa
-    cfm:pink_sofa
-    cfm:purple_sofa
-    cfm:rainbow_sofa
-    cfm:red_sofa
-    cfm:white_sofa
-    cfm:yellow_sofa
-
-    cfm:black_cooler
-    cfm:blue_cooler
-    cfm:brown_cooler
-    cfm:cyan_cooler
-    cfm:gray_cooler
-    cfm:green_cooler
-    cfm:light_blue_cooler
-    cfm:light_gray_cooler
-    cfm:lime_cooler
-    cfm:magenta_cooler
-    cfm:orange_cooler
-    cfm:pink_cooler
-    cfm:purple_cooler
-    cfm:red_cooler
-    cfm:white_cooler
-    cfm:yellow_cooler
-    
-    cfm:black_grill
-    cfm:blue_grill
-    cfm:brown_grill
-    cfm:cyan_grill
-    cfm:gray_grill
-    cfm:green_grill
-    cfm:light_blue_grill
-    cfm:light_gray_grill
-    cfm:lime_grill
-    cfm:magenta_grill
-    cfm:orange_grill
-    cfm:pink_grill
-    cfm:purple_grill
-    cfm:red_grill
-    cfm:white_grill
-    cfm:yellow_grill
-
-
-    cfm:black_kitchen_counter
-    cfm:black_kitchen_drawer
-    cfm:black_kitchen_sink
-    cfm:blue_kitchen_counter
-    cfm:blue_kitchen_drawer
-    cfm:blue_kitchen_sink
-    cfm:brown_kitchen_counter
-    cfm:brown_kitchen_drawer
-    cfm:brown_kitchen_sink
-    cfm:cyan_kitchen_counter
-    cfm:cyan_kitchen_drawer
-    cfm:cyan_kitchen_sink
-    cfm:gray_kitchen_counter
-    cfm:gray_kitchen_drawer
-    cfm:gray_kitchen_sink
-    cfm:green_kitchen_counter
-    cfm:green_kitchen_drawer
-    cfm:green_kitchen_sink
-    cfm:light_blue_kitchen_counter
-    cfm:light_blue_kitchen_drawer
-    cfm:light_blue_kitchen_sink
-    cfm:light_gray_kitchen_counter
-    cfm:light_gray_kitchen_drawer
-    cfm:light_gray_kitchen_sink
-    cfm:lime_kitchen_counter
-    cfm:lime_kitchen_drawer
-    cfm:lime_kitchen_sink
-    cfm:magenta_kitchen_counter
-    cfm:magenta_kitchen_drawer
-    cfm:magenta_kitchen_sink
-    cfm:orange_kitchen_counter
-    cfm:orange_kitchen_drawer
-    cfm:orange_kitchen_sink
-    cfm:pink_kitchen_counter
-    cfm:pink_kitchen_drawer
-    cfm:pink_kitchen_sink
-    cfm:purple_kitchen_counter
-    cfm:purple_kitchen_drawer
-    cfm:purple_kitchen_sink
-    cfm:red_kitchen_counter
-    cfm:red_kitchen_drawer
-    cfm:red_kitchen_sink
-    cfm:white_kitchen_counter
-    cfm:white_kitchen_drawer
-    cfm:white_kitchen_sink
-    cfm:yellow_kitchen_counter
-    cfm:yellow_kitchen_drawer
-    cfm:yellow_kitchen_sink
-
-
-all candles
-minecraft:black_candle
-minecraft:blue_candle
-minecraft:brown_candle
-minecraft:candle
-minecraft:cyan_candle
-minecraft:gray_candle
-minecraft:green_candle
-minecraft:light_blue_candle
-minecraft:light_gray_candle
-minecraft:lime_candle
-minecraft:magenta_candle
-minecraft:orange_candle
-minecraft:pink_candle
-minecraft:purple_candle
-minecraft:red_candle
-minecraft:white_candle
-minecraft:yellow_candle
-
-all banners
-minecraft:black_banner
-minecraft:blue_banner
-minecraft:brown_banner
-minecraft:cyan_banner
-minecraft:gray_banner
-minecraft:green_banner
-minecraft:light_blue_banner
-minecraft:light_gray_banner
-minecraft:lime_banner
-minecraft:magenta_banner
-minecraft:orange_banner
-minecraft:pink_banner
-minecraft:purple_banner
-minecraft:red_banner
-minecraft:white_banner
-minecraft:yellow_banner
-
-all copper items
-minecraft:copper_block
-minecraft:copper_ingot
-minecraft:cut_copper
-minecraft:cut_copper_stairs
-minecraft:exposed_copper
-minecraft:exposed_cut_copper
-minecraft:exposed_cut_copper_stairs
-minecraft:oxidized_copper
-minecraft:oxidized_cut_copper
-minecraft:oxidized_cut_copper_stairs
-minecraft:waxed_copper_block
-minecraft:waxed_cut_copper
-minecraft:waxed_cut_copper_stairs
-minecraft:waxed_exposed_copper
-minecraft:waxed_exposed_cut_copper
-minecraft:waxed_exposed_cut_copper_stairs
-minecraft:waxed_oxidized_copper
-minecraft:waxed_oxidized_cut_copper
-minecraft:waxed_oxidized_cut_copper_stairs
-minecraft:waxed_weathered_copper
-minecraft:waxed_weathered_cut_copper
-minecraft:waxed_weathered_cut_copper_stairs
-minecraft:weathered_copper
-minecraft:weathered_cut_copper
-minecraft:weathered_cut_copper_stairs
-
-
-iron items (how) not much, skip.
-
-
-NO wood items, stone items, or fooditems.
-NO weapons, armor
-
-all wools
-    minecraft:black_wool
-    minecraft:blue_wool
-    minecraft:brown_wool
-    minecraft:cyan_wool
-    minecraft:gray_wool
-    minecraft:green_wool
-    minecraft:light_blue_wool
-    minecraft:light_gray_wool
-    minecraft:lime_wool
-    minecraft:magenta_wool
-    minecraft:orange_wool
-    minecraft:pink_wool
-    minecraft:purple_wool
-    minecraft:red_wool
-    minecraft:white_wool
-    minecraft:yellow_wool
-
-MOB drops - some - easier ones.
-    minecraft:arrow
-    minecraft:feather
-    minecraft:slime_ball
-    minecraft:bone
-    minecraft:string
-    minecraft:gunpowder
-    minecraft:leather
-    minecraft:rabbit_foot
-    iceandfire:pixie_dust
-    alexsmobs:kangaroo_hide
-    minecraft:rabbit_hide
-    untamedwilds:hide_ashen
-    untamedwilds:hide_beige
-    untamedwilds:hide_black
-    untamedwilds:hide_brown
-    untamedwilds:hide_golden
-    untamedwilds:hide_gray
-    untamedwilds:hide_orange
-    untamedwilds:hide_tan
-    untamedwilds:hide_white
-    alexmobs:bison_fur
-    monsterplus:crystal_shard
-    monsterplus:crystal_clump
-    iceandfire:silver_ingot
-    iceandfire:dragon_bone
-    biomesoplenty:lavender
-    biomesoplenty:tall_lavender
-    biomesoplenty:pink_daffodil
-    biomesoplenty:goldenrod
-    biomesoplenty:blue_hydrangea
-    rats:rat_pelt
-
-
-
-
-Prismarine items - #
-    minecraft:dark_prismarine
-    minecraft:dark_prismarine_stairs
-    minecraft:prismarine
-    minecraft:prismarine_brick_stairs
-    minecraft:prismarine_bricks
-    minecraft:prismarine_crystals
-    minecraft:prismarine_shard
-    minecraft:prismarine_stairs
-    minecraft:prismarine_wall
-
-snow block, ice block, packed ice block.
-    minecraft:snow_block
-    minecraft:ice
-    minecraft:packed_ice
-    minecraft:blue_ice
-
-sculk blocks
-    minecraft:sculk
-    minecraft:sculk_catalyst
-    minecraft:sculk_sensor
-
-soul torch, soul lantern
-    minecraft:soul_torch
-    minecraft:soul_lantern
-    minecraft:soul_campfire
-    minecraft:campfire
-    minecraft:lantern
-
-book, paper, bookshelf
-    minecraft:book
-    minecraft:bookshelf
-    minecraft:paper
-    minecraft:writable_book
-
-flower pot
-    minecraft:flower_pot
-
-sleeping bags
-    valhelsia_structures:black_sleeping_bag
-    valhelsia_structures:blue_sleeping_bag
-    valhelsia_structures:brown_sleeping_bag
-    valhelsia_structures:cyan_sleeping_bag
-    valhelsia_structures:gray_sleeping_bag
-    valhelsia_structures:green_sleeping_bag
-    valhelsia_structures:light_blue_sleeping_bag
-    valhelsia_structures:light_gray_sleeping_bag
-    valhelsia_structures:lime_sleeping_bag
-    valhelsia_structures:magenta_sleeping_bag
-    valhelsia_structures:orange_sleeping_bag
-    valhelsia_structures:pink_sleeping_bag
-    valhelsia_structures:purple_sleeping_bag
-    valhelsia_structures:red_sleeping_bag
-    valhelsia_structures:white_sleeping_bag
-    valhelsia_structures:yellow_sleeping_bag
-
-
-glazed jars
-    iceandfire:pixie_jar_empty
-    valhelsia_structures:big_black_glazed_jar
-    valhelsia_structures:big_blue_glazed_jar
-    valhelsia_structures:big_brown_glazed_jar
-    valhelsia_structures:big_cyan_glazed_jar
-    valhelsia_structures:big_glazed_jar
-    valhelsia_structures:big_gray_glazed_jar
-    valhelsia_structures:big_green_glazed_jar
-    valhelsia_structures:big_light_blue_glazed_jar
-    valhelsia_structures:big_light_gray_glazed_jar
-    valhelsia_structures:big_lime_glazed_jar
-    valhelsia_structures:big_magenta_glazed_jar
-    valhelsia_structures:big_orange_glazed_jar
-    valhelsia_structures:big_pink_glazed_jar
-    valhelsia_structures:big_purple_glazed_jar
-    valhelsia_structures:big_red_glazed_jar
-    valhelsia_structures:big_white_glazed_jar
-    valhelsia_structures:big_yellow_glazed_jar
-    valhelsia_structures:black_glazed_jar
-    valhelsia_structures:blue_glazed_jar
-    valhelsia_structures:brown_glazed_jar
-    valhelsia_structures:cracked_big_glazed_jar
-    valhelsia_structures:cracked_glazed_jar
-    valhelsia_structures:cyan_glazed_jar
-    valhelsia_structures:glazed_jar
-    valhelsia_structures:gray_glazed_jar
-    valhelsia_structures:green_glazed_jar
-    valhelsia_structures:light_blue_glazed_jar
-    valhelsia_structures:light_gray_glazed_jar
-    valhelsia_structures:lime_glazed_jar
-    valhelsia_structures:magenta_glazed_jar
-    valhelsia_structures:orange_glazed_jar
-    valhelsia_structures:pink_glazed_jar
-    valhelsia_structures:purple_glazed_jar
-    valhelsia_structures:red_glazed_jar
-    valhelsia_structures:white_glazed_jar
-    valhelsia_structures:yellow_glazed_jar
-
-
-TODO check other mods too.
-
-
-#####################################################################################
-TODO maybe make a marketadmin command, list all those in a diff file....
-May have a few helpers.
-
-
-
-
+other easy stuff from netherworld.
 
 
  */

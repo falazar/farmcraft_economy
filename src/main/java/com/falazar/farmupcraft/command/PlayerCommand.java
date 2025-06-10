@@ -98,10 +98,10 @@ public class PlayerCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             PlayerData player = getPlayer(source);
             ServerLevel serverLevel = source.getLevel();
 
-//            LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
             source.sendSuccess(() -> Component.literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()) + " ----------")
@@ -113,6 +113,7 @@ public class PlayerCommand {
             Registry<Coin> coinRegistry = serverLevel.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
             int bronzeCoins = wallet.get(bronzeCoin);
+            LOGGER.info("DEBUG: Player info bronze coins: " + bronzeCoins);
             source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
 
             // STEP 3: Pull home village info if set.
@@ -130,6 +131,7 @@ public class PlayerCommand {
                 }
             }
         } catch (Exception ex) {
+            LOGGER.info ("DEBUG: Player info failed test name: " + source.getTextName());
             source.sendFailure(Component.literal("player info Exception thrown - see log"));
             ex.printStackTrace();
         }

@@ -1,5 +1,9 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.PlayerData;
+import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.util.CustomLogger;
@@ -18,6 +22,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -27,11 +32,12 @@ import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
+import org.jetbrains.annotations.NotNull;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
 
 import static com.falazar.farmupcraft.CropsManager.getBiomeLangKey;
+import static com.falazar.farmupcraft.command.VillageCommand.getVillageBiomes;
 
 public class ShowBiomesCommand {
     public static final CustomLogger LOGGER = new CustomLogger(ShowBiomesCommand.class.getSimpleName());
@@ -66,6 +72,20 @@ public class ShowBiomesCommand {
                 );
         // Add the "cropbiomes" sub-command to the "show" command
         builder.then(cropbiomesBuilder);
+
+        // Define the "biomecrops" sub-command with biome name argument.
+        LiteralArgumentBuilder<CommandSourceStack> biomecropsBuilder = Commands.literal("biomecrops")
+                .then(Commands.argument("biome", StringArgumentType.string())
+                        .executes(c -> {
+                            // Handle the biomecrops command here
+                            String biomeName = StringArgumentType.getString(c, "biome");
+                            // Implement your logic for showing biome crops
+                            showBiomeCrops(c.getSource(), biomeName);
+                            return 0;
+                        })
+                );
+        // Add the "biomecrops" sub-command to the "show" command
+        builder.then(biomecropsBuilder);
 
         // Register the main "show" command with the dispatcher
         pDispatcher.register(builder);
@@ -108,14 +128,17 @@ public class ShowBiomesCommand {
             return;
         }
         // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component
-        Component biomesListShow = manager.getBiomesForItem(cropItem).stream()
-                .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-                .map(Component::getString) // Convert to plain text for uniqueness check
-                .distinct() // Ensure each biome is unique
-                .sorted() // Sort the biomes alphabetically
-                .map(name -> Component.literal(name)) // Convert back to Component
-                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
-                .orElse(Component.literal("None"));
+//        Component biomesListShow = manager.getBiomesForItem(cropItem).stream()
+//                .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
+//                .map(Component::getString) // Convert to plain text for uniqueness check
+//                .distinct() // Ensure each biome is unique
+//                .sorted() // Sort the biomes alphabetically
+//                .map(name -> Component.literal(name)) // Convert back to Component
+//                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+//                .orElse(Component.literal("None"));
+
+        // TODO MAKE METHOD - remove other one use  here... from cropsmanager.
+        Component biomesListShow = getBiomeCropsChat(playerSource, manager, cropItem);
 
         // Create the final message component
         // TODO chat Code here can change colors easily for us, use in other areas.
@@ -132,6 +155,116 @@ public class ShowBiomesCommand {
         playerSource.displayClientMessage(component, false);
     }
 
+    public static @NotNull Component getBiomeCropsChat(Player playerSource, BiomeRulesManager manager, Item cropItem) {
+        // STEP 1: Get the village data for the player.
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+        PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
+        VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+
+        // STEP 2: Get the list of biomes in the village.
+        Map<String, Integer> biomes = getVillageBiomes(villageData);
+        // Map to a single set of biomes.
+        Set<String> biomeSet = new HashSet<>();
+        for (String biomeString : biomes.keySet()) {
+            biomeSet.add(biomeString);
+        }
+
+        // STEP 3: Get the biomes for the crop item and create components for each biome.
+        List<MutableComponent> biomeComponents = manager.getBiomesForItem(cropItem).stream()
+                .map(b -> {
+                    String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
+//                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
+                    String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
+                    biomeName2 = biomeName2.replace(".", ":");
+//                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
+
+                    ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
+                    return Component.translatable(biomeName).withStyle(color);
+                })
+                .distinct() // Ensure each biome is unique
+                .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
+                .toList();
+
+        // Step 4: Combine the components into a single component
+        Component biomesListShow = biomeComponents.stream()
+                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                .orElse(Component.literal("None"));
+        return biomesListShow;
+    }
+
+    // Given a biome name show all crops you can plant in this biome.
+    public static void showBiomeCrops(CommandSourceStack source, String biomeName) {
+        // Implement your logic for showing biome crops here
+        Player playerSource = source.getPlayer();
+
+        LOGGER.info("DEBUG: biomeName is " + biomeName);
+
+        // MAKE all a method, too complicated!
+        // STEP 1: Load biome rules. The biome has rules defined for what can happen in it or not!
+        BiomeRulesManager manager = BiomeRulesManager.get(source.getLevel());
+        if (manager == null || !manager.hasRules()) return;
+
+        // TODO do i need plains or whole name minecraft:plains or biomesoplenty:XXXXX
+        // STEP 2: Get the biome from the name from main item thing registry.
+        String fullBiomeName = "minecraft:" + biomeName;
+        ResourceLocation biomeResLoc = new ResourceLocation(fullBiomeName);
+        Biome biome = source.getLevel().registryAccess().registryOrThrow(Registries.BIOME).get(biomeResLoc);
+        // biome not found orchard.
+        // plains crops none.  both none now.
+        if (biome == null) {
+            // Second guess with a biomesoplenty biome name.
+            fullBiomeName = "biomesoplenty:" + biomeName;
+            biomeResLoc = new ResourceLocation(fullBiomeName);
+            biome = source.getLevel().registryAccess().registryOrThrow(Registries.BIOME).get(biomeResLoc);
+
+            if (biome == null) {
+                playerSource.displayClientMessage(Component.literal("Biome not found: " + biomeName), false);
+                return;
+            }
+        }
+        LOGGER.info("DEBUG1: biome is " + biome);
+        Holder<Biome> biomeHolder = Holder.direct(biome);
+        BiomeRulesInstance instance = manager.getBiomeRules(biomeHolder);
+        if (instance == null) return;
+        LOGGER.info("DEBUG2: instance is " + instance);
+
+        // STEP 3: List the crops allowed in the current biome
+        Component cropsAllowedShow = instance.getCrops((ServerLevel) source.getLevel()).stream()
+                // Map item to a custom string for special cases and then translate
+                .map(item -> {
+                    String locationString = item.getDescriptionId();
+                    String translatedName = Component.translatable(locationString).getString();
+
+                    // Handle special cases where we want to avoid filtering out specific seeds
+                    if (locationString.contains("sesameseedsseeditem")) {
+                        translatedName = "Sesame";
+                    } else if (locationString.contains("mustardseedsseeditem")) {
+                        translatedName = "Mustard";
+                    } else if (locationString.contains("sesameseedsitem")) {
+                        translatedName = "Sesame Seeds"; // Same display name to keep only one of them
+                    } else if (locationString.contains("mustardseedsitem")) {
+                        translatedName = "Mustard Seeds"; // Same display name to keep only one of them
+                    } else if (locationString.contains("wheat_seeds")) {
+                        translatedName = "Wheat"; // Same display name to keep only one of them
+                    }
+
+                    return translatedName; // Return the adjusted or original translated name
+                })
+                // Filter out the remaining names that still include "Seed" or "Seeds" but not the special cases
+                .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
+                // Sort the remaining names alphabetically
+                .sorted()
+                .distinct() // Ensure each name is unique
+                // Map the filtered names back to Component
+                .map(Component::literal)
+                // Join the names with commas
+                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
+                .orElse(Component.literal("None"));
+
+        // Create the final message component
+        MutableComponent component = Component.literal("§bCrops you can plant in " + biomeName + " §3").append(cropsAllowedShow);
+        playerSource.displayClientMessage(component, false);
+    }
 
     // Show biomes from a block radius from standing point.
     public static int showBiomes(CommandContext<CommandSourceStack> c, Vec3 pos, int radius) {

@@ -548,4 +548,3 @@ valhelsia_structures:stripped_jungle_post
 valhelsia_structures:stripped_mangrove_post
 valhelsia_structures:stripped_oak_post
 valhelsia_structures:stripped_spruce_post
-

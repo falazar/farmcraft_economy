@@ -1,7 +1,6 @@
 package com.falazar.farmupcraft.datagen;
 
 import biomesoplenty.api.biome.BOPBiomes;
-import com.falazar.farmupcraft.CropsManager;
 import com.falazar.farmupcraft.FarmUpCraft;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;

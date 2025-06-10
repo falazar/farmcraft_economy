@@ -1,23 +1,68 @@
 
 TODO LIST:
 
-TODO BUGS: not saving player coins correctly, not showing.
+TODO BUGS: not saving player coins correctly, not showing. change to just coins.
     Not showing wallet correctly on overlay
-    Overlay not always updating after an action, like buy plot or village?
+    Overlay not updating after an action, like buy plot or village?
     GIVE player a UUID field properly
+
+    fIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
+    
 END BUGS AREA
 
 
 GENERAL SOON:
-    TODO NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
+    DONE NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
+        - modify to check player sol diversity, and last longer for longer 50 60 70
 
-    TODO Add biomes info onto plot info and format and color it.
+    DONE Add biomes info onto plot info and format and color it.
 
-    TODO Make find structures command have a top bottom and all options. optional distance?
+    DONE - make a book with writing in it.
 
-    TODO -Diamond Border change into a toggleAble command.
+    DONE - place a book in a chest.
+
+    TODO - show a description of village show in town center plot.
+        only show once an hour, cache show message.
+
+    TODO - Create a find caves command - find largest caves in area, save area to DB for mob use.
+
+    DONE? TODO - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
+
+    NOT DONE? - change center plot to a "village center" name.
+
+    TODO - make tester method to find all nearby biomes to village as well.  Just get center BlockPos for each one out to
+        range X, and store them all with village, this will allow us to pick nearby biomes for village quests.
+
+
+    TODO - Create a /house command for house gethouse in front of you all allow copy with worlededit? or get dims to call worldedit commands
+        push back 3 type command.
+        stretch left 2 type command
+
+    TODO - figure out how to control growth for village, population field?  bonus for taking over structures, bonus for villagers (limited maxs)
+
+    TODO - have a daily task sign in village center, with a list of tasks that would give more daily XP.
+        ie hunt mobs, explore, fix town roads, fix town walls, breed villagers, breed animals, plant trees, plant crops, harvest crops, build a house, build a farm, build a mine, build a nursery, build a port, build a rail station, build a market.
+
+    TODO - NPCS maybe save villager names to village to respawn them if we feed and breed a villager?
+
+    DONE - make planting saplings and getting saplings much harder.  easier in nursery.
+
+    HALF -  Make find structures command have a top bottom and all options. optional distance?
+     not quite working on some.
+
+    TODO - Diamond Border change into a toggleAble command.
 
     TODO - Add clickable link in /player info that goes to the village info automatically.
+
+    TODO - buyable eggs for villagers if we have less than 3 alive?
+
+    TODO - break up CropsManager into several other things.  should be events or?  check another project?
+
+    // Recipes and boosts and such
+    TODO - make emu and duck eggs usable in cooking.
+    TODO - make cows and animals use a new grain per village. alfalfa has a use then.
+    DONE - make tree planting fai often, except fruit ones?
+    DONE - give more bonus fruit for ones in an orchard!  great area to plant.
 
 
 MARKETS - Get them up and fully working.
@@ -28,26 +73,32 @@ MARKETS - Get them up and fully working.
   --Allow player to sell all in inventory for a market type. -JAMES
     -- mostly done - check wallet saving.
   --Graphical UI laters.
-  --TODO Market command Apdates prices daily. -JAMES
+  --TODO Market command Updates prices daily. -JAMES
+    -- auto run
   --TODO Market command Adds new random items daily. -JAMES
+    -- auto run
 
 VILLAGES:
-  --TODO Add coins to village, single value?
-  --TODO Create addCoins() method to village and subtractCoins() method.
-  --TODO Add player putCoins and takeCoins methods
+  --DONE Add coins to village, single value?
+  --DONE Create addCoins() method to village and subtractCoins() method.
+  --DONE Add player putCoins and takeCoins methods
 
-  --TODO Add a setLevel method to village
-  --TODO Add chunks when level is grown
-  --TODO Add chunks randomly along edges, half chance in oceans...
+  --DONE Add a setLevel method to village
+  --DONE Add chunks when level is grown
+  --DONE Add chunks randomly along edges, half chance in oceans...
+  --TODO auto grab any with 3-4 of 4 sides added already!  removes holes
   --TODO ignore (dont shrink, if level is reduced)
-  --TODO Add levelUpVillage() method that adds one level.
+  --TODO Add levelUpVillage() method that adds one level. require growth next
+  --TODO get captured structures in village, must be visited, and plot claimed, can add growth.
 
 PLAYERS:
     TODO Add level and experience fields.
-    TODO check easy access to skills, number of stone mined, number of chickens killed etc?
+    TODO PARTIALLY DONE check easy access to skills, number of stone mined, number of chickens killed etc?
+    TODO Add exp for being online and in a diff chunk, for now, every 5 mins?
     TODO add experience adder on regular things.
     TODO add exp gain for Quests...
 
+MAP
 Get a way to show village areas (or others) on JourneyMap
     --TODO They had a decent integration a couple years back, should be able to use.
     --REF: https://github.com/TeamJM/journeymap-api/blob/1.20.x_1.9-forge/src/main/java/example/mod/client/plugin/SamplePolygonOverlayFactory.java
@@ -57,14 +108,17 @@ Get a way to show village areas (or others) on JourneyMap
 #############################################################
 Adventure Areas
     TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
+    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
+    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
 
 Create find islands and lakes command
-    -- Command created - MOSTLY DONE
+    -- TODO MOSTLY DONE Command created -
     -- TODO Create new area object, or use ChunkData ? need y values.
     -- TODO Save to database
+    -- Create a find caves command - find largest caves in area, save area to DB for mob use.
 
 Find nearby structures
-    -- TODO
+    -- TODO partially done
 
 NPCS:
     -- DONE - Locate nearby villagers
@@ -97,6 +151,10 @@ NPCS:
     -- connect to outside db or text files?
     -- use ai to add descriptions profiles?
     -- Create a mayor?
+    MOBS -
+        TODO create a friendly mob npc
+        TODO make a mob aggressive
+        TODO make a mob passive
 
 QUESTS:
     TODO Use the saved quest structure and have objects for

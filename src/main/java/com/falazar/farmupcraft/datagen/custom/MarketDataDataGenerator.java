@@ -37,13 +37,13 @@ public class MarketDataDataGenerator extends MarketDataProvider {
 
         Coin bronzeCoin =  coinRegistry.get(CoinRegistry.BRONZE_COIN).get().get();
         
-        for(Item item : ForgeRegistries.ITEMS.getValues()) {
-            if(item.getDescriptionId().contains("pamhc2crops") || item.getDescriptionId().contains("pamhc2foodcore") || item.getDescriptionId().contains("pamhc2foodextended")) {
-                data.add(new GoodsData(item, new CurrencyCost(bronzeCoin, 10)));
-            }
-        }
-
-        pWriter.accept(new MarketDataConsumer(prefix("market"), new MarketData(data)));
+//        for(Item item : ForgeRegistries.ITEMS.getValues()) {
+//            if(item.getDescriptionId().contains("pamhc2crops") || item.getDescriptionId().contains("pamhc2foodcore") || item.getDescriptionId().contains("pamhc2foodextended")) {
+//                data.add(new GoodsData(item, new CurrencyCost(bronzeCoin, 10)));
+//            }
+//        }
+//
+//        pWriter.accept(new MarketDataConsumer(prefix("market"), new MarketData(data)));
     }
 
 

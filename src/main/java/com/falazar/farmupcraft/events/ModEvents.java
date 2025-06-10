@@ -1,10 +1,7 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
-import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.PlayerData;
-import com.falazar.farmupcraft.data.VillageData;
-import com.falazar.farmupcraft.data.WorldData;
+import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.database.*;
 import com.falazar.farmupcraft.database.serializers.*;
@@ -18,6 +15,7 @@ import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.server.ServerLifecycleHooks;
 
+import java.util.ArrayList;
 import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.prefix;
@@ -47,6 +45,13 @@ public class ModEvents {
             .setKeySerializer(new UUIDDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(VillageData.CODEC))
             .autoSync()
+            .build();
+
+    // NOTE: temp changed to NEW to avoid conflicts with old database.
+    private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database_NEW"))
+            .setKeySerializer(new StringDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(GoodsData.CODEC))
+            .autoSync()  // TODO TEST TODO TEMP DISABLED DUE TO SIZE ISSUES SCOUTER.
             .build();
 
     private static final DataBaseAccess<Integer, WorldData> WORLD_DATA_DATABASE = new DataBaseBuilder<Integer, WorldData>(prefix("world_data_database"))
@@ -90,12 +95,16 @@ public class ModEvents {
         return getDatabase(BIOME_RULES_DATABASE);
     }
 
-    public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
-        return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
-    }
-
     public static DataBase<UUID, VillageData> getVillageDatabase(Level level) {
         return getDatabase(VILLAGE_DATABASE, level);
+    }
+
+    public static DataBase<String, GoodsData> getGoodsDataDatabase() {
+        return getDatabase(GOODS_DATA_DATABASE);
+    }
+
+    public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
+        return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
 
     public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access, Level level) {
@@ -111,6 +120,21 @@ public class ModEvents {
                     DataBaseManager.registerDataBaseAccess(CHUNK_DATA_DATABASE.getDatabaseName(), CHUNK_DATA_DATABASE);
                     DataBaseManager.registerDataBaseAccess(PLAYER_DATABASE.getDatabaseName(), PLAYER_DATABASE);
                     DataBaseManager.registerDataBaseAccess(VILLAGE_DATABASE.getDatabaseName(), VILLAGE_DATABASE);
+
+                    // NOTE: Comment out to load without this DB which has size issue.
+                    DataBaseManager.registerDataBaseAccess(GOODS_DATA_DATABASE.getDatabaseName(), GOODS_DATA_DATABASE);
+
+                    // Clear the database after loading - didnt work
+//                    DataBase<String, GoodsData> goodsDb = getDatabase(GOODS_DATA_DATABASE);
+//                    goodsDb.clearDataBase(true); // This removes all entries
+
+                    // Clear only the goods database - didnt work
+//                    DataBase<String, GoodsData> goodsDb = getDatabase(GOODS_DATA_DATABASE);
+//                    for (Object key : new ArrayList<>(goodsDb.getKeys())) {
+//                        goodsDb.removeDataAsync(key.toString(), null);
+//                    }
+//                    goodsDb.setDirty();
+
                     DataBaseManager.registerDataBaseAccess(WORLD_DATA_DATABASE.getDatabaseName(), WORLD_DATA_DATABASE);
                 }
         );

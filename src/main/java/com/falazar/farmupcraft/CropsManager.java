@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
@@ -28,6 +29,8 @@ import net.minecraft.tags.StructureTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
@@ -46,7 +49,6 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
-import net.minecraftforge.common.world.ForgeChunkManager;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
@@ -68,7 +70,7 @@ import static org.apache.commons.lang3.StringUtils.replace;
 public class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
 
-    // TODO bonemeal recipe too easy powerful, make it make 1 instead of three.
+    // Bonemeal recipe was too easy powerful, made it make 1 instead of 3.
 
     // Main Method here:
     // When trying to plant crops, check our biome rules to see what crops are allowed there.
@@ -79,19 +81,20 @@ public class CropsManager {
         Player player = (Player) event.getEntity();
         if (player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
         if (player.isCreative()) {
-            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
+//            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
             return;
         }
 
         // STEP 2: Test if target block is farmland, if not leave.
-
-
         Level level = event.getLevel();
         BlockPos clickedPos = event.getPos();
         BlockState clickedState = level.getBlockState(clickedPos);
 
         // Return if clicked block is not farmland
         boolean isFarmBelow = false;
+
+        // Notice allowing some planting in non farm plot areas, if already plowed.
+
 
         // Return if the placement would be on top of farmland (if face is known)
         if (event.getFace() != null) {
@@ -103,66 +106,25 @@ public class CropsManager {
                 isFarmBelow = true;
             }
         }
-
         if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
             return;
         }
 
-        // TODO sugarcane and sweetberries.
 
-        // STEP 3: Test if holding a vanilla or harvestcraft item, if not leave.
+        // STEP 3: If sugarcane or sweetberries, make sure they are on a farm plot only.
         ItemStack stack = event.getItemStack();
-        if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
-            return;
+        // TODO TEST sugarcane and sweetberries.
+        if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
+            LOGGER.info("DEBUG: sugarcane or sweetberries, farm check.");
+            if (!getPlotType(clickedPos, level).equals("farm")) {
+                event.setCanceled(true);
+                return;
+            }
         }
 
-        // DEBUG ZONE:
-        if (stack.is(Items.WHEAT_SEEDS)) {
-            LOGGER.info("DEBUG: is a wheat seeds crop, running DEBUG METHOD.");
-//            findNearestVillage(event);
-
-            // set some loaded chunks for farms now.
-
-//            ForgeChunkManager chunkManager = ForgeChunkManager.
-            // Get the chunk manager
-            // Now set a chunk to stay loaded.
-//             ForgeChunkManager.forceChunk(event.getLevel(), new ChunkPos(event.getPos()), player);
-
-            // Only run on server side.
-            if (event.getLevel() instanceof ServerLevel serverLevel) {
-                long worldSeed = serverLevel.getSeed();
-//                getAllFoods(serverLevel, worldSeed);
-
-                // TEST 3:  todo test/
-                // Test force three farms:
-                // 16,52
-                // 18,54
-                // 23,56
-                // TESTER: 24,57
-                // Orleans
-                // 16,6
-                // 17,3
-                // 24,0
-                // 19,-2
-                // Added Gaelis farm;
-                // 63,-18
-                // hardcoded values to test. Nave farms and one chunk.
-                // manually force loaded 3 with command.
-                LOGGER.info("Adding force chunk loads now. ");
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16, 52, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 18, 54, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 23, 56, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24, 57, true, true);
-                // Orleans:
-                // NOTE does this make underground active?  probably... is there another flag? dont see it.
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 16, 6, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 17, 3, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 24, 0, true, true);
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 19, -2, true, true);
-                // Gaelis:
-                ForgeChunkManager.forceChunk(serverLevel, MODID, player.getUUID(), 63, -18, true, true);
-                // working?
-            }
+        // STEP 4: Test if holding a vanilla or harvestcraft item, if not leave.
+        if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
+            return;
         }
 
         // Setup all of our biomes and crops rules allowed, saves to cache.
@@ -170,7 +132,7 @@ public class CropsManager {
         //not needed anymore, is defined in CropItemDataJsonManager
         //setupBiomeCrops(event);  // TEMP TESTER AREA.
 
-        // STEP 4: Get current biome the block is in.
+        // STEP 5: Get current biome the block is in.
         Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
 
         // The biome has rules defined for what can happen in it or not!
@@ -190,35 +152,46 @@ public class CropsManager {
     // When trying to hoe a dirt plot, you MUST be on a farm.
     @SubscribeEvent
     public static void onRightClickHoeing(PlayerInteractEvent.RightClickBlock event) {
-        // Step 1: If in creative mode, skip all rules and allow planting all.
-        Player player = (Player) event.getEntity();
-        Level level = event.getLevel();
+        try {
+            // Step 1: If in creative mode, skip all rules and allow planting all.
+            Player player = (Player) event.getEntity();
+            Level level = event.getLevel();
 
-        if (player.isCreative()) {
+            if (player.isCreative()) {
 //            LOGGER.info("DEBUG2: Player is in creative mode, skipping all hoe rules.");
-            return;
-        }
+                return;
+            }
 
-        // STEP 2: Test if holding a hoe.
-        ItemStack stack = event.getItemStack();
-        if (!stack.is(ItemTags.HOES)) {
-            return;
-        }
+            // STEP 2: Test if holding a hoe.
+            ItemStack stack = event.getItemStack();
+            if (!stack.is(ItemTags.HOES)) {
+                return;
+            }
 
-        // STEP 3: Test if target block is dirt.
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        if (!blockState.is(Blocks.DIRT) && !blockState.is(Blocks.GRASS_BLOCK) && !blockState.is(Blocks.PODZOL) && !blockState.is(Blocks.COARSE_DIRT)) {
-            return;
-        }
+            // STEP 3: Test if target block is dirt.
+            final BlockState blockState = event.getLevel().getBlockState(event.getPos());
+            if (!blockState.is(Blocks.DIRT) && !blockState.is(Blocks.GRASS_BLOCK) && !blockState.is(Blocks.PODZOL) && !blockState.is(Blocks.COARSE_DIRT)) {
+                return;
+            }
 
-        // STEP 4: See if we are on a farm plot now.
-        if (getPlotType(event.getPos(), level).equals("farm")) {
+            // TODO see if its our own farm!!!
+
+            // STEP 4: See if we are on a farm plot now.
+            if (getPlotType(event.getPos(), level).equals("farm")) {
 //            LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
-        } else {
-            // Cancel event and return now.
-            // Send message to player now.
-            player.displayClientMessage(Component.literal("You can only hoe on farm plots.  Use /plot buy command to buy plots in your village. "), false);
-            event.setCanceled(true);
+            } else {
+                // Cancel event and return now.
+                // Send message to player now.
+                player.displayClientMessage(Component.literal("You can only hoe on farm plots.  Use /plot buy command to buy plots in your village. "), false);
+                event.setCanceled(true);
+            }
+        } catch (Exception ex) {
+            LOGGER.error("Error in onRightClickHoeing: " + ex.getMessage());
+            ex.printStackTrace();
+
+            // and send to chat
+            Player player = (Player) event.getEntity();
+            player.displayClientMessage(Component.literal("Error in onRightClickHoeing: " + ex.getMessage()), false);
         }
     }
 
@@ -233,7 +206,7 @@ public class CropsManager {
             return;
         }
         // triggering multiple times?? once with air?
-        LOGGER.info("\n TRIGGERED: onRightHarvestTrees event. ");
+//        LOGGER.info("\n TRIGGERED: onRightHarvestTrees event. ");
 
         // Step 1: If in creative mode, skip all rules and allow.
         Player player = (Player) event.getEntity();
@@ -264,46 +237,69 @@ public class CropsManager {
             return;
         }
 
-
-        // TESTING AREA!!!
-        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
+        // Get Item and name.
         ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
-        // times picked up?  hmmm harvested? used? eaten?
-        // Need actual item instead??? TODO
-        // block is a tree fruit named block.pamhc2trees.pamchestnut
         // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
         // TODO MAKE METHOD.
 //        LOGGER.info("DEBUG blockId is " + blockId);
         String itemName = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";
-
         // Special case: Convert apple to old item name.
         // block.pamhc2trees.pamapple
         if (blockId.equals("block.pamhc2trees.pamapple")) {
             itemName = "minecraft:apple";
         }
         // Get item from new name.
-//        LOGGER.info( "DEBUG: itemname is " + itemName);
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
-        LOGGER.info("DEBUG: item is " + item);
+//        LOGGER.info("DEBUG: item is " + item);
+
+        // Our base success rate.
+        int successPercent = 40;
+
+        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
         int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
-        // get times dropped, subtract the two would be close.
+        // get times dropped, subtract the two will be close.
         int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
-//        LOGGER.info("DEBUG: timesdropped " + timesDropped + " times.");
         int timesHarvested = timesPickedUp - timesDropped;
-        LOGGER.info("DEBUG: timesharvested " + timesHarvested + " times.");
+        // TODO can you hack stats or do they come from multiple servers?
+        successPercent += (timesHarvested / 100) * 2; // 2% per 100 harvested.
+        LOGGER.info("DEBUG: " + itemName + " timesharvested " + timesHarvested + " times. successPercent is " + successPercent);
 
 
-        // STEP 6: Calc a percent chance of failure, and fruit dies.
+        // STEP 6: Calc a percent chance of success or failure, and fruit dies.
         // If age is 7 its ripe, break block fruit!
         // 75% chance of success, hardcoded for now.
-        int successPercent = 60;
-        successPercent += player.experienceLevel + (timesHarvested / 100) * 2;
-        // TODO add nursery level.  real player level.
-        successPercent = Math.min(successPercent, 98); // max 98 percent.
-        LOGGER.info("DEBUG: successPercent is " + successPercent);
+        successPercent += player.experienceLevel;
+        // TODO and New real player level.
+        LOGGER.info("DEBUG: fruit harvest after player exp successPercent is " + successPercent);
+
+
+        // STEP 7: Add in percent if they are in a nursery.
+        // TODO cleanup method.
+        // TODO add nursery level.
+        if (getPlotType(event.getPos(), level).equals("nursery")) {
+            successPercent += 20;
+            LOGGER.info("DEBUG3: target fruit is in a nursery plot, adding bonus. successPercent is " + successPercent);
+        }
+        // TODO make small helper method!!!!!!
+        // TODO make small helper method!!!!!!
+        // TODO make small helper method!!!!!!
+        // TODO make small helper method!!!!!!
+        Biome biome = level.getBiome(event.getPos()).value();
+        ResourceLocation biomeRes = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+        String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
+        if (biomeName.equals("orchard")) {
+            successPercent += 20;
+            LOGGER.info("DEBUG3: target fruit is in a orchard plot, adding bonus. successPercent is " + successPercent);
+        }
+        // todo test working???
+
+
+        // STEP 8: Roll for success or failure.
+        int finalSuccessPercent = Math.min(successPercent, 98); // max 98 percent.
+        // TODO make short roll method.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= successPercent) {
+        if (randomNum >= finalSuccessPercent) {
             // Cancel event and return now.
             event.setCanceled(true);
 
@@ -319,15 +315,11 @@ public class CropsManager {
 
         // TODO calc a percent chance of double fruit,
         // TODO Higher at high nursery and player levels.
-        // STEP 7: Extra fruit.
-        // At player level over 25, increased chance of double fruits.
-        int doubleSuccessPercent = 40;
-        if (player.experienceLevel > 20) {
-            // TODO calc a percent chance of double fruit,
-            // TODO Higher at high nursery and player levels.
-            // Add in player level
-            doubleSuccessPercent += player.experienceLevel + (timesHarvested / 100) * 2; // (50% min)
-            LOGGER.info("DEBUG: doubleSuccessPercent is " + doubleSuccessPercent);
+        // STEP 8: Roll for Extra fruit.
+        int doubleSuccessPercent = successPercent / 2;
+        // If over 25 get bonus fruits.
+        if (player.experienceLevel > 25) {
+            LOGGER.info("DEBUG: fruit harvest doubleSuccessPercent is " + doubleSuccessPercent);
             randomNum = rand.nextInt(100); // 100% 0-99
             if (randomNum <= doubleSuccessPercent) {
                 int bonusCnt = 1;
@@ -417,11 +409,11 @@ public class CropsManager {
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
         ChunkData data = dataBase.getData(chunkPos.toLong());
         if (data == null) {
-            LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
+//            LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
             return "";
         }
 
-        LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
+//        LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + " with type " + data.getType());
         return data.getType();
     }
 
@@ -429,7 +421,6 @@ public class CropsManager {
     public static ChunkData getPlot(BlockPos pos) {
         ChunkPos chunkPos = new ChunkPos(pos);
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ;
         ChunkData data = dataBase.getData(chunkPos.toLong());
         if (data == null) {
             LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
@@ -646,6 +637,7 @@ public class CropsManager {
         playerSource.displayClientMessage(component, false);
 
         // STEP 3: List the crops allowed in the current biome
+        // TODO make method, copied in one spot.
         Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
                 // Map item to a custom string for special cases and then translate
                 .map(item -> {
@@ -688,66 +680,53 @@ public class CropsManager {
         if (manager.hasItems()) {
             // TODO Get all this farms biomes, compare and note.
             // TODO Get all this villages biomes, compare and note now.
-            // Get the village data for the player.
-            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
-            PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
-            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
-            // Get the list of biomes in the village.
-            Map<String, Integer> biomes = getVillageBiomes(villageData);
-            // Map to a single set of biomes.
-            Set<String> biomeSet = new HashSet<>();
-            for (String biomeString : biomes.keySet()) {
-                biomeSet.add(biomeString);
-            }
 
+            // Player playerSource, BiomeRulesManager manager, Item cropItem
+            Component biomesListShow = ShowBiomesCommand.getBiomeCropsChat(playerSource, manager, stack.getItem());
 
-            // Get the translated biome names, sort them, ensure they are unique, and combine them into a single component.
-//            Component biomesListShow = manager.getBiomesForItem(stack.getItem()).stream()
-//                    .map(b -> Component.translatable(getBiomeLangKey(b.unwrapKey().get().location())).withStyle(ChatFormatting.AQUA))
-//                    .map(Component::getString) // Convert to plain text for uniqueness check
+//            // Get the village data for the player.
+//            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+//            PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
+//            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+//
+//            // Get the list of biomes in the village.
+//            Map<String, Integer> biomes = getVillageBiomes(villageData);
+//            // Map to a single set of biomes.
+//            Set<String> biomeSet = new HashSet<>();
+//            for (String biomeString : biomes.keySet()) {
+//                biomeSet.add(biomeString);
+//            }
+//
+//
+//            // Step 1: Get the list of formatted biome components
+//            LOGGER.info("DEBUG1 biomeSet=" + biomeSet);
+//            LOGGER.info("DEBUG2 biomesForItem=" + manager.getBiomesForItem(stack.getItem()));
+//
+//            List<MutableComponent> biomeComponents = manager.getBiomesForItem(stack.getItem()).stream()
+//                    .map(b -> {
+//                        String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
+////                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
+//                        String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
+//                        biomeName2 = biomeName2.replace(".", ":");
+////                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName + "*");
+//
+//                        ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
+//                        return Component.translatable(biomeName).withStyle(color);
+//                    })
 //                    .distinct() // Ensure each biome is unique
-//                    .sorted() // Sort the biomes alphabetically
-//                    .map(name -> Component.literal(name)) // Convert back to Component
+//                    .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
+//                    .toList();
+//
+//            // Step 2: Combine the components into a single component
+//            Component biomesListShow = biomeComponents.stream()
 //                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
 //                    .orElse(Component.literal("None"));
-
-
-            // Step 1: Get the list of formatted biome components
-            LOGGER.info("DEBUG1 biomeSet=" + biomeSet);
-            LOGGER.info("DEBUG2 biomesForItem=" + manager.getBiomesForItem(stack.getItem()));
-
-            List<MutableComponent> biomeComponents = manager.getBiomesForItem(stack.getItem()).stream()
-                    .map(b -> {
-                        String biomeName = getBiomeLangKey(b.unwrapKey().get().location());
-                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName+"*");
-                        String biomeName2 = biomeName.replace("biome.", ""); // Remove the "biome." prefix
-                        biomeName2 = biomeName2.replace(".", ":");
-                        LOGGER.info("DEBUG3 comparing to biomeSet biomeName=" + biomeName+"*");
-
-                        ChatFormatting color = biomeSet.contains(biomeName2) ? ChatFormatting.GREEN : ChatFormatting.AQUA;
-                        return Component.translatable(biomeName).withStyle(color);
-                    })
-                    .distinct() // Ensure each biome is unique
-                    .sorted(Comparator.comparing(Component::getString)) // Sort alphabetically
-                    .toList();
-
-            // Step 2: Combine the components into a single component
-            Component biomesListShow = biomeComponents.stream()
-                    .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
-                    .orElse(Component.literal("None"));
 
 
             // Create the final message component
 //            component = Component.literal("§bBiomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
             component = Component.literal("Biomes you can plant " + cropItemShow + " in §3").append(biomesListShow);
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
-            // TODO highlight in green any that are in this farm, yellow if in this town.
+
 
             playerSource.displayClientMessage(component, false);
         }
@@ -762,11 +741,10 @@ public class CropsManager {
     }
 
     // TODO move to a player class.
-// Make a player use food faster always!
-// REF: https://minecraft.fandom.com/wiki/Hunger
-// TODO make configurable.
-// but then also how do we handle bonuses for player?  just check with that math?
-// NOTICE: Event methods cannot be static.
+    // Make a player use food faster always!
+    // REF: https://minecraft.fandom.com/wiki/Hunger
+    // TODO make configurable.
+    // but then also how do we handle bonuses for player?  just check with that math?
     @SubscribeEvent
     public static void hunger(TickEvent.PlayerTickEvent event) {
         // Leave if on client side.
@@ -798,13 +776,32 @@ public class CropsManager {
 //                    + " exhaustion level: " + player.getFoodData().getExhaustionLevel());
         }
 
+        // Note: this also affect potions and such though, oops.
+        // Disable regeneration if it is on.
+        // The higher the player's experience level, the less often this check happens.
+        int baseInterval = 11000;
+        int intervalPerLevel = 1000; // Increase interval by 1000 per exp level
+        int regenCheckInterval = baseInterval + (player.experienceLevel * intervalPerLevel);
+        if (random.nextInt(regenCheckInterval) == 1) {            // Disable regeneration if it is on.
+//            LOGGER.info("DEBUG: REGEN: Disabling regeneration now.");
+
+            // See if it is on, then turn it off.
+            // It is player special effect regeneration
+            MobEffectInstance effect = player.getEffect(MobEffects.REGENERATION);
+            if (effect != null) {
+                player.removeEffect(MobEffects.REGENERATION);
+                player.sendSystemMessage(Component.literal("Your regeneration has faded."));
+            }
+
+        }
+
     }
 
 
     // TODO cooking stuffs testing next.
-// Get a list of all cooked items for market!
-// Generic method to get a list of items...
-// notice was static
+    // Get a list of all cooked items for market!
+    // Generic method to get a list of items...
+    // notice was static
     public static List<String> getAllFoods(ServerLevel serverLevel, long worldSeed) {
         // Get the list of all items
         Iterable<Item> allItems = ForgeRegistries.ITEMS;
@@ -923,14 +920,12 @@ public class CropsManager {
     }
 
     // TODO: move to stone? manager class.
-// On breaking stone, sometimes it will fail and you will not get back any items.
-// You can increase the rate with skills and special items...
-// cobblestone and deepslate drop rate here.
-// NOTICE: Event methods cannot be static.
+    // On breaking stone, sometimes it will fail and you will not get back any items.
+    // You can increase the rate with skills and special items...
+    // cobblestone and deepslate drop rate here.
     @SubscribeEvent
     public static void onBreakStone(BlockEvent.BreakEvent event) {
         Player player = event.getPlayer();
-//        Player player = Player.getByName(player.getScoreboardName());
         if (player == null) {
             return;
         }
@@ -951,6 +946,7 @@ public class CropsManager {
 
         // STEP 1: Get SuccessRate
         int baseSuccessRate = 30;  // 50% chance to fail loot at start.
+        int successRate = baseSuccessRate;
         // change to 30% start?
 
         // Make generics.
@@ -959,26 +955,30 @@ public class CropsManager {
 //                baseSuccessRate += player.getRoleLevel("miner") * 4;
 //            }
 //            else {
-        // CHECK 2: Add basic smaller skill percent now for non miners.
-        baseSuccessRate += player.experienceLevel * 2;
+        // STEP 2: Add basic smaller skill percent now for non miners.
+        successRate += player.experienceLevel * 2;
 //            }
+//        LOGGER.info("DEBUG3: before stoneSuccessRate = " + successRate);
 
-        int successRate = baseSuccessRate;
+        // STEP 3: Add for blocks broken experience.
+        ServerPlayer serverPlayer = (ServerPlayer) event.getPlayer();
+        int stoneBroken = serverPlayer.getStats().getValue(Stats.BLOCK_MINED.get(blockState.getBlock()));
+        int brokenPercent = stoneBroken / 10000;
+        successRate += brokenPercent;
+//        LOGGER.info("DEBUG3: test stoneBroken = " + stoneBroken + " brokenPercent = " + brokenPercent +
+//                " new successRate = " + successRate);
 
-        // For Falazar now, increase as faking a skill...
-//        successRate = 100;
 
-
-        // STEP 2: Roll and check for success.
+        // STEP 4: Roll and check for success.
         // TODO make roll a mini method.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
 //        LOGGER.info("DEBUG3: Random Num = " + randomNum);
         if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
+//            LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
             event.getLevel().destroyBlock(event.getPos(), false);
             event.setCanceled(true);
-            // This works fine, prevents drops, must have or it replaces it!
+            // TODO send a failure message on occasion if havnt since logged in.
             return;
         }
 //        LOGGER.info("DEBUG3: ALLOWING stone block drops...");
@@ -989,9 +989,244 @@ public class CropsManager {
 //                attemptTrenchBreak(player, event.getPos());
 //            }
 
+        // TODO add bonus stone.
+
+    }
+
+    // TODO: move to wood? manager class.
+    // On breaking logs, sometimes it will fail and you will not get back any items.
+    // You can increase the rate with skills and special items...
+    @SubscribeEvent
+    public static void onBreakLogs(BlockEvent.BreakEvent event) {
+        Player player = event.getPlayer();
+        if (player == null) {
+            return;
+        }
+
+        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
+        MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
+//        String s = component.toString();
+//        LOGGER.info("DEBUG1: " + s + " all tags = " + blockState.getTags().map(itemTagKey -> itemTagKey.toString()).collect(Collectors.toList()));
+
+        // Only do rule if logs.
+        if (!blockState.is(BlockTags.LOGS)) {
+            return;
+        }
+
+//        LOGGER.info("DEBUG2: Testing2 here we found logs.");
+
+        // STEP 1: Calculate SuccessRate.
+        int baseSuccessRate = 40;  // 40% chance to get drops at start.
+        int successRate = baseSuccessRate;
+
+        // Make generic skills?
+//            // CHECK 1: Add skill percent now.
+//            if (player.hasSkill("moreStoneDrops")) {
+//                successRate += player.getRoleLevel("miner") * 4;
+//            }
+//            else {
+        // STEP 2: Add basic smaller skill percent now for non-loggers.
+        successRate += player.experienceLevel;
+        LOGGER.info("DEBUG3: added player exp successRate = " + successRate);
+//            }
+
+        // STEP 3: Add in bonus for nursery plots.
+        Level level = event.getPlayer().getCommandSenderWorld();
+        if (getPlotType(event.getPos(), level).equals("nursery")) {
+            successRate += 20;
+            LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus.  successRate = " + successRate);
+
+            // STEP 4: If in nursery, add in for certain biomes.
+            // For birch if in any birch biome, add bonus.
+            String biomeName = level.getBiome(event.getPos()).unwrapKey().map(ResourceKey::location).map(ResourceLocation::getPath).orElse("unknown");
+            if (biomeName.contains("birch")) {
+                // Add bonus for birch and forest biomes.
+                successRate += 20;
+                LOGGER.info("DEBUG3: target block is in a birch biome, adding bonus. " + biomeName + " successRate = " + successRate);
+            }
+        }
+
+        // STEP 5: TODO add in bonus for logs itemsBroken, like in fruit trees method,
+        //  so we get better over time!=
+
+        // For Falazar now, increase as faking a skill...
+//        successRate = 100;
+
+        // STEP 6: Roll and check for success.
+        // TODO make roll a mini method.
+        LOGGER.info("DEBUG: LOG successRate = " + successRate);
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum >= successRate) {
+            LOGGER.info("DEBUG: DESTROYING Log block, no drops..." + successRate);
+            event.getLevel().destroyBlock(event.getPos(), false);
+            event.setCanceled(true);
+            // TODO send a failure message on occasion if havnt since logged in.
+            return;
+        }
+//        LOGGER.info("DEBUG3: ALLOWING log block drops...");
+
+        // TODO TEST
+        // TODO later give bonus wood if high score.
+        // STEP 7: Add bonus wood for high rolls.
+        randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum <= successRate / 6) {
+            // Give bonus wood.
+            int bonusWood = 1;
+            ItemStack stack = new ItemStack(Items.OAK_LOG, bonusWood);
+            player.addItem(stack);
+            // Only show this message 1 out of 10 times.
+            randomNum = rand.nextInt(10); // 10% 0-9
+            if (randomNum == 0) {
+                player.displayClientMessage(Component.literal("You got " + bonusWood + " bonus logs!"), false);
+            }
+            LOGGER.info("DEBUG: Giving bonus wood: " + bonusWood + " at " + event.getPos());
+        }
+
+
+    }
+
+
+    // Make a method that lowers event that causes saplings to fall from tree leaves block rate by a lot.
+    @SubscribeEvent
+    public static void onBreakLeaves(BlockEvent.BreakEvent event) {
+        Player playerSource = event.getPlayer();
+        if (playerSource == null) {
+            return;
+        }
+
+        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
+
+        // Only do rule if leaves
+        if (!blockState.is(BlockTags.LEAVES)) {
+            return;
+        }
+
+        if (!CropsManager.allowSaplingDrop(event.getPos(), (ServerLevel) event.getLevel())) {
+//            LOGGER.info("DEBUG: DESTROYING leaves block, no drops...");
+            event.getLevel().destroyBlock(event.getPos(), false);
+            event.setCanceled(true);
+            return;
+        }
+
+    }
+
+
+    public static boolean allowSaplingDrop(BlockPos pos, ServerLevel level) {
+        // STEP 1: Set base rate for success.
+        int successRate = 20;  // 20% chance to get drops at start.
+
+//        LOGGER.info("DEBUG: allowSapling LEAVES BREAK successRate = " + successRate);
+
+        // STEP 2: If in a nursery plot, add bonus.
+        if (CropsManager.getPlotType(pos, level).equals("nursery")) {
+//            LOGGER.info("DEBUG3: allowSapling target leaves block is in a nursery plot, adding bonus. ");
+            successRate += 30;
+        }
+
+        // STEP 3: Roll for success now.
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+//        LOGGER.info("DEBUG: allowSapling  rand leaves block, r=" + randomNum);
+        if (randomNum >= successRate) {
+//            LOGGER.info("DEBUG: allowSapling  DESTROYING leaves block, no drops..." + successRate);
+            return false;
+        }
+        return true;
+    }
+
+    // When trying to saplings, check our biome rules to see what is allowed there.
+    @SubscribeEvent
+    public static void onRightClickSaplingPlant(PlayerInteractEvent.RightClickBlock event) {
+        // Step 1: If in creative mode, skip all rules and allow planting all.
+        Player playerSource = (Player) event.getEntity();
+        if (playerSource.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
+        if (playerSource.isCreative()) {
+//            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
+            return;
+        }
+
+        // Skip if client side
+        if (event.getLevel().isClientSide) {
+//            LOGGER.info("DEBUG: sapling Skipping if client.");
+            return;
+        }
+
+        Level level = event.getLevel();
+        BlockPos clickedPos = event.getPos();
+
+        // STEP 2: Test if holding a sapling item, if not leave.
+        ItemStack stack = event.getItemStack();
+        String stackName = stack.getDescriptionId();
+        if (!stackName.contains("sapling")) {
+            return;
+        }
+
+
+        // STEP 4: Check if the sapling is allowed in this biome.
+        // block.minecraft.dark_oak_sapling  remove first parts and sapling both.
+        String shortName = stackName.replace("block.", "").replace("_sapling", "").replace("minecraft.", "").replace("biomesoplenty.", "");
+        LOGGER.info("DEBUG: onRightClickSaplingPlant shortName = " + shortName);
+        // Get current biome the block is in.
+        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
+        String biomeName = biome.unwrapKey().orElse(UKNOWN_RK).location().toString();
+        LOGGER.info("DEBUG: onRightClickSaplingPlant biome = " + biomeName);
+        // TODO dark oak, redwood, mystic what others? cherry lavender? jungle jacaranda?
+        // Create map with list of saplings and list of biomes allowed in.
+        Map<String, ArrayList<String>> saplingsLimited = new HashMap<>();
+        saplingsLimited.put("dark_oak", new ArrayList<>(Arrays.asList("minecraft:dark_forest", "minecraft:dark_forest_hills")));
+        saplingsLimited.put("redwood", new ArrayList<>(Arrays.asList("minecraft:giant_tree_taiga", "biomesoplenty:redwood_forest")));
+        saplingsLimited.put("magic", new ArrayList<>(Arrays.asList("biomesoplenty:mystic_grove")));
+        saplingsLimited.put("jungle", new ArrayList<>(Arrays.asList("minecraft:jungle", "minecraft:jungle_hills"))); // couple more here? sparse edge?
+        saplingsLimited.put("cherry", new ArrayList<>(Arrays.asList("minecraft:cherry_grove")));  // check old one?
+        saplingsLimited.put("umbran", new ArrayList<>(Arrays.asList("biomesoplenty:ominous_woods")));
+//        saplingsLimited.put("lavender", new ArrayList<>(Arrays.asList("minecraft:flower_forest", "minecraft:flower_forest_hills")));
+
+        // todo remove hills off all names?
+
+        // this not working yet.
+        if (saplingsLimited.containsKey(shortName) && !saplingsLimited.get(shortName).contains(biomeName)) {
+            // Send notice to player.
+            MutableComponent component = Component.translatable("§eYou cannot plant " + stack.getHoverName().getString() + " in this biome.");
+            playerSource.displayClientMessage(component, false);
+
+            // Cancel event and return now.
+            event.setCanceled(true);
+        }
+
+        int goodChance = 10;
+
+
+        // STEP 5: Roll random chance of failure, if not in a nursery.
+        String plotType = getPlotType(clickedPos, level);
+        if (plotType.equals("nursery")) {
+            LOGGER.info("DEBUG: allowSapling target block is in a nursery plot, adding bonus. ");
+            goodChance = 65;
+        }
+
+        // STEP 6: If a fruit tree always allow, expensive those.
+        // Check item mod name fom pam
+        if (stackName.contains("pamhc2trees")) {
+            LOGGER.info("DEBUG: allowSapling target block is a fruit tree sapling, adding bonus. ");
+            goodChance = 100;
+        }
+
+        // STEP X: add in players level.
+        goodChance += playerSource.experienceLevel / 2;
+
+        // STEP 6: Roll to see if allowed.
+        Random rand = new Random();
+        int randomNum = rand.nextInt(100); // 100% 0-99
+        if (randomNum >= goodChance) {
+            LOGGER.info("DEBUG: NOT allowing sapling plant " + goodChance);
+            // Remove one of the item from hands.
+            stack.shrink(1);
+            event.setCanceled(true);
+            // TODO send a failure message on occasion if havnt since logged in.
+            return;
+        }
+        LOGGER.info("DEBUG: allowing sapling plant " + goodChance);
 
     }
 
 }
-
-

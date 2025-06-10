@@ -39,6 +39,12 @@ public class EDBMessages {
                 .consumerMainThread(DataBaseFullS2C::handle)
                 .add();
 
+        net.messageBuilder(DataBaseChunkS2C.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(DataBaseChunkS2C::new)
+                .encoder(DataBaseChunkS2C::toBytes)
+                .consumerMainThread(DataBaseChunkS2C::handle)
+                .add();
+
         //net.registerMessage(id(), DataBaseEntryS2CO.class,
         //        DataBaseEntryS2CO::encode,
         //        DataBaseEntryS2CO::decode,

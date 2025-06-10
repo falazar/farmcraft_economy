@@ -4,6 +4,7 @@ import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.GameStructure;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
@@ -27,6 +28,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
@@ -39,6 +41,7 @@ import java.text.NumberFormat;
 import java.util.*;
 
 import static com.falazar.farmupcraft.command.PlotCommand.calculatePlotCost;
+import static com.falazar.farmupcraft.command.PlotCommand.getCropsPlanted;
 
 public class VillageCommand {
     public static final CustomLogger LOGGER = new CustomLogger(VillageCommand.class.getSimpleName());
@@ -127,6 +130,12 @@ public class VillageCommand {
                 });
         builder.then(villageBiomesBuilder);
 
+        // Define the "farms" sub-command to show farm and biome info.
+        LiteralArgumentBuilder<CommandSourceStack> villageFarmsBuilder = Commands.literal("farms")
+                .executes(context -> {
+                    return showVillagefarms(context.getSource());
+                });
+        builder.then(villageFarmsBuilder);
 
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
@@ -259,16 +268,16 @@ public class VillageCommand {
         return 0;
     }
 
-    // Show the village that current player is in.
+    // Show the village that current player has home in.
     public static int showVillageInfo(CommandSourceStack source, String villageName) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            // TODO MAKE HELPER METHOD.
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
             VillageData village = null;
+            // Find by name or player data.  (break these two up, might be slightly different later)
             if (villageName == null) {
                 UUID villageId = playerData.getHomeVillageUUID();
                 DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
@@ -281,7 +290,7 @@ public class VillageCommand {
                 return 0;
             }
 
-            // Build a response message
+            // STEP 1: Build a response message with basic info.
             NumberFormat numberFormat = NumberFormat.getInstance();
             MutableComponent response = Component.literal("")
                     .append(Component.literal("---------- Village Name: " + village.getName() + " ----------\n").withStyle(ChatFormatting.YELLOW)) // Yellow
@@ -290,9 +299,8 @@ public class VillageCommand {
                             .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if negative, white otherwise
                     .append(Component.literal(" at " + village.getPosition().getWorldPosition().toShortString() + " \n")) // White
                     .append(Component.literal(" with claimed chunks = " + village.getClaimedChunks().size() + "\n")); // White
-            //            response = response.append(Component.literal("Created by: " + data.getNameForPlayer(serverLevel) + ", "));
 
-            // Loop over all plots and count them, and farms.
+            // STEP 2: Loop over all plots and count them, and farms.
             int plotCnt = getPlotCount(village);
             int farmCnt = 0;
             for (ChunkPos pos : village.getClaimedChunks()) {
@@ -305,25 +313,52 @@ public class VillageCommand {
             }
             response = response.append(Component.literal(" with " + plotCnt + " plots and " + farmCnt + " farms. \n"));
 
-            // Plot Cost: 100 + 30 * plots TODO testing
+            // Step 3: Show plot and daily costs.
             int plotCost = PlotCommand.calculatePlotCost(village, "plot");
             response = response.append(Component.literal(" Plot cost: " + numberFormat.format(plotCost) + " coins. \n"));
-
-            // TODO MAKE METHOD
-            // Daily Cost: villageLevel * 100 + 50 per plot? TODO test lowered 50>30
-//            int dailyCost = village.getLevel() * 100 + plotCnt * 30;
             int dailyCost = getDailyCost(village);
             response = response.append(Component.literal(" Daily cost: " + numberFormat.format(dailyCost) + " coins. \n"));
+
+            // STEP 4: Show nearby structures, and claimed ones.
+            // Note some underground are not showing in right area.
+            response = response.append(Component.literal(" Nearby structures: \n"));
+            // TODO add these to village object earlier on in another method, just show them here....
+            // Loop over list: id, show name, position, and if on claimed plot or not.
+            // TODO
+//            List<String, String, ChunkPos, String, Boolean> = village.getNearbyStructures();
+            // Loop over list: id, show name, position, and if on claimed plot or not.
+            // TODO make it its own object instead of inside village?  ya probably?
+            List<GameStructure> structures = getGameStructures(village.getUUID());
+            for (GameStructure structure : structures) {
+                String claimedText = structure.isOnClaimedPlot() ? " (on claimed plot)" : "";
+                response = response.append(Component.literal(" - " + structure.getName() + " at " + structure.getPosition() + claimedText + "\n"));
+            }
+            // visited flag? if a player from city has visited the chunk, maybe...
+            // How to handle underground ones, dont want to give out their locations.
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("Exception  in show village info - see logs"));
+            source.sendFailure(Component.literal("Exception in show village info - see logs"));
             ex.printStackTrace();
         }
         return 0;
     }
 
+    // TODO Create getGameStructures method stub.
+    public static List<GameStructure> getGameStructures(UUID villageId) {
+        // Get all near the village.
+
+        // TODO: Implement logic to return nearby or owned structures
+
+        // Fill in two fake ones
+        // cemetery and armorers house
+        List<GameStructure> structures = new ArrayList<>();
+        structures.add(new GameStructure("cemetery", "Cemetery", new BlockPos(0, 0, 0), "village", true));
+        structures.add(new GameStructure("armorers_house", "Armorer's House", new BlockPos(1, 1, 1), "village", false));
+
+        return structures;
+    }
     public static int getDailyCost(VillageData village) {
         int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
 
@@ -577,8 +612,6 @@ public class VillageCommand {
             // STEP 6: Add new chunks.
             int newChunksCount = addNewVillageChunks(village, playerSource);
 
-            // TODO Draw out in text grid to test.
-
             villageDatabase.putData(village.getUUID(), village);
 
             // Build a response message
@@ -605,6 +638,7 @@ public class VillageCommand {
         // STEP 1: Add extra chunks until you equal (4 + level) * 2 + 1 squared chunks.
         int currentLevelSize = (4 + village.getLevel()) * 2 + 1;
         int previousLevelSize = (4 + (village.getLevel() - 1)) * 2 + 1;
+        // TODO count actual chunks instead we have!
         int chunksCount = (currentLevelSize * currentLevelSize) - (previousLevelSize * previousLevelSize);
         int newChunksCount = chunksCount;
         ChunkPos centerChunkPos = village.getPosition();
@@ -703,6 +737,10 @@ public class VillageCommand {
             playerSource.sendSystemMessage(message);
         }
 
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+
         return newChunksCount;
     }
 
@@ -721,6 +759,7 @@ public class VillageCommand {
             // Subtract daily upkeep cost from village coins.
             int dailyCost = getDailyCost(village);
             village.subtractCoins(dailyCost);
+            villageDatabase.putData(village.getUUID(), village);
 
             // Build a response message.
             MutableComponent response = Component.literal("Village daily upkeep ran, charged " + dailyCost + " coins.");
@@ -779,6 +818,10 @@ public class VillageCommand {
     }
 
     public static Map<String, Integer> getVillageBiomes(VillageData villageData) {
+        if (villageData == null) {
+            LOGGER.error("Village data is null, cannot get biomes.");
+            return Collections.emptyMap();
+        }
         Level level = Minecraft.getInstance().level;
 
         // Loop over each chunk in territory.
@@ -824,7 +867,90 @@ public class VillageCommand {
     }
 
 
+    public static int showVillagefarms(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Get the home village.
+            DataBase<UUID, PlayerData> playerDataDB = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDataDB.getData(summoner.getUUID());
+            if (playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("Player is not in a village right now."));
+                return 0;
+            }
+
+            // Get the village data.
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(source.getLevel());
+            VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
+
+            // Get the list of farms in the village.
+            List<ChunkPos> farmChunks = getVillageFarms(villageData);
+
+            // Show the list of farms.
+            MutableComponent response = Component.literal("Farms in village: ");
+            ServerLevel level = source.getLevel();
+            for (ChunkPos chunkPos : farmChunks) {
+                response.append(Component.literal(chunkPos.toString() + "\n "));
+
+                // Get y highest point in center of chunk, not motion blocking.
+                BlockPos blockPos = chunkPos.getMiddleBlockPosition(64); // default height notice.
+                int height = level.getHeight(Heightmap.Types.WORLD_SURFACE, blockPos.getX(), blockPos.getZ());
+                blockPos = chunkPos.getMiddleBlockPosition(height); // default height notice.
+                LOGGER.info("DEBUG Chunk " + chunkPos.toString() + " has height " + height);
+                // TODO TEST
+
+
+                // Get all biomes in this chunk at surface level.
+                // todo make another helper that actually has the count also!!!
+                // TODO this is showing lush caves, our y value is still off somehow....
+                 PlotCommand.getChunkBiomes(blockPos, level)
+                        .forEach((biomeName) -> {
+//                            response.append(Component.literal(biomeName + " (" + biomeCount + "), "));
+                            response.append(Component.literal(biomeName + ", "));
+                        });
+                 // TODO add line break..
+
+                BlockPos cropBlockPos = chunkPos.getMiddleBlockPosition(height);
+                String crops = getCropsPlanted(cropBlockPos, level);
+                if (crops != null && !crops.isEmpty()) {
+                    response.append(Component.literal("\n with crops: " + crops + ".\n"));
+                } else {
+                    response.append(Component.literal(" with no crops planted.\n"));
+                }
+            }
+            // Show all veggies you can or cannot plant?  thats alot, sub command?
+            // And currently planted counts :}  if on flat farm.
+
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
     // Helper methods
+    public static List<ChunkPos> getVillageFarms(VillageData villageData) {
+        // Get the list of claimed chunks in the village.
+        List<ChunkPos> claimedChunks = villageData.getClaimedChunks();
+        List<ChunkPos> farmChunks = new ArrayList<>();
+
+        // Loop over each chunk and check if it is a farm.
+        for (ChunkPos chunkPos : claimedChunks) {
+            ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(chunkPos.toLong());
+            if (chunkData != null && chunkData.getType().equalsIgnoreCase("farm")) {
+                farmChunks.add(chunkPos);
+            }
+        }
+
+        return farmChunks;
+    }
 
     // Make sure at least one neighbor is a village chunk we own.
     public static boolean touchingVillageChunk(VillageData village, ChunkPos chunkPos) {
