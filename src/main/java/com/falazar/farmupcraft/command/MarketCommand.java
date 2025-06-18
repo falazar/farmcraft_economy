@@ -6,6 +6,7 @@ import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
@@ -27,6 +28,7 @@ import java.util.*;
 
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
+import java.util.stream.Collectors;
 
 public class MarketCommand {
     public static final CustomLogger LOGGER = new CustomLogger(MarketCommand.class.getSimpleName());
@@ -54,7 +56,15 @@ public class MarketCommand {
                 }))
                 .then(Commands.literal("stone").executes(context -> {
                     return showMarketList(context.getSource(), "stone");
-                }));
+                }))
+                .then(Commands.literal("high").executes(context -> {
+                    return showHighValueItems(context.getSource(), 10);
+                }))
+                .then(Commands.literal("high").then(Commands.argument("minCoins", IntegerArgumentType.integer(1))
+                        .executes(context -> {
+                            int minCoins = IntegerArgumentType.getInteger(context, "minCoins");
+                            return showHighValueItems(context.getSource(), minCoins);
+                        })));
         builder.then(showBuilder);
 
         // Define a "sell" sub-command, to sell all items of that type
@@ -112,6 +122,17 @@ public class MarketCommand {
                     return 0;
                 });
         builder.then(runDailyBuilder);
+
+        // Define the "raiseprices" ADMIN only sub command.
+        LiteralArgumentBuilder<CommandSourceStack> raisePricesBuilder = Commands.literal("raiseprices")
+                .requires(source -> source.hasPermission(2)) // Restrict to admins (permission level 2 or higher)
+                .then(Commands.argument("type", StringArgumentType.string())
+                .executes(context -> {
+                    String type = StringArgumentType.getString(context, "type");
+                    raiseMarketPrices(context.getSource(), type);
+                    return 0;
+                }));
+        builder.then(raisePricesBuilder);
 
 
         // Register the "importtxt" sub-command for ADMIN only.
@@ -201,6 +222,7 @@ public class MarketCommand {
             response = response.append(Component.literal("  /market show food \n"));
             response = response.append(Component.literal("  /market show wood \n"));
             response = response.append(Component.literal("  /market show stone \n"));
+            response = response.append(Component.literal("  /market show high [minCoins] \n"));
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -735,7 +757,7 @@ game
         return 0;
     }
 
-    // TODO test and Move to new home.
+    // TODO Move to new home.
     // Run daily task for all markets, removing old items, and adding new items.
     public static int runDailyTask(CommandSourceStack source) {
         try {
@@ -752,6 +774,12 @@ game
             getNewMarketItems(source, "stone");
             getNewMarketItems(source, "general");
 
+            // Raise market prices now.
+            raiseMarketPrices(source, "food");
+            raiseMarketPrices(source, "wood");
+            raiseMarketPrices(source, "stone");
+            raiseMarketPrices(source, "general");
+
             // Notify the player
             source.sendSuccess(() -> Component.literal("Daily task completed for all markets."), false);
         } catch (Exception ex) {
@@ -761,12 +789,10 @@ game
         return 0;
     }
 
-    // TODO TEST
     // TODO failing in a couple categories hitting an AIR item... report hit and pick a new item instead
     // then i can fix those individual items.
-    // TEST METHOD partially done.
     // Second half of rundaily task.
-    // This will remove old items, increase cost of existing items, and add new items.
+    // This will remove old items, and add new items.
     public static int getNewMarketItems(CommandSourceStack source, String type) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -798,11 +824,11 @@ game
 
             // TODO TEST
             // STEP 2: Increase cost of each item by 1.
-            for (GoodsData good : activeGoods) {
-                good.setCost(good.getCost() + 1);
-                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
-                LOGGER.info("DEBUG: Raising cost of " + good.getItem().getDescriptionId() + " to " + good.getCost());
-            }
+//            for (GoodsData good : activeGoods) {
+//                good.setCost(good.getCost() + 1);
+//                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
+//                LOGGER.info("DEBUG: Raising cost of " + good.getItem().getDescriptionId() + " to " + good.getCost());
+//            }
 
             // TODO TEST and add new items.
             // STEP 3: Add in new items.
@@ -816,9 +842,10 @@ game
                 String itemName = good.getItem().getDescription().getString();
                 // Add the new item to the response.
                 response = response.append(Component.literal("+ " + itemName + "\n"));
-                // TODO test add to market, set active and cost.
+                // Add to market, set active and cost.
                 good.setActive(Boolean.valueOf(true)); // Set active status
-                good.setCost(5); // Set a default cost, can be changed later.
+                // Set at 4, cause we add one to all afterwards.
+                good.setCost(4); // Set a default cost, can be changed later.
                 good.setDateAddedToMarket(java.time.LocalDate.now().toString());
                 ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
             }
@@ -826,6 +853,34 @@ game
             // Notify the player.
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Get New Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Increment all market prices by 1 for a given type.
+    public static int raiseMarketPrices(CommandSourceStack source, String type) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // STEP 1: Get market list
+            Collection<GoodsData> activeGoods = getFilteredActiveGoods(type);
+
+            // TODO TEST
+            // STEP 2: Increase cost of each item by 1.
+            for (GoodsData good : activeGoods) {
+                good.setCost(good.getCost() + 1);
+                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
+                LOGGER.info("DEBUG: Raising cost of " + good.getItem().getDescriptionId() + " to " + good.getCost());
+            }
+
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Get New Market Items Exception thrown - see log"));
             ex.printStackTrace();
@@ -925,6 +980,61 @@ game
             source.sendFailure(Component.literal("Add Random Item to Market Exception thrown - see log"));
             ex.printStackTrace();
         }
+    }
+
+    public static int showHighValueItems(CommandSourceStack source, int minCoins) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+
+            // Get all active goods data from the database
+            DataBase<String, GoodsData> goodsDataDataBase = ModEvents.getGoodsDataDatabase();
+            Collection<GoodsData> allGoodsData = goodsDataDataBase.getValues();
+            
+            if (allGoodsData.isEmpty()) {
+                source.sendFailure(Component.literal("No items found in the market."));
+                return 0;
+            }
+
+            // Filter active goods with cost greater than or equal to minCoins
+            List<GoodsData> filteredGoods = allGoodsData.stream()
+                    .filter(goods -> goods.isActive() && goods.getCost() >= minCoins)
+                    .sorted(Comparator.comparingInt(GoodsData::getCost)) // Sort by cost ascending
+                    .collect(Collectors.toList());
+
+            if (filteredGoods.isEmpty()) {
+                source.sendFailure(Component.literal("No items found with cost greater than or equal to " + minCoins + " coins."));
+                return 0;
+            }
+
+            MutableComponent response = Component.literal("High-value market items (≥" + minCoins + " coins) (" + filteredGoods.size() + "): \n").withStyle(ChatFormatting.YELLOW);
+
+            // Show the final list, highlight if in player's inventory
+            for (GoodsData good : filteredGoods) {
+                LOGGER.info("DEBUG: Showing high-value market item: " + good.getItemId() + ", cost = " + good.getCost());
+
+                Item item = good.getItem();
+                if (item != null) {
+                    boolean inInventory = playerSource != null && playerSource.getInventory().contains(item.getDefaultInstance());
+                    String itemName = item.getDescription().getString();
+                    if (inInventory) {
+                        int count = playerSource.getInventory().countItem(item);
+                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins (" + count + " cnt)\n").withStyle(ChatFormatting.GREEN));
+                    } else {
+                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    }
+                } else {
+                    response = response.append(Component.literal(" -Unknown Item: " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
+                }
+            }
+
+            MutableComponent finalResponse = response;
+            source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Show High Value Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
     }
 }
 

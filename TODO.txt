@@ -6,8 +6,11 @@ TODO BUGS: not saving player coins correctly, not showing. change to just coins.
     Overlay not updating after an action, like buy plot or village?
     GIVE player a UUID field properly
 
-    DONE TEST - fIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
-    
+    DONE TEST - FIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
+
+    TODO - flag that says every 5 min if im not in hard mode, if one player on, and it has my name!!!!!!!
+
+    TODO test - make a market show high to show only expensive items, default 10 and above enter number for limit
 END BUGS AREA
 
 
@@ -21,9 +24,9 @@ GENERAL SOON:
 
     DONE - place a book in a chest.
 
-    TODO - make a cow that attacks.
+    TODO - make a cow that attacks. cant quite needs custom entity.
 
-    TODO - make a skeleton that doesnt attack. Turn him into an NPC.
+    DONE - make a skeleton that doesnt attack. Turn him into an NPC. made test command.
 
     TODO - show a description of village show in town center plot.
         only show once an hour, cache show message.
@@ -43,6 +46,8 @@ GENERAL SOON:
         stretch left 2 type command
 
     TODO - figure out how to control growth for village, population field?  bonus for taking over structures, bonus for villagers (limited maxs)
+
+    TODO - fix cutting table recipes, they are still on simple for stones!
 
     TODO - have a daily task sign in village center, with a list of tasks that would give more daily XP.
         ie hunt mobs, explore, fix town roads, fix town walls, breed villagers, breed animals, plant trees, plant crops, harvest crops, build a house, build a farm, build a mine, build a nursery, build a port, build a rail station, build a market.

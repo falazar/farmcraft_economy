@@ -202,6 +202,7 @@ public class VillageCommand {
 //                context.getSource().sendFailure(Component.literal("Player does not have enough money."));
 //                return 0;
 //            }
+            // TODO put this back in
             int cost = 500; // TODO remove this and use calc cost.
 //            if (currencyCost.canAfford(wallet)) {
 //                do something
@@ -244,12 +245,16 @@ public class VillageCommand {
             // STEP 9: Buy plot and mark to db.
             // TODO1 this doesnt buy the plot does it?
             // TODO1 THESE villageId TO USE UUIDS
-
             // Mark chunks to village.
             for (ChunkPos pos : villageChunks) {
                 ChunkData chunk = new ChunkData("village", player.getId(), villageId);
                 chunkDataDatabase.putData(pos.toLong(), chunk);
             }
+            // Mark the center chunk as village center.
+            ChunkData data = chunkDataDatabase.getData(chunkPos.toLong());
+            data.setType("village center");
+            chunkDataDatabase.putData(chunkPos.toLong(), data);
+
 
             LOGGER.info("Plot bought at " + chunkPos);
             // TODO1 call a set plot method, separate this out.
@@ -600,7 +605,7 @@ public class VillageCommand {
 
             // STEP 3: Check cost to level up.
             // TODO check if can afford.
-            int levelUpCost = currLevel * 200;
+            int levelUpCost = currLevel * 300;
             // todo helper method.
             Level level = playerSource.level();
             Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);

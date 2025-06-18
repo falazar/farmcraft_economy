@@ -299,8 +299,7 @@ public class PlotCommand {
                     passed = true;
                 }
             }
-            // TODO OR TOUCHING CENTER PLOT!!!
-            // TODO test
+            // after village center, we shiould not need this!!
             if (!passed) {
                 // Check if the chunk is touching the center plot.
                 // compare chunk to village position
