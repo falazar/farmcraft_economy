@@ -1,5 +1,8 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.PlayerData;
+import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -107,23 +110,6 @@ public class TesterCommand {
                 );
         builder.then(renameVillagerBuilder);
 
-        // Define the "findStructures" sub-command, ADMIN permissions only!
-        LiteralArgumentBuilder<CommandSourceStack> findStructuresBuilder = Commands.literal("findstructures")
-                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
-                .then(Commands.argument("filter", StringArgumentType.word()) // Add a string argument
-                        .suggests((context, suggestionBuilder) -> {
-                            // Provide suggestions for the argument
-                            return net.minecraft.commands.SharedSuggestionProvider.suggest(new String[]{"upper", "lower", "all"}, suggestionBuilder);
-                        })
-                        .executes(context -> {
-                            // Get the filter argument
-                            String filter = StringArgumentType.getString(context, "filter");
-                            findNearbyStructures(context.getSource(), filter); // Pass the filter to the method
-                            return 0;
-                        })
-                );
-        builder.then(findStructuresBuilder);
-
         // Define the "findneareststructure" sub-command, ADMIN permissions only!
         LiteralArgumentBuilder<CommandSourceStack> findNearestStructureBuilder = Commands.literal("findneareststructure")
                 .requires(stack -> stack.hasPermission(2)) // Require permission level 2
@@ -155,17 +141,14 @@ public class TesterCommand {
                 });
         builder.then(findChestsBuilder);
 
-
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
     }
-
 
     // Find the closest structure to the player.
     // Add a written book to a chest.
     public static int testClosestStructure(CommandSourceStack source) {
         try {
-
             // Get the player's current position
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
@@ -223,13 +206,12 @@ public class TesterCommand {
             if (!(blockEntity instanceof ChestBlockEntity || blockEntity instanceof BarrelBlockEntity)) {
                 LOGGER.error("Block entity at " + nearestContainer + " is not a chest.");
                 // Say what it is.
-                LOGGER.info( "Block entity at " + nearestContainer + " is a " + blockEntity.getType().toString());
+                LOGGER.info("Block entity at " + nearestContainer + " is a " + blockEntity.getType().toString());
                 return 0;
             }
             // Cast to ChestBlockEntity or BarrelBlockEntity and insert.
 
             RandomizableContainerBlockEntity containerEntity = (RandomizableContainerBlockEntity) blockEntity;
-//            ChestBlockEntity chestEntity = (ChestBlockEntity) blockEntity;
             // TODO make helper method.
             // Add the book to the chest inventory
             for (int i = 0; i < containerEntity.getContainerSize(); i++) {
@@ -251,174 +233,6 @@ public class TesterCommand {
 
         return 0;
     }
-
-
-    // Find nearby structures
-    // NOTE: working for mineshafts and villages and ruined portals, need to test more for new mod structures.... hmmm
-    // NOTE dragon nest doesnt seem to show up here drats.
-    public static int findNearbyStructures(CommandSourceStack source, String filter) {
-        // REF: https://github.com/someaddons/structureessentials/blob/1.20.1/src/main/java/com/structureessentials/command/Command.java
-
-        final ServerLevel world = source.getLevel();
-        final Map<Structure, LongSet> structures = new HashMap<>();
-
-        // STEP 1: Loop nearby area, 10x10 chunk area.
-        final ChunkPos start = new ChunkPos(BlockPos.containing(source.getPosition()));
-        for (int x = -5; x < 5; x++) {
-            for (int z = -5; z < 5; z++) {
-                for (final Map.Entry<Structure, LongSet> entry : world.structureManager()
-                        .getAllStructuresAt(new BlockPos((start.x + x) << 4, 0, (start.z + z) << 4))
-                        .entrySet()) {
-                    structures.computeIfAbsent(entry.getKey(), k -> new LongOpenHashSet(entry.getValue())).addAll(entry.getValue());
-                }
-            }
-        }
-
-        source.sendSystemMessage(Component.literal("Structures nearby: ").withStyle(ChatFormatting.GOLD));
-
-        // STEP 2: Loop over all structures found, put in our list.
-        LOGGER.info("STEP 2 loop over structures....");
-        Map<BlockPos, String> structurePositions = new HashMap<>();
-        for (Map.Entry<Structure, LongSet> structureEntry : structures.entrySet()) {
-            world.structureManager().fillStartsForStructure(structureEntry.getKey(), structureEntry.getValue(),
-                    structureStart ->
-                    {
-                        String type = source.registryAccess().registry(Registries.STRUCTURE).get().getKey(structureEntry.getKey()).toString();
-                        structurePositions.put(structureStart.getBoundingBox().getCenter(), type);
-                        // This seems to indicate we have bounding box and such on things?  hmmm
-                        // How do we save a single structure?
-                        // by type and longset.
-                        LOGGER.info("Type = " + type);
-                        LOGGER.info("key = " + structureEntry.getKey()
-                                + " longset=" + structureEntry.getValue().toString());
-                        LOGGER.info("Bounds = " + structureStart.getBoundingBox().toString());
-                        LOGGER.info("");
-                        // if cemetery, save some stuff to use for later.
-                    }
-            );
-        }
-
-        /*  NOTES:
-
- Type = structory:graveyard
- key = net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@3a553e5e
- longset={270582939571}
- Bounds = BoundingBox{minX=-1244, minY=64, minZ=980, maxX=-1198, maxY=93, maxZ=1025}
-         */
-
-        LOGGER.info("TEST 2: Find structure.");
-        // Hardcoded 2 ids from earlier.
-        String structureType = "structory:graveyard";
-        Long structureLong = 270582939571L;
-
-        // TODO TEST METHOD.
-        loadStructure(source, structureType, structureLong);
-
-
-        // TODO what else can we get from this structure info?
-        // need size and desc and as much as possible
-
-        // TODO ability to show ONLY the closest so I cant cheat much???
-
-        // STEP 3: Sort list by distance then add fancy clickables.
-        final List<Map.Entry<BlockPos, String>> sortedStructures = new ArrayList<>(structurePositions.entrySet());
-        sortedStructures.sort(Comparator.comparingDouble(p -> p.getKey().distSqr(BlockPos.containing(source.getPosition()))));
-        // Show count.
-        source.sendSystemMessage(Component.literal("Found " + sortedStructures.size() + " structures nearby.").withStyle(ChatFormatting.GOLD));
-
-        /* example
-
-[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:171] Type = bettermineshafts:mineshaft_jungle
-07:55:14.362
-game
-[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:172] key = com.yungnickyoung.minecraft.bettermineshafts.world.BetterMineshaftStructure@37e152ff longset={-412316860221, -390842023739}
-07:55:14.362
-game
-[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:174]
-Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=-1429}
-
-         */
-
-        // STEP 4: Show results list.
-//        LOGGER.info("DEBUG filter = " + filter);
-        // Simple version with dist and tp.
-        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
-            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
-
-            if (filter.equals("upper") && structureEntry.getKey().getY() <= 60) {
-//                LOGGER.info("Skipping structure at Y=" + structureEntry.getKey().getY() + " because it is below 60.");
-                continue; // Skip if below 60
-            } else if (filter.equals("lower") && structureEntry.getKey().getY() > 60) {
-//                LOGGER.info("Skipping structure at Y=" + structureEntry.getKey().getY() + " because it is above 60.");
-                continue; // Skip if above 60
-            }
-
-            // NOTICE: mineshafts and at least one dungeon have INCORRECT y value, need to dig deeper, they show at like 128 or something instead of underground,
-            // annoying.
-
-            source.sendSystemMessage(Component.literal(
-                            sortedStructures.indexOf(structureEntry) + 1 + ". " +
-                                    structureEntry.getValue())
-                    .append(Component.literal(" " +
-                            "a. " + structureEntry.getKey().toShortString() + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
-                                return style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-                                        "/tp " + structureEntry.getKey().getX() + " "
-                                                + structureEntry.getKey().getY() + " "
-                                                + structureEntry.getKey().getZ()));
-                            }
-                    )));
-        }
-
-        // we get name and key, thats it, what other call do we need to get object?
-
-        // TEST 2: Fancier version with bounding.
-        // This doesnt seem to have an entry for all of them.
-        // Scratch this one.
-//        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
-//            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
-//
-//            // Convert the structure name (String) to a Structure object
-//            ResourceLocation structureKey = new ResourceLocation(structureEntry.getValue());
-//            Optional<Structure> structureOptional = source.registryAccess()
-//                    .registry(Registries.STRUCTURE)
-//                    .flatMap(registry -> registry.getOptional(structureKey));
-//
-//            if (structureOptional.isEmpty()) {
-//                source.sendSystemMessage(Component.literal("Structure not found: " + structureEntry.getValue()).withStyle(ChatFormatting.RED));
-//                continue;
-//            }
-//
-//            Structure structure = structureOptional.get();
-//
-//            // Retrieve the StructureStart for the structure
-//            world.structureManager().fillStartsForStructure(
-//                    structure, // Use the Structure object here
-//                    new LongOpenHashSet(Collections.singleton(ChunkPos.asLong(structureEntry.getKey().getX() >> 4, structureEntry.getKey().getZ() >> 4))),
-//                    structureStart -> {
-//                        // Get the bounding box of the structure
-//                        var boundingBox = structureStart.getBoundingBox();
-//                        int width = boundingBox.getXSpan();
-//                        int height = boundingBox.getYSpan();
-//                        int depth = boundingBox.getZSpan();
-//
-//                        // Send the structure info to the player
-//                        source.sendSystemMessage(
-//                                Component.literal(structureEntry.getValue())
-//                                        .append(Component.literal("b. " + structureEntry.getKey().toShortString() + " d=" + dist))
-//                                        .append(Component.literal(" Size: " + width + "x" + height + "x" + depth).withStyle(ChatFormatting.GREEN))
-//                                        .withStyle(ChatFormatting.YELLOW)
-//                                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-//                                                "/tp " + structureEntry.getKey().getX() + " "
-//                                                        + structureEntry.getKey().getY() + " "
-//                                                        + structureEntry.getKey().getZ())))
-//                        );
-//                    }
-//            );
-//        }
-
-        return 0;
-    }
-
 
     // Find nearby structure from command, call method and write to chat.
     public static int findNearestStructureCom(CommandSourceStack source) {
@@ -473,13 +287,15 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
                 .orElse(null); // Return null if no structures are found
     }
 
-
     // TODO make a method for chunk load entering the structure we know
     // send chat message for now to test. any chunk.
 
 
     // TODO call this with /tester chest
     public static BoundingBox loadStructure(CommandSourceStack source, String structureType, Long structureLong) {
+        // TODO phase out source to make generic.
+        // TODO phase out source to make generic.
+        // TODO phase out source to make generic.
         // TODO phase out source to make generic.
 
         // Define the ResourceLocation for the structure
@@ -523,7 +339,7 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
 
         /* notes
 
-        [10:52:58] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:181]
+        [10:52:58]   [TesterCommand:181]
         TEST 2: Find structure.
 10:52:58.267
 game
@@ -680,7 +496,6 @@ Stretches out to chunk areas.
             // todo optional dist input
             // todo show position.
             // Todo can we show what village they are in, reg minecraft, then ours?
-
 
             // can we change the name manually and give them a last name or something?
             // NOTE: Name doesnt match exactly?  space or hidden char???
@@ -906,7 +721,6 @@ Stretches out to chunk areas.
     private static FloodFillResult floodFillWithEdgeAndSize(int[][] grid, boolean[][] visited, int x, int z, int targetValue, int distance) {
         // Create a copy of the grid
         int[][] gridCopy = copyGrid(grid);
-//        LOGGER.info("DEBUG FloodFillWithEdgeAndSize starting at x=" + x + ", z=" + z + ", targetValue=" + targetValue);
 
         int rows = grid.length;
         int cols = grid[0].length;

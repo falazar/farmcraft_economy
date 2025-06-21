@@ -327,7 +327,7 @@ public class NpcCommand {
 
 18:16:30.961
 game
-[18:16:30] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [NpcCommand:288]
+[18:16:30]   [NpcCommand:288]
 DEBUG createNpcCow command executed by BossPanda96366
 18:16:30.963
 game

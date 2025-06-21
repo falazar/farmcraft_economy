@@ -374,6 +374,10 @@ public class CropsManager {
             // Get village name from old position, and new position, compare, show if different.
             String lastChunkVillageName = findVillageByChunkPos(oldPos.chunk());
             String currChunkVillageName = findVillageByChunkPos(newPos.chunk());
+            
+            // Check for structures in the new section
+            checkForStructuresInSection(player, newPos);
+            
             if (currChunkVillageName == null && lastChunkVillageName != null) {
                 // Send leaving village message.
                 player.displayClientMessage(Component.literal("You left the village of " + lastChunkVillageName), false);
@@ -397,6 +401,52 @@ public class CropsManager {
 
         } catch (Exception ex) {
             LOGGER.error("Error in onPlayerEnterChunk: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    /**
+     * Checks if the given section contains any structures and notifies the player.
+     * Also marks structures as visited in the database.
+     */
+    private static void checkForStructuresInSection(Player player, SectionPos sectionPos) {
+        try {
+            if (!(player.level() instanceof ServerLevel serverLevel)) {
+                return;
+            }
+
+            // Get the structure database
+            var gameStructureDatabase = ModEvents.getGameStructureDatabase(serverLevel);
+            
+            // Check all structures in the database to see if any are in this section
+            for (Long structureId : gameStructureDatabase.getKeys()) {
+                GameStructureData structureData = gameStructureDatabase.getData(structureId);
+                if (structureData == null) {
+                    continue;
+                }
+                
+                // Check if this structure is in the current section using SectionPos comparison
+                SectionPos structureSection = SectionPos.of(structureData.getCenterPos());
+                if (!structureSection.equals(sectionPos)) {
+                    continue;
+                }
+                
+                // Send message to player
+                String claimedStatus = structureData.isOnClaimedPlot() ? " (claimed)" : "";
+                String visitedStatus = structureData.wasVisited() ? " (visited)" : " (new!)";
+                player.displayClientMessage(Component.literal("You discovered: " + structureData.getName() + claimedStatus + visitedStatus), false);
+
+                // Mark as visited if not already (but not in creative mode)
+                if (!structureData.wasVisited() && !player.isCreative()) {
+                    structureData.setWasVisited(true);
+                    gameStructureDatabase.putData(structureId, structureData);
+                    gameStructureDatabase.setDirty();
+                    LOGGER.info("Marked structure as visited: " + structureData.getName() + " (ID: " + structureId + ")");
+                }                
+            }
+            
+        } catch (Exception ex) {
+            LOGGER.error("Error checking for structures in section: " + ex.getMessage());
             ex.printStackTrace();
         }
     }

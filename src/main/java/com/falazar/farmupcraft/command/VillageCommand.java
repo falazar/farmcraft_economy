@@ -1,10 +1,9 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.command.StructureCommand;
 import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.CurrencyCost;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.GameStructure;
+import com.falazar.farmupcraft.data.GameStructureData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
@@ -41,7 +40,6 @@ import net.minecraft.world.level.levelgen.Heightmap;
 import java.text.NumberFormat;
 import java.util.*;
 
-import static com.falazar.farmupcraft.command.PlotCommand.calculatePlotCost;
 import static com.falazar.farmupcraft.command.PlotCommand.getCropsPlanted;
 
 public class VillageCommand {
@@ -249,6 +247,11 @@ public class VillageCommand {
             for (ChunkPos pos : villageChunks) {
                 ChunkData chunk = new ChunkData("village", player.getId(), villageId);
                 chunkDataDatabase.putData(pos.toLong(), chunk);
+                
+                // Update structure claim flags for this chunk
+                if (player.level() instanceof ServerLevel serverLevel) {
+                    StructureCommand.updateStructuresInChunk(pos, true, serverLevel);
+                }
             }
             // Mark the center chunk as village center.
             ChunkData data = chunkDataDatabase.getData(chunkPos.toLong());
@@ -342,10 +345,10 @@ public class VillageCommand {
 //            List<String, String, ChunkPos, String, Boolean> = village.getNearbyStructures();
             // Loop over list: id, show name, position, and if on claimed plot or not.
             // TODO make it its own object instead of inside village?  ya probably?
-            List<GameStructure> structures = getGameStructures(village.getUUID());
-            for (GameStructure structure : structures) {
+            List<GameStructureData> structures = getGameStructures(village.getUUID());
+            for (GameStructureData structure : structures) {
                 String claimedText = structure.isOnClaimedPlot() ? " (on claimed plot)" : "";
-                response = response.append(Component.literal(" - " + structure.getName() + " at " + structure.getPosition() + claimedText + "\n"));
+                response = response.append(Component.literal(" - " + structure.getName() + " at " + structure.getCenterPos() + claimedText + "\n"));
             }
             // visited flag? if a player from city has visited the chunk, maybe...
             // How to handle underground ones, dont want to give out their locations.
@@ -360,16 +363,16 @@ public class VillageCommand {
     }
 
     // TODO Create getGameStructures method stub.
-    public static List<GameStructure> getGameStructures(UUID villageId) {
+    public static List<GameStructureData> getGameStructures(UUID villageId) {
         // Get all near the village.
 
         // TODO: Implement logic to return nearby or owned structures
 
         // Fill in two fake ones
         // cemetery and armorers house
-        List<GameStructure> structures = new ArrayList<>();
-        structures.add(new GameStructure("cemetery", "Cemetery", new BlockPos(0, 0, 0), "village", true));
-        structures.add(new GameStructure("armorers_house", "Armorer's House", new BlockPos(1, 1, 1), "village", false));
+        List<GameStructureData> structures = new ArrayList<>();
+        structures.add(new GameStructureData(1L, "Cemetery", new BlockPos(0, 0, 0), "village", true, false));
+        structures.add(new GameStructureData(2L, "Armorer's House", new BlockPos(1, 1, 1), "village", false, false));
 
         return structures;
     }
@@ -721,6 +724,11 @@ public class VillageCommand {
                     villageDatabase.putData(otherVillage.getUUID(), otherVillage);
                     village.addClaimedChunk(chunkPos);
                     villageDatabase.putData(village.getUUID(), otherVillage);
+                    
+                    // Update structure claim flags for this chunk
+                    if (playerSource.level() instanceof ServerLevel serverLevel) {
+                        StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
+                    }
 
                     // Add world chat message. Show center chunk pos.
                     MutableComponent message = Component.literal("Village " + village.getName()
@@ -738,7 +746,11 @@ public class VillageCommand {
             ChunkData chunk = new ChunkData("village", player.getId(), villageId);
             chunkDatabase.putData(chunkPos.toLong(), chunk);
             village.addClaimedChunk(chunkPos);
-            // TODO PUT BACK
+            
+            // Update structure claim flags for this chunk
+            if (playerSource.level() instanceof ServerLevel serverLevel) {
+                StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
+            }
 
             chunksCount--;
         } // while

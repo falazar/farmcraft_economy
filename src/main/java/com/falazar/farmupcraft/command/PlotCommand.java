@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.command.StructureCommand;
 import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.PlayerData;
@@ -408,6 +409,11 @@ public class PlotCommand {
             ChunkData chunk = new ChunkData("village", playerSource.getId(), villageId);
             chunkDatabase.putData(chunkPos.toLong(), chunk);
             village.addClaimedChunk(chunkPos);
+            
+            // Update structure claim flags for this chunk
+            if (playerSource.level() instanceof ServerLevel serverLevel) {
+                StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
+            }
 
             // Build a response message
             MutableComponent response = Component.literal("Chunk added at " + chunkPos);
