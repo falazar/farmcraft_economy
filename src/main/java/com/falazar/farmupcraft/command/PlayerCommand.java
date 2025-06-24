@@ -27,6 +27,7 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.UUID;
+import java.text.NumberFormat;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
@@ -156,8 +157,9 @@ public class PlayerCommand {
             savePlayer(playerSource.getUUID(), player);
 
             int bronzeCoins = wallet.get(bronzeCoin);
+            NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Player: "
-                    + playerSource.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+                    + playerSource.getScoreboardName() + " given " + numberFormat.format(amount) + " coins. Total: " + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();
@@ -269,8 +271,9 @@ public class PlayerCommand {
             villageDatabase.putData(village.getUUID(), village);
 
             int bronzeCoins = wallet.get(bronzeCoin);
+            NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
-                    + village.getName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+                    + village.getName() + " given " + numberFormat.format(amount) + " coins. Total: " + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();
@@ -322,8 +325,9 @@ public class PlayerCommand {
             savePlayer(playerSource.getUUID(), player);
 
             int bronzeCoins = wallet.get(bronzeCoin);
+            NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
-                    + village.getName() + " taken " + amount + " coins. Total: " + bronzeCoins), false);
+                    + village.getName() + " taken " + numberFormat.format(amount) + " coins. Total: " + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();

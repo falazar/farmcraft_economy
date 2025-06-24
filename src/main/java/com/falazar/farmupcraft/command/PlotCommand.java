@@ -338,6 +338,11 @@ public class PlotCommand {
             chunk.setType(plotType);
             chunkDataDatabase.putData(chunkPos.toLong(), chunk);
 
+            // Update structure claim flags for this chunk
+            if (level instanceof ServerLevel serverLevel) {
+                StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
+            }
+
             // Extra farm step, force chunk to stay loaded!
             if (plotType.equalsIgnoreCase("farm")) {
                 LOGGER.info("DEBUG1: Farming plot for " + chunkPos + ": " + village.getName());

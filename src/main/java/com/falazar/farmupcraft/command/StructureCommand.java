@@ -77,25 +77,6 @@ public class StructureCommand {
                     listStructuresFromDatabase(context.getSource(), 20, "all");
                     return 0;
                 })
-                .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
-                        .executes(context -> {
-                            int count = IntegerArgumentType.getInteger(context, "count");
-                            listStructuresFromDatabase(context.getSource(), count, "all");
-                            return 0;
-                        })
-                        .then(Commands.argument("filter", StringArgumentType.string())
-                                .suggests((context, suggestionBuilder) -> {
-                                    // Provide suggestions for the filter argument
-                                    return net.minecraft.commands.SharedSuggestionProvider.suggest(new String[]{"all", "claimed", "unclaimed", "visited", "unvisited", "village"}, suggestionBuilder);
-                                })
-                                .executes(context -> {
-                                    int count = IntegerArgumentType.getInteger(context, "count");
-                                    String filter = StringArgumentType.getString(context, "filter");
-                                    listStructuresFromDatabase(context.getSource(), count, filter);
-                                    return 0;
-                                })
-                        )
-                )
                 .then(Commands.argument("filter", StringArgumentType.string())
                         .suggests((context, suggestionBuilder) -> {
                             // Provide suggestions for the filter argument
@@ -106,6 +87,14 @@ public class StructureCommand {
                             listStructuresFromDatabase(context.getSource(), 20, filter);
                             return 0;
                         })
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                                .executes(context -> {
+                                    String filter = StringArgumentType.getString(context, "filter");
+                                    int count = IntegerArgumentType.getInteger(context, "count");
+                                    listStructuresFromDatabase(context.getSource(), count, filter);
+                                    return 0;
+                                })
+                        )
                 );
         builder.then(listBuilder);
 
@@ -442,6 +431,7 @@ public class StructureCommand {
         for (Long structureId : gameStructureDatabase.getKeys()) {
             GameStructureData structureData = gameStructureDatabase.getData(structureId);
             if (structureData != null) {
+                
                 // Apply filter
                 boolean includeStructure = false;
                 switch (filter.toLowerCase()) {
@@ -461,6 +451,11 @@ public class StructureCommand {
                         includeStructure = !structureData.wasVisited();
                         break;
                     case "village":
+                        // Skip underground structures (below Y=60) unless they have been visited
+                        if (structureData.getCenterPos().getY() < 60 && !structureData.wasVisited()) {
+                            continue;
+                        }
+
                         // Check if chunk data exists (structure is in a village area)
                         ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
                         DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
@@ -539,7 +534,8 @@ public class StructureCommand {
             displayed++;
         }
         
-        source.sendSystemMessage(Component.literal("Total structures matching filter '" + filter + "': " + structuresList.size() + " (of " + gameStructureDatabase.getSize() + " total)").withStyle(ChatFormatting.GREEN));
+        source.sendSystemMessage(Component.literal("Total structures matching filter '" + filter + "': " + 
+        structuresList.size() + " (of " + gameStructureDatabase.getSize() + " total)").withStyle(ChatFormatting.GREEN));
         
         return 0;
     }

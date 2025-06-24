@@ -29,6 +29,7 @@ import java.util.*;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.Nullable;
 import java.util.stream.Collectors;
+import java.text.NumberFormat;
 
 public class MarketCommand {
     public static final CustomLogger LOGGER = new CustomLogger(MarketCommand.class.getSimpleName());
@@ -248,6 +249,7 @@ public class MarketCommand {
             // Missing an item in here.
 
             // STEP 2: Show the final list, highlight if in our inventory.
+            NumberFormat numberFormat = NumberFormat.getInstance();
             for (GoodsData good : goodsDataList) {
                 LOGGER.info("DEBUG: Showing market item: " + good.getItemId() + ", cost = " + good.getCost() + ", amountSold = " + good.getAmountSold());
 
@@ -258,12 +260,12 @@ public class MarketCommand {
                     String itemName = item.getDescription().getString();
                     if (inInventory) {
                         int count = playerSource.getInventory().countItem(item);
-                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins (" + count + " cnt)\n").withStyle(ChatFormatting.GREEN));
+                        response = response.append(Component.literal(" -" + itemName + ": " + numberFormat.format(good.getCost()) + " coins (" + count + " cnt)\n").withStyle(ChatFormatting.GREEN));
                     } else {
-                        response = response.append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
+                        response = response.append(Component.literal(" -" + itemName + ": " + numberFormat.format(good.getCost()) + " coins\n").withStyle(ChatFormatting.WHITE));
                     }
                 } else {
-                    response = response.append(Component.literal(" -Unknown Item: " + good.getCost() + " coins\n").withStyle(ChatFormatting.WHITE));
+                    response = response.append(Component.literal(" -Unknown Item: " + numberFormat.format(good.getCost()) + " coins\n").withStyle(ChatFormatting.WHITE));
                 }
             }
             MutableComponent finalResponse = response;
@@ -393,7 +395,8 @@ public class MarketCommand {
 
         // STEP 5: Send final chat to player.
         String itemName = item.getDescription().getString();
-        MutableComponent response = Component.literal(" - Sold " + count + " of " + itemName + " for " + coinsTotal + " coins\n").withStyle(ChatFormatting.GREEN);
+        NumberFormat numberFormat = NumberFormat.getInstance();
+        MutableComponent response = Component.literal(" - Sold " + count + " of " + itemName + " for " + numberFormat.format(coinsTotal) + " coins\n").withStyle(ChatFormatting.GREEN);
         MutableComponent finalResponse = response;
         source.sendSuccess(() -> finalResponse, false);
 
