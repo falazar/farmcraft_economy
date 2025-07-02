@@ -821,19 +821,10 @@ game
                 String itemName = good.getItem().getDescription().getString();
                 response = response.append(Component.literal("- " + itemName + "\n"));
                 good.setActive(Boolean.valueOf(false)); // Set active status to false
+                
                 ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
-                // TODO test.
             }
 
-            // TODO TEST
-            // STEP 2: Increase cost of each item by 1.
-//            for (GoodsData good : activeGoods) {
-//                good.setCost(good.getCost() + 1);
-//                ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
-//                LOGGER.info("DEBUG: Raising cost of " + good.getItem().getDescriptionId() + " to " + good.getCost());
-//            }
-
-            // TODO TEST and add new items.
             // STEP 3: Add in new items.
             Collection<GoodsData> newItems = getFilteredGoods(type);
             // Shuffle the new items and take the first count.
@@ -843,8 +834,18 @@ game
                 GoodsData good = newItemsList.get(i);
                 // TODO MAKE METHOD on goodsData
                 String itemName = good.getItem().getDescription().getString();
+
+                // If air item, pick another one, and send error notice to me. 
+                if (good.getItem() == null) {
+                    LOGGER.error("DEBUG: Air item found, picking another one.");
+                    // Pick another one, and send error notice to me.
+                    // TODO test
+                    i--;
+                    continue;
+                }
+                
                 // Add the new item to the response.
-                response = response.append(Component.literal("+ " + itemName + "\n"));
+                response = response.append(Component.literal("+ " + itemName + "\n"));                
                 // Add to market, set active and cost.
                 good.setActive(Boolean.valueOf(true)); // Set active status
                 // Set at 4, cause we add one to all afterwards.

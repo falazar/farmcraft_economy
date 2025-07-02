@@ -133,6 +133,15 @@ public class PlotCommand {
             // Pull out plot info and owner and village.
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
             VillageData villageData = villageDataDB.getData(chunkData.getVillageId());
+            // village data is null in one chunk in vilalge.... not claimed properly or whats?
+
+            // add some loggin aboiut chunk data
+            LOGGER.info("DEBUG: Chunk data: type=" + chunkData.getType() + 
+                       ", playerId=" + chunkData.getPlayerId() + 
+                       ", villageId=" + chunkData.getVillageId());
+
+
+
 
             // BUG here maybe. update playerid to uuid string.
             LOGGER.info("Plot info for " + chunkPos + ": player id = " + chunkData.getPlayerId()
@@ -409,6 +418,10 @@ public class PlotCommand {
             // Create Chunk.
             ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
             DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+
+            // Remove any previous chunk.
+            chunkDatabase.removeDataAsync(chunkPos.toLong(), null);
+            chunkDatabase.setDirty(); // TODO TEST 
 
             // Add to village now.
             ChunkData chunk = new ChunkData("village", playerSource.getId(), villageId);

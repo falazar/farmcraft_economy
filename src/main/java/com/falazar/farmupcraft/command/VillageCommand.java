@@ -143,13 +143,26 @@ public class VillageCommand {
         // Define the "structures" sub-command to show structures in the village
         LiteralArgumentBuilder<CommandSourceStack> villageStructuresBuilder = Commands.literal("structures")
                 .executes(context -> {
-                    return showVillageStructures(context.getSource(), 20);
+                    return showVillageStructures(context.getSource(), 20, "all");
                 })
-                .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
-                        .executes(context -> {
-                            int count = IntegerArgumentType.getInteger(context, "count");
-                            return showVillageStructures(context.getSource(), count);
+                .then(Commands.argument("filter", StringArgumentType.word())
+                        .suggests((context, builder2) -> {
+                            builder2.suggest("all");
+                            builder2.suggest("claimed");
+                            builder2.suggest("unclaimed");
+                            return builder2.buildFuture();
                         })
+                        .executes(context -> {
+                            String filter = StringArgumentType.getString(context, "filter");
+                            return showVillageStructures(context.getSource(), 20, filter);
+                        })
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                                .executes(context -> {
+                                    String filter = StringArgumentType.getString(context, "filter");
+                                    int count = IntegerArgumentType.getInteger(context, "count");
+                                    return showVillageStructures(context.getSource(), count, filter);
+                                })
+                        )
                 );
         builder.then(villageStructuresBuilder);
 
@@ -447,6 +460,7 @@ public class VillageCommand {
                         + " with " + village.getClaimedChunks().size() + " chunks, \n"));
                 // TODO1 bug size is not getting right here, or claim got too many.
                 LOGGER.info("DEBUG TODO Village info for: village = " + village.getName()
+                        + ", id = " + village.getUUID()
                         + ", chunks = " + village.getClaimedChunks().stream().count()
                         + " claimedChunkSet = " + village.getClaimedChunkSet().size()
                 );
@@ -896,7 +910,7 @@ public class VillageCommand {
             villageDatabase.putData(village.getUUID(), village);
 
             // Build a response message.
-            MutableComponent response = Component.literal("Village daily upkeep ran, charged " + dailyCost + " coins.");
+            MutableComponent response = Component.literal("Village daily upkeep ran, charged " + totalCost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -1175,8 +1189,14 @@ public class VillageCommand {
      * Shows structures within the player's village (where chunk data exists).
      * Only shows structures that are in chunks claimed by the player's village.
      */
-    public static int showVillageStructures(CommandSourceStack source, int count) {
+    public static int showVillageStructures(CommandSourceStack source, int count, String filter) {
         try {
+            // Validate filter parameter
+            if (!"all".equals(filter) && !"claimed".equals(filter) && !"unclaimed".equals(filter)) {
+                source.sendFailure(Component.literal("Invalid filter: " + filter + ". Use: all, claimed, unclaimed"));
+                return 0;
+            }
+            
             Entity nullablePlayer = source.getEntity();
             Player playerSource = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
             if (playerSource == null) {
@@ -1217,27 +1237,65 @@ public class VillageCommand {
                 return 0;
             }
             
-            // STEP 3: Sort by distance from village center.
+            // STEP 2.5: Apply filter if specified
+            if (!"all".equals(filter)) {
+                List<Map.Entry<Long, GameStructureData>> filteredList = new ArrayList<>();
+                for (Map.Entry<Long, GameStructureData> entry : structuresList) {
+                    GameStructureData structureData = entry.getValue();
+                    boolean isClaimed = structureData.isOnClaimedPlot();
+                    
+                    if ("claimed".equals(filter) && isClaimed) {
+                        filteredList.add(entry);
+                    } else if ("unclaimed".equals(filter) && !isClaimed) {
+                        filteredList.add(entry);
+                    }
+                }
+                structuresList = filteredList;
+                
+                if (structuresList.isEmpty()) {
+                    source.sendSystemMessage(Component.literal("No " + filter + " structures found in your village.").withStyle(ChatFormatting.YELLOW));
+                    return 0;
+                }
+            }
+            
+            // STEP 3: Sort by distance from current player position.
+            BlockPos playerPos = playerSource.blockPosition();
             structuresList.sort(Comparator.comparingDouble(entry -> 
-                entry.getValue().getCenterPos().distSqr(villagePos)));
+                entry.getValue().getCenterPos().distSqr(playerPos)));
 
             // STEP 4: Show the structures in nice format.
-            source.sendSystemMessage(Component.literal("Structures in village '" + village.getName() + "' (showing first " + count + " by distance):").withStyle(ChatFormatting.GOLD));        
+            String filterText = "all".equals(filter) ? "" : " (" + filter + ")";
+            source.sendSystemMessage(Component.literal("Structures in village '" + village.getName() + "'" + filterText + " (showing first " + count + " by distance):").withStyle(ChatFormatting.GOLD));        
             int displayed = 0;
+            
+            // Get player's current chunk position for comparison
+            ChunkPos playerChunk = new ChunkPos(playerSource.blockPosition());
+            
             for (Map.Entry<Long, GameStructureData> entry : structuresList) {
                 if (displayed >= count) break;
                 
                 Long structureId = entry.getKey();
                 GameStructureData structureData = entry.getValue();
                 
-                // Calculate distance for display
-                int distance = (int) Math.sqrt(structureData.getCenterPos().distSqr(villagePos));
+                // Calculate distance for display (from player position)
+                int distance = (int) Math.sqrt(structureData.getCenterPos().distSqr(playerPos));
+                
+                // Check if player is standing in the same chunk as this structure
+                ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
+                boolean isPlayerInSameChunk = playerChunk.equals(structureChunk);
            
                 MutableComponent message = Component.literal(
                     (displayed + 1) + ". " + structureData.getName() + 
                     ": " + structureData.getCenterPos().toShortString() + 
                     " d=" + distance
-                ).withStyle(ChatFormatting.WHITE);
+                );
+                
+                // Color the entire line light blue if player is in the same chunk
+                if (isPlayerInSameChunk) {
+                    message = message.withStyle(ChatFormatting.AQUA);
+                } else {
+                    message = message.withStyle(ChatFormatting.WHITE);
+                }
                 
                 // STEP 5: Add status with conditional color.
                 String status = "";
@@ -1262,7 +1320,7 @@ public class VillageCommand {
                 displayed++;
             }
             
-            source.sendSystemMessage(Component.literal("Total structures in village: " + structuresList.size() + " (of " + gameStructureDatabase.getSize() + " total in database)").withStyle(ChatFormatting.GREEN));
+            source.sendSystemMessage(Component.literal("Total structures in village" + filterText + ": " + structuresList.size() + " (of " + gameStructureDatabase.getSize() + " total in database)").withStyle(ChatFormatting.GREEN));
             
             return 0;
             

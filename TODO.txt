@@ -16,6 +16,8 @@ END BUGS AREA
 GENERAL SOON:
     TODO - create zone? or gameZone db object to save structures chunks and island and lakes and maybe country chunks? x y z
 
+    TODO - levelup village for 9 and 10 should get double chunks added.
+
     DONE NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
         - TODO modify to check player sol diversity instead?, and last longer for longer 50 60 70
 
