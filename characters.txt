@@ -7,6 +7,7 @@ Beneath the city lie extensive lush caves where a thriving clay and terracotta m
 A well-maintained train line connects the city to the mysterious south lands.
 Recently, explorers have discovered a deep dark biome nearby, and an investigation team has been assembled to explore its depths.
 
+
 Faewild NPCs
 
 1. Alina Fae
@@ -21,21 +22,21 @@ Role: Lord of the disputed territory, involved in a land dispute with Faewild.
 Description: Lord Brennick is a nobleman with a strong claim over a portion of land that he believes is rightfully his. He seeks support for his cause, though his methods can sometimes seem questionable. He has become the primary adversary of Captain Thorne Blackwood in the ongoing territorial dispute.
 NPC ID: e2a7cb5b-bf24-41fd-8b10-b43f91d60592
 
-4. Elira Moonwhisper
-Race: Elf
+34. Elira Moonwhisper
+Rae: Elf
 Role: Druid and guardian of the Mystic Grove
 
 Description: Elira is a calm, enigmatic presence in the village of Faewild. She speaks in soft riddles and tends to the magical flora of the nearby grove. Her bond with nature runs deep, and she is trusted by both fairy folk and villagers alike.
 
 
-5. Borin Stoneguard
+4. Borin Stoneguard
 Race: Dwarf
 Role: Mine overseer and protector
 
 Description: A stout, practical dwarf with years of experience in the mines beneath Pymosia. Borin values safety, discipline, and a good mug of mushroom ale. He's quick to raise the alarm when danger threatens his people.
 
 
-6. Captain Thorne Blackwood
+5. Captain Thorne Blackwood
 Role: Commander of the Faewild Border Guard and Brennick's rival
 
 Description: Captain Blackwood is a stern but fair military leader who has been defending Faewild's borders against Lord Brennick's encroachments. A former royal guard, he brings discipline and tactical expertise to the conflict. He believes strongly in Faewild's right to the disputed lands and has become Brennick's primary adversary in the ongoing territorial dispute.

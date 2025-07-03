@@ -86,7 +86,6 @@ public class PlayerData {
         return village;
     }
 
-    @Nonnull
     public void setHomeVillageId(UUID homeVillageId) {
         this.homeVillageUUID = homeVillageId;
     }

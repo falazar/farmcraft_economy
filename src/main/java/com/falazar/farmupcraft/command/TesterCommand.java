@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.GameZone;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.events.ModEvents;
@@ -75,12 +76,12 @@ public class TesterCommand {
         LiteralArgumentBuilder<CommandSourceStack> islandsBuilder = Commands.literal("islandsAndLakes")
                 .executes(context -> {
                     // Default distance of 10 if no argument is provided
-                    return showIslandsAndLakes(context.getSource(), 10);
+                    return scanForIslandsAndLakes(context.getSource(), 10);
                 })
                 .then(Commands.argument("distance", IntegerArgumentType.integer(1, 100)) // Add a distance argument with a range
                         .executes(context -> {
                             int distance = IntegerArgumentType.getInteger(context, "distance"); // Retrieve the distance value
-                            return showIslandsAndLakes(context.getSource(), distance); // Pass the distance to the method
+                            return scanForIslandsAndLakes(context.getSource(), distance); // Pass the distance to the method
                         })
                 );
         builder.then(islandsBuilder);
@@ -578,265 +579,396 @@ Stretches out to chunk areas.
         return 0;
     }
 
-    public static int showIslandsAndLakes(CommandSourceStack source, int distance) {
-        // STEP 1: Get current location of the player.
-        Entity nullableSummoner = source.getEntity();
-        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-
-        ChunkPos chunkPos = playerSource.chunkPosition();
-        LOGGER.info("DEBUG ChunkPos for player is " + chunkPos);
-
-        // Create a double array of ints variable size
-        // This will be a grid of 1s and 0s for land and water.
-        // The size of the grid is 2 * distance + 1
-        int[][] grid = new int[2 * distance + 1][2 * distance + 1];
-
-        // STEP 2: Loop in a square around the player X distance.
-        for (int z = -distance; z <= distance; z++) {
-            LOGGER.info("\nDEBUG z=" + z);
-            for (int x = -distance; x <= distance; x++) {
-                // Get the chunk position.
-                ChunkPos chunk = new ChunkPos(chunkPos.x + x, chunkPos.z + z);
-//                LOGGER.info("DEBUG ChunkPos for player is " + chunk);
-                // Get the chunk data.
-                ServerLevel level = (ServerLevel) source.getLevel();
-
-                // STEP 3: Get the biome for each chunk.
-                // Get the biome for the chunk center.
-                BlockPos blockPos = chunk.getMiddleBlockPosition(64); // default height notice.
-
-                // Get height at that position.
-                int height = level.getHeight(Heightmap.Types.MOTION_BLOCKING, blockPos.getX(), blockPos.getZ()) - 1;
-                blockPos = new BlockPos(blockPos.getX(), height, blockPos.getZ());
-
-                Biome biome = level.getBiome(blockPos).value();
-                ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-                if (biomeName == null) {
-                    LOGGER.info("Error: Biome name is null for chunk " + chunk);
-                    continue;
-                }
-                LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeName);
-                // TODO Can map show chunks???
-
-                // STEP 4: Mark grid data 1 for land types and 0 for water types.
-                boolean isWater = biomeName.getPath().contains("ocean") || biomeName.getPath().contains("river");
-
-                // Check for actual water block also.
-                if (!isWater) {
-                    // If water or ice block, it is water.
-                    final BlockState blockState = level.getBlockState(blockPos);
-//                    LOGGER.info("DEBUG BlockState for blockPos " + blockPos.toShortString() + " is " + blockState);
-
-                    if (blockState.is(Blocks.WATER) || blockState.is(Blocks.ICE)) {
-//                        LOGGER.info("DEBUG BlockState for chunk " + chunk.toString() + " is WATER WE FOUND = " + blockState);
-                        isWater = true;
-                    }
-                }
-
-                if (isWater) {
-                    grid[x + distance][z + distance] = 0; // set water
-                } else {
-                    // mark 2 for plains
-                    // mark 3 for forest
-                    // mark 1 for rest
-                    if (biomeName.getPath().contains("plains")) {
-                        grid[x + distance][z + distance] = 2; // plains
-                    } else if (biomeName.getPath().contains("forest")) {
-                        grid[x + distance][z + distance] = 3; // forest
-                    } else {
-                        // mark 1 for all other land types
-                        grid[x + distance][z + distance] = 1; // land
-                    }
-                }
-
+    // A section of methods to help find all islands and lakes on the map.
+    public static int scanForIslandsAndLakes(CommandSourceStack source, int chunkScanRadius) {
+        try {
+            // Get the player's current position
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendSystemMessage(Component.literal("This command can only be used by a player.").withStyle(ChatFormatting.RED));
+                return 0;
             }
+
+            ChunkPos chunkPos = playerSource.chunkPosition();
+            // this pos is wrong wtf???? 1 off?????
+            BlockPos startBlock = chunkPos.getMiddleBlockPosition(64);
+            // Offset by -4 blocks in X and Z to align grid with chunk boundaries
+            startBlock = new BlockPos(startBlock.getX() - 4, startBlock.getY(), startBlock.getZ() - 4);
+    
+            LOGGER.info("\n\nCalling showIslandsAndLakes now with chunkScanRadius " + chunkScanRadius + " around chunk " + chunkPos + " and startBlock " + startBlock);
+
+            // STEP 1: Define the step size for grid resolution
+            // int stepSize = 16; // Check every 16 blocks
+            int stepSize = 8; // Check every 8 blocks
+
+            // STEP 2: Build the grid of land and water types
+            int[][] grid = buildLandWaterGrid(startBlock, chunkScanRadius, source.getLevel(), stepSize);
+
+            // STEP 3: Then show the grid (for debugging)
+            LOGGER.info("DEBUG Showing grid now: ");
+            // LOGGER.info(Arrays.deepToString(grid));  // temp to show.
+            showGrid(grid, startBlock, chunkScanRadius, stepSize);
+
+            // STEP 4: Find lakes and islands in the grid
+            // A lake is a 0 surrounded by 1s.
+            // An island is a 1 surrounded by 0s.
+            String answer = findLakesAndIslandsInGrid(grid, startBlock, chunkScanRadius, source, stepSize);
+
+            // STEP 5: Show the list of lakes and islands found.
+            // TODO later save these into the DB and allow naming.
+            // STEP 5: Show the results
+            source.sendSystemMessage(Component.literal(answer).withStyle(ChatFormatting.GREEN));
+
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in scanForIslandsAndLakes: " + e.getMessage(), e);
+            source.sendSystemMessage(Component.literal("Error: " + e.getMessage()).withStyle(ChatFormatting.RED));
+            return 0;
         }
-
-        // STEP 5: Then show the grid (for debugging)
-        showGrid(grid, chunkPos, distance);
-
-
-        // STEP 6: Algorithm to look for lakes and islands with this grid data.
-        // floodfill fun!
-        // Loop over the grid and find lakes and islands.
-        // A lake is a 0 surrounded by 1s.
-        // An island is a 1 surrounded by 0s.
-        String answer = findLakesAndIslands(grid, chunkPos, distance);
-
-
-        // STEP 7: Show the list of lakes and islands found.
-        // TODO later save these into the DB and allow naming.
-        MutableComponent response = Component.literal(answer);
-        source.sendSuccess(() -> response, false);
-
-        return 0;
     }
 
-    private static void showGrid(int[][] grid, ChunkPos chunkPos, int distance) {
+    private static void showGrid(int[][] grid, BlockPos startBlock, int distance, int stepSize) {
+        LOGGER.info("DEBUG Grid data for islands and lakes with radius " + distance + " around startBlock " + startBlock);
+        // Print the grid with column numbers (z values)
+        StringBuilder header = new StringBuilder("    "); // 4 spaces for row numbers
+        int blockDistance = distance * 16;
+        int steps = blockDistance / stepSize;
 
-        LOGGER.info("DEBUG Grid data for islands and lakes:");
-        // Print the grid with column numbers (x values)
-        StringBuilder header = new StringBuilder("   "); // Padding for row numbers
-        for (int j = 0; j < grid[0].length; j++) {
-            header.append(j - distance + chunkPos.x).append(" "); // Add column number
+        // DEBUG SPOT
+        StringBuilder header2 = new StringBuilder("    "); // 4 spaces for row numbers
+        for (int x = 0; x < grid[0].length; x++) {
+            int chunkX = ((x - steps) * stepSize) / 16 + startBlock.getX() / 16;
+            LOGGER.info("DEBUG chunkX = " + chunkX + " = ((x - steps) * stepSize) / 16 + startBlock.getX() =  (("+x+" - "+steps+") * "+stepSize+") / 16 + " + startBlock.getX());
+            header2.append(x).append(" "); // Add chunk position
+        }
+        LOGGER.info(header2.toString());
+
+        for (int x = 0; x < grid.length; x++) {
+            // int chunkX = ((x - steps) * stepSize) / 16.0 + chunkPos.x;
+            int chunkX = (int) (((x - steps) * stepSize) / 16.0 + startBlock.getX() / 16);
+            header.append(chunkX).append(" "); // Add chunk position
         }
         LOGGER.info(header.toString());
 
-        // Print the grid with row numbers (z values)
-        for (int i = 0; i < grid.length; i++) {
+        // Print each row with row numbers (x values)
+        for (int z = 0; z < grid.length; z++) {
             StringBuilder row = new StringBuilder();
-            row.append(i - distance + chunkPos.z).append(": "); // Add row number at the start
-            for (int j = 0; j < grid[i].length; j++) {
-                row.append(grid[j][i]).append(" "); // Access transposed grid values
+            int chunkZ = ((z - steps) * stepSize) / 16 + startBlock.getZ() / 16;
+            row.append(String.format("%3d ", chunkZ)); // Add row number (chunk z position)
+            
+            for (int x = 0; x < grid[z].length; x++) {
+                switch (grid[z][x]) {
+                    case 0:
+                        row.append(" W "); // Water
+                        break;
+                    case 1:
+                        row.append(" L "); // Land
+                        break;
+                    case 2:
+                        row.append(" P "); // Plains
+                        break;
+                    case 3:
+                        row.append(" F "); // Forest
+                        break;
+                    default:
+                        row.append(" ? "); // Unknown
+                        break;
+                }
             }
             LOGGER.info(row.toString());
         }
     }
 
+    /**
+     * Builds a 2D grid representing land and water types around a center chunk.
+     * @param centerChunk The center chunk position
+     * @param chunkScanRadius The radius around the center chunk to scan
+     * @param level The server level for biome and block data
+     * @param stepSize The step size for grid resolution
+     * @return A 2D 0 based grid where: 0=water, 1=land, 2=plains, 3=forest
+     */
+    private static int[][] buildLandWaterGrid(BlockPos startBlock, int chunkScanRadius, ServerLevel level, int stepSize) {
+        // Use stepSize for grid resolution
+        int blockDistance = chunkScanRadius * 16; // Convert chunk distance to block distance
+        int steps = blockDistance / stepSize; // Number of steps in each direction
+        LOGGER.info("DEBUG steps = " + steps + " = blockDistance / stepSize = " + blockDistance + " / " + stepSize);
+        int gridSize = (2 * steps) + 1; // Grid size based on steps
+        // int gridSize = (2 * steps) + 1 + 4; // Grid size based on steps  debug testing
+        int[][] grid = new int[gridSize][gridSize];
+
+        // Get the center block position, offset to align with chunk boundaries
+        // BlockPos centerBlock = centerChunk.getMiddleBlockPosition(64);
+        // Offset by -4 blocks in X and Z to align grid with chunk boundaries
+        // centerBlock = new BlockPos(centerBlock.getX() - 4, centerBlock.getY(), centerBlock.getZ() - 4);
+        LOGGER.info("DEBUG startBlock started at is = " + startBlock);
+        
+        // Loop in a square around the center block with stepSize intervals
+        for (int z = -steps; z <= steps; z++) {
+            for (int x = -steps; x <= steps; x++) {
+                // Calculate the actual block position
+                int blockX = startBlock.getX() + (x * stepSize);
+                int blockZ = startBlock.getZ() + (z * stepSize);
+                
+                // STEP 1: Get height at that position, then biome.
+                int height = level.getHeight(Heightmap.Types.MOTION_BLOCKING, blockX, blockZ) - 1;
+                BlockPos blockPos = new BlockPos(blockX, height, blockZ);
+                Biome biome = level.getBiome(blockPos).value();
+                ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+                if (biomeName == null) {
+                    LOGGER.info("Error: Biome name is null for position " + blockPos);
+                    continue;
+                }
+
+                // STEP 2: Determine if this is water based on biome.
+                // boolean isWater = biomeName.getPath().contains("ocean") || biomeName.getPath().contains("river");
+                boolean isWater = false;
+                // River marked had a whole ton of actual land blocks, look for actual water instead.
+
+                final BlockState blockState = level.getBlockState(blockPos);
+                if (blockState.is(Blocks.WATER) || blockState.is(Blocks.ICE)) {
+                    isWater = true;
+                } else {
+                    // Notice: it also has a lake on the edge of an area that had a bridge over the water, not really a lake....
+                    // Check water at the 62 level.
+                    BlockPos blockPos62 = new BlockPos(blockPos.getX(), 62, blockPos.getZ());
+                    BlockState blockState62 = level.getBlockState(blockPos62);
+                    if (blockState62.is(Blocks.WATER) || blockState62.is(Blocks.ICE)) {
+                        isWater = true;
+                    }
+                }
+
+                // STEP 3: Set grid value based on land/water type
+                // Calculate grid position 0 based grid.
+                int gridX = x + steps;
+                int gridZ = z + steps;
+                if (isWater) {
+                    grid[gridZ][gridX] = 0; // water
+                    LOGGER.info("DEBUG2 Setting blockx,z=" + blockX + "," + blockZ + " to grid[" + gridZ + "][" + gridX + "] = " + grid[gridZ][gridX]);
+                } else {
+                    // Different land types for better visualization
+                    if (biomeName.getPath().contains("plains")) {
+                        grid[gridZ][gridX] = 2; // plains
+                    } else if (biomeName.getPath().contains("forest")) {
+                        grid[gridZ][gridX] = 3; // forest
+                    } else {
+                        grid[gridZ][gridX] = 1; // other land
+                    }
+                }
+                // LOGGER.info("DEBUG2 Setting grid[" + gridZ + "][" + gridX + "] to " + grid[gridZ][gridX]);
+            }
+        }
+
+        return grid;
+    }
 
     // Helper class to store flood-fill results
     private static class FloodFillResult {
         boolean touchesEdge;
         int size;
+        List<ChunkPos> chunkPositions;
 
-        FloodFillResult(boolean touchesEdge, int size) {
+        FloodFillResult(boolean touchesEdge, int size, List<ChunkPos> chunkPositions) {
             this.touchesEdge = touchesEdge;
             this.size = size;
+            this.chunkPositions = chunkPositions;
         }
-    }
-
-    private static int[][] copyGrid(int[][] grid) {
-        int rows = grid.length;
-        int cols = grid[0].length;
-        int[][] gridCopy = new int[rows][cols];
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(grid[i], 0, gridCopy[i], 0, cols);
-        }
-        return gridCopy;
     }
 
     // NOTICE may not work perfectly since a lot of "lakes" are water in an actual plains biome!!!  may need to check water blocks instead????
 
-    // Helper method to perform flood-fill and return the result
-    private static FloodFillResult floodFillWithEdgeAndSize(int[][] grid, boolean[][] visited, int x, int z, int targetValue, int distance) {
-        // Create a copy of the grid
-        int[][] gridCopy = copyGrid(grid);
+    public static String findLakesAndIslandsInGrid(int[][] grid, BlockPos startBlock, int chunkScanRadius, CommandSourceStack source, int stepSize) {
+        int cols = grid.length;
+        int rows = grid[0].length;
 
-        int rows = grid.length;
-        int cols = grid[0].length;
-        boolean touchesEdge = false;
-        int size = 0;
-
-        // Use a stack for iterative flood-fill
-        Stack<int[]> stack = new Stack<>();
-        stack.push(new int[]{x, z});
-
-        while (!stack.isEmpty()) {
-            int[] cell = stack.pop();
-            int cx = cell[0];
-            int cz = cell[1];
-//            LOGGER.info("DEBUG FloodFillWithEdgeAndSize processing cell at cx=" + cx + ", cy=" + cy);
-
-            // Skip if out of bounds, already visited, or not matching the target value
-            if (cx < 0 || cz < 0 || cx >= rows || cz >= cols) {
-                touchesEdge = true;
-                continue;
-            }
-
-            // If we are looking for water and hit any land
-            if (targetValue == 0 && gridCopy[cx][cz] != 0) {
-                continue;
-            }
-            // If we are looking for land and hit any water
-            if (targetValue != 0 && gridCopy[cx][cz] == 0) {
-                continue;
-            }
-
-            // If already done
-            if (gridCopy[cx][cz] == -1) {
-                continue;
-            }
-
-            // Mark as visited.
-            visited[cx][cz] = true;
-
-            // Mark the cell as processed by changing its value (optional)
-            gridCopy[cx][cz] = -1; // Mark as processed (use a special value)
-
-            // Increment the size of the region
-            size++;
-
-            // Add neighbors to the stack
-            stack.push(new int[]{cx + 1, cz});
-            stack.push(new int[]{cx - 1, cz});
-            stack.push(new int[]{cx, cz + 1});
-            stack.push(new int[]{cx, cz - 1});
-        }
-
-        // DEBUG show grid!
-        // Uncomment this to see the text output of the grid to debug easily.
-//        if (!touchesEdge) {
-//            ChunkPos centerChunk = new ChunkPos(x, z);
-//            showGrid(gridCopy, centerChunk, distance);
-//        }
-
-        // TODO Save and return all chunks on the island.
-        // TODO get and add center of island blockpos.
-        // TODO get and add biome list strings.
-        // Note: Diagonals not exactly perfect, thin lands.
-        // probbly count diagonals as well.
-
-        return new FloodFillResult(touchesEdge, size);
-    }
-
-    public static String findLakesAndIslands(int[][] grid, ChunkPos centerChunk, int distance) {
-        int rows = grid.length;
-        int cols = grid[0].length;
-
-        boolean[][] visited = new boolean[rows][cols];
+        boolean[][] visited = new boolean[cols][rows];  // should be same num
         int lakeCount = 0;
         int islandCount = 0;
 
         LOGGER.info("DEBUG starting flood fill: ");
 
+        // Loop over each cell in our grid.
         for (int j = 0; j < cols; j++) {
-            // Loop through the grid
-            LOGGER.info("DEBUG flood fill at j=" + j);
-
             for (int i = 0; i < rows; i++) {
-                // If the cell is not visited, start a flood-fill
-                if (visited[i][j]) {
+                // If the cell is already visited, skip it.
+                if (visited[j][i]) {
                     continue;
                 }
 
-                int targetValue = grid[i][j];
-                int waterOrLand = targetValue == 0 ? 0 : 1; // 1 for land, 0 for water
-                FloodFillResult result = floodFillWithEdgeAndSize(grid, visited, i, j, waterOrLand, distance);
-                // TODO record each object here for later use
+                // TODO maybe for the starting one it must be at least 3/4 spots of water or land to count?
+                // todo catches some boats as islands, fun :{  }
+                // if ocean keep ocean biome?  no? one island says its entirely ocean, meh...
+                // Check for deep water? no hmmm
+                // mushroom island says there is a lake, not one,., odd, catches an underwater lake there, meh, how to skippy?
 
-                if (!result.touchesEdge) {
-                    ChunkPos chunkPos = new ChunkPos(centerChunk.x + (i - distance), centerChunk.z + (j - distance));
-                    if (targetValue == 0) {
-                        lakeCount++;
-                        LOGGER.info("Lake #" + lakeCount + " found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
-                                " with size " + result.size);
-                    } else {
-                        islandCount++;
-                        LOGGER.info("Island #" + islandCount + " found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
-                                " with size " + result.size);
-                    }
+                int targetValue = grid[j][i];
+                // LOGGER.info("DEBUG3 about to floodfill with targetValue = " + targetValue + " at j,i = " + j + "," + i);
+                FloodFillResult result = floodFillWithEdgeAndSize(grid, visited, i, j, targetValue, chunkScanRadius, startBlock, stepSize);
+               
+                // If area touches edge, skip it.
+                if (result.touchesEdge) {
+                    continue;
                 }
 
+                // Use the first chunk position from the result for the center
+                // Size 1 ignore, tiny. 
+                if (result.chunkPositions.isEmpty() || result.chunkPositions.size() < 2) {
+                    continue;
+                }
+
+                // Create a proper GameZone object from the result.
+                // Dont save if a 2 chunk lake
+                if (result.chunkPositions.size() <= 2 && targetValue == 0) {
+                    // NOOP
+                } else {
+                    GameZone.ZoneType zoneType = (targetValue == 0) ? GameZone.ZoneType.LAKE : GameZone.ZoneType.ISLAND;
+                    GameZone gameZone = GameZone.fromChunks(result.chunkPositions, zoneType);
+                    LOGGER.info("Created GameZone: " + gameZone);
+                    // TODO save to DB.
+                    // TODO show to player.
+                }
+
+                int[] counts = showIslandLakeOutput(source, result, targetValue, lakeCount, islandCount);
+                lakeCount = counts[0];
+                islandCount = counts[1];
             }
         }
+
 
         // Output the results
         LOGGER.info("Number of lakes: " + lakeCount);
         LOGGER.info("Number of islands: " + islandCount);
+
+        // example from house 10 radius was finding 4 lakes, kinda conencted. 
+        // now finding 2 lakes 2 islands, a bit off still, with 8 block step size.
 
         // Return that text to show to player.
         return "Number of lakes: " + lakeCount + "\n" +
                 "Number of islands: " + islandCount;
     }
 
+    // Helper method to perform flood-fill and return the result
+    private static FloodFillResult floodFillWithEdgeAndSize(int[][] grid, boolean[][] visited, int x, int z, int targetValue, int chunkScanRadius, BlockPos startBlock, int stepSize) {
+        int rows = grid.length;
+        int cols = grid[0].length;
+        boolean touchesEdge = false;
+        int size = 0;
+        // BlockPos centerBlock = centerChunk.getMiddleBlockPosition(64);   // dpoes this need to be a pos, passed in????
+
+        List<ChunkPos> chunkPositions = new ArrayList<>();
+        
+        // Block interval for coordinate conversion
+        int blockDistance = chunkScanRadius * 16;
+        int steps = blockDistance / stepSize;
+
+        // Use a stack for iterative flood-fill 
+        Stack<int[]> stack = new Stack<>();
+        stack.push(new int[]{x, z});
+
+        while (!stack.isEmpty()) {
+            int[] cell = stack.pop();
+            int cx = cell[0];
+            int cz = cell[1]; // regular style x,z
+
+            // Skip if out of bounds
+            if (cx < 0 || cz < 0 || cx >= rows || cz >= cols) {
+                touchesEdge = true;
+                continue;
+            }
+
+            // Skip if already visited.
+            if (visited[cz][cx]) {
+                continue;
+            }
+            
+            // Handle different land types: 0=water, 1=land, 2=plains, 3=forest
+            // Only continue flood-fill if the current cell matches our target type
+            if (targetValue == 0 && grid[cz][cx] == 0) {
+                // Looking for water and found water - continue flood-fill
+            } else if (targetValue != 0 && grid[cz][cx] != 0) {
+                // Looking for land and found land - continue flood-fill
+            } else {
+                // Mismatch - skip this cell
+                continue;
+            }
+
+            // We found a new good connected grid cell.
+            // Mark as visited
+            visited[cz][cx] = true;
+            size++;
+            
+            // Add this chunk as a connected one.
+            // Convert grid coordinates to chunk coordinates
+            // Grid coordinates are relative to center with stepSize steps
+            // SAMPLE: 
+            // DEBUG2 Setting blockx,z=-1532,964 to grid[4][4] = 0
+            // DEBUG2 Setting blockx,z=-1532,972 to grid[5][4] = 0
+            int blockXOffset = (cx - steps) * stepSize;  // (4 - 4) * 8 = 0
+            int blockZOffset = (cz - steps) * stepSize;  // (5 - 4) * 8 = 8
+            // LOGGER.info("DEBUG5 blockXOffset = " + blockXOffset + " = (cx - steps) * stepSize = " + (cx - steps) + " * " + stepSize);
+            int actualBlockX = startBlock.getX() + blockXOffset;
+            int actualBlockZ = startBlock.getZ() + blockZOffset;        
+            ChunkPos actualChunkPos = new ChunkPos(actualBlockX >> 4, actualBlockZ >> 4); // Convert block coords to chunk coords            
+            // LOGGER.info("DEBUG4 actualChunkPos = " + actualChunkPos + " = new ChunkPos(" + actualBlockX + " >> 4, " + actualBlockZ + " >> 4)");
+            // Only add unique chunk positions
+            if (!chunkPositions.contains(actualChunkPos)) {
+                chunkPositions.add(actualChunkPos);
+            }
+
+            // Add neighbors to the stack. (x,y push here)
+            stack.push(new int[]{cx + 1, cz});     // East
+            stack.push(new int[]{cx - 1, cz});     // West
+            stack.push(new int[]{cx, cz + 1});     // South
+            stack.push(new int[]{cx, cz - 1});     // North
+        }
+
+        return new FloodFillResult(touchesEdge, size, chunkPositions);
+    }
+    
+    private static int[] showIslandLakeOutput(CommandSourceStack source, FloodFillResult result, int targetValue, int lakeCount, int islandCount) {
+        // Get the first chunk position from the result.
+        ChunkPos chunkPos = result.chunkPositions.get(0);
+        BlockPos centerPos = chunkPos.getMiddleBlockPosition(64);
+        // TODO record each chunk here for later use.
+        
+        // Build chunk coordinate list
+        StringBuilder chunkList = new StringBuilder();
+        for (ChunkPos cp : result.chunkPositions) {
+            chunkList.append("(").append(cp.x).append(",").append(cp.z).append(") ");
+        }
+        
+        if (targetValue == 0) {
+            lakeCount++;
+            LOGGER.info("Lake #" + lakeCount + " found at ChunkPos " + chunkPos + " at x,z = " + centerPos.toShortString() +
+                    " with size " + result.size + " chunks: " + result.chunkPositions.size());
+            
+            // Send clickable message to chat
+            MutableComponent lakeMessage = Component.literal("Lake #" + lakeCount + " found at " + centerPos.toShortString() + 
+                    " (size: " + result.size + " chunks: " + result.chunkPositions.size() + ")").withStyle(ChatFormatting.AQUA);
+            lakeMessage.withStyle(style -> style.withClickEvent(
+                new ClickEvent(ClickEvent.Action.RUN_COMMAND, 
+                    "/tp " + centerPos.getX() + " " + centerPos.getY() + " " + centerPos.getZ())
+            ));
+            source.sendSystemMessage(lakeMessage);
+            
+        } else {
+            islandCount++;
+            LOGGER.info("Island #" + islandCount + " found at ChunkPos " + chunkPos + " at x,z = " + centerPos.toShortString() +
+                    " with size " + result.size + " chunks: " + result.chunkPositions.size());
+            
+            // Send clickable message to chat
+            MutableComponent islandMessage = Component.literal("Island #" + islandCount + " found at " + centerPos.toShortString() + 
+                    " (size: " + result.size + " chunks: " + result.chunkPositions.size() + ")").withStyle(ChatFormatting.GREEN);
+            islandMessage.withStyle(style -> style.withClickEvent(
+                new ClickEvent(ClickEvent.Action.RUN_COMMAND, 
+                    "/tp " + centerPos.getX() + " " + centerPos.getY() + " " + centerPos.getZ())
+            ));
+            source.sendSystemMessage(islandMessage);
+        }
+        
+        // Send chunk coordinates (common for both lakes and islands)
+        source.sendSystemMessage(Component.literal("  Chunks: " + chunkList.toString()).withStyle(ChatFormatting.GRAY));
+
+        return new int[]{lakeCount, islandCount};
+    }
 }
