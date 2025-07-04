@@ -71,6 +71,12 @@ public class ModEvents {
             .autoSync()
             .build();
 
+    private static final DataBaseAccess<UUID, GameZone> GAME_ZONE_DATABASE = new DataBaseBuilder<UUID, GameZone>(prefix("game_zone_database"))
+            .setKeySerializer(new UUIDDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(GameZone.CODEC))
+            .autoSync()
+            .build();
+
     public static WorldData getWorldData() {
         return getWorldDataDatabase().getOrCreate(0, WorldData::new);
     }
@@ -127,6 +133,14 @@ public class ModEvents {
         return getDatabase(GAME_STRUCTURE_DATABASE, level);
     }
 
+    public static DataBase<UUID, GameZone> getGameZoneDatabase() {
+        return getDatabase(GAME_ZONE_DATABASE);
+    }
+
+    public static DataBase<UUID, GameZone> getGameZoneDatabase(Level level) {
+        return getDatabase(GAME_ZONE_DATABASE, level);
+    }
+
     public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
         return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
@@ -164,6 +178,8 @@ public class ModEvents {
                     DataBaseManager.registerDataBaseAccess(NPC_DATABASE.getDatabaseName(), NPC_DATABASE);
                     
                     DataBaseManager.registerDataBaseAccess(GAME_STRUCTURE_DATABASE.getDatabaseName(), GAME_STRUCTURE_DATABASE);
+                    
+                    DataBaseManager.registerDataBaseAccess(GAME_ZONE_DATABASE.getDatabaseName(), GAME_ZONE_DATABASE);
                 }
         );
 

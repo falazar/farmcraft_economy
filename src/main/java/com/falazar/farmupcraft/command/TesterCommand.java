@@ -3,6 +3,7 @@ package com.falazar.farmupcraft.command;
 import com.falazar.farmupcraft.data.GameZone;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
@@ -824,8 +825,24 @@ Stretches out to chunk areas.
                     GameZone.ZoneType zoneType = (targetValue == 0) ? GameZone.ZoneType.LAKE : GameZone.ZoneType.ISLAND;
                     GameZone gameZone = GameZone.fromChunks(result.chunkPositions, zoneType);
                     LOGGER.info("Created GameZone: " + gameZone);
-                    // TODO save to DB.
-                    // TODO show to player.
+                    
+                    // Check for duplicates before saving
+                    try {
+                        DataBase<UUID, GameZone> gameZoneDb = ModEvents.getGameZoneDatabase();
+                        
+                        // Check if a GameZone with the same center already exists
+                        boolean isDuplicate = gameZoneDb.getValues().stream()
+                                .anyMatch(existingZone -> existingZone.getCenter().equals(gameZone.getCenter()));
+                        
+                        if (isDuplicate) {
+                            LOGGER.info("Skipping duplicate GameZone with center: " + gameZone.getCenter());
+                        } else {
+                            gameZoneDb.putData(gameZone.getUuid(), gameZone);
+                            LOGGER.info("Saved GameZone to database: " + gameZone.getName());
+                        }
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to save GameZone to database: " + e.getMessage());
+                    }
                 }
 
                 int[] counts = showIslandLakeOutput(source, result, targetValue, lakeCount, islandCount);

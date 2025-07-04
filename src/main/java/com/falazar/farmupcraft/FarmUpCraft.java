@@ -103,6 +103,7 @@ public class FarmUpCraft {
         TesterCommand.register(e.getDispatcher());
         NpcCommand.register(e.getDispatcher());
         StructureCommand.register(e.getDispatcher());
+        ZoneCommand.register(e.getDispatcher());
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {

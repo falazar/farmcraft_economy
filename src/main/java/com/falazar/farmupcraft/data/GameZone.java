@@ -1,7 +1,11 @@
 package com.falazar.farmupcraft.data;
 
+import com.falazar.farmupcraft.util.CodecUtils;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
+import net.minecraft.core.UUIDUtil;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.List;
@@ -14,15 +18,53 @@ import java.util.UUID;
 public class GameZone {
     
     public enum ZoneType {
-        LAKE, ISLAND, CAVE, ARENA, COUNTRY, 
-        FOREST, PLAINS, MOUNTAIN, RIVER, OCEAN
+        LAKE, ISLAND, CAVE, DEEP_DARK, COUNTRY, 
+        FOREST, MOUNTAIN, RIVER, OCEAN;
+        
+        public static final Codec<ZoneType> CODEC = Codec.STRING.xmap(
+                ZoneType::valueOf,
+                ZoneType::name
+        );
     }
     
+    // Custom codec for SectionPos (serialize as long)
+    public static final Codec<SectionPos> GAMEZONE_SECTION_POS_CODEC = Codec.LONG.xmap(
+        SectionPos::of,
+        SectionPos::asLong
+    );
+    
+    // Codec for serialization/deserialization
+    public static final Codec<GameZone> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            UUIDUtil.CODEC.fieldOf("uuid").forGetter(GameZone::getUuid),
+            Codec.STRING.fieldOf("name").forGetter(GameZone::getName),
+            Codec.list(GAMEZONE_SECTION_POS_CODEC).fieldOf("sections").forGetter(GameZone::getSections),
+            ZoneType.CODEC.fieldOf("type").forGetter(GameZone::getType),
+            BlockPos.CODEC.fieldOf("center").forGetter(GameZone::getCenter)
+    ).apply(instance, GameZone::new));
+    
+    private final UUID uuid;
+    private final String name;
     private final List<SectionPos> sections;
     private final ZoneType type;
     private final BlockPos center;
-    private final String name;
-    private final UUID uuid;
+    
+
+        /**
+     * Constructor for codec deserialization - takes all fields.
+     * @param uuid The unique identifier
+     * @param name The name of the zone
+     * @param sections The sections that make up this zone
+     * @param type The type of zone this represents
+     * @param center The center point of the zone
+     */
+    public GameZone(UUID uuid, String name, List<SectionPos> sections, ZoneType type, BlockPos center) {
+        this.uuid = uuid;
+        this.name = name;
+        this.sections = sections;
+        this.type = type;
+        this.center = center;
+    }
+    
     
     /**
      * Creates a new GameZone with auto-generated name and UUID.
@@ -51,6 +93,7 @@ public class GameZone {
         this.name = name;
     }
     
+
     /**
      * Creates a new GameZone from a list of chunks, converting them to sections at Y=64.
      * @param chunks The chunks that make up this zone
