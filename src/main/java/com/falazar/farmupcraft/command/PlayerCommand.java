@@ -60,7 +60,7 @@ public class PlayerCommand {
                             String villageName = StringArgumentType.getString(context, "village");
                             return setVillage(context.getSource(), villageName);
                         }))
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(joinVillageBuilder);
 
         // Admin: Define the "givecoins" and amount sub-command for admin only.
@@ -70,7 +70,7 @@ public class PlayerCommand {
                             int amount = IntegerArgumentType.getInteger(context, "amount");
                             return givePlayerCoins(context.getSource(), amount);
                         }))
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(giveCoinsBuilder);
 
         // Define the "givevillagecoins" and amount sub-command.
@@ -105,7 +105,9 @@ public class PlayerCommand {
 
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
-            source.sendSuccess(() -> Component.literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()) + " ----------")
+            source.sendSuccess(() -> Component
+                    .literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID())
+                            + " ----------")
                     .withStyle(ChatFormatting.YELLOW), false);
 
             // STEP 2: Get money from wallet.
@@ -132,7 +134,7 @@ public class PlayerCommand {
                 }
             }
         } catch (Exception ex) {
-            LOGGER.info ("DEBUG: Player info failed test name: " + source.getTextName());
+            LOGGER.info("DEBUG: Player info failed test name: " + source.getTextName());
             source.sendFailure(Component.literal("player info Exception thrown - see log"));
             ex.printStackTrace();
         }
@@ -148,9 +150,9 @@ public class PlayerCommand {
 
             // Add money to wallet.
             Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = playerSource.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
+            Registry<Coin> coinRegistry = playerSource.level().registryAccess()
+                    .registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-
             wallet.add(bronzeCoin, amount);
 
             // TODO THIS IS ALL THATS NEEDED? save is not quite working.
@@ -159,7 +161,8 @@ public class PlayerCommand {
             int bronzeCoins = wallet.get(bronzeCoin);
             NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Player: "
-                    + playerSource.getScoreboardName() + " given " + numberFormat.format(amount) + " coins. Total: " + numberFormat.format(bronzeCoins)), false);
+                    + playerSource.getScoreboardName() + " given " + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();
@@ -257,7 +260,8 @@ public class PlayerCommand {
             Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
             if (!player.getWallet().hasEnough(bronzeCoin, amount)) {
-                source.sendFailure(Component.literal("Not enough coins in wallet, only have " + wallet.get(bronzeCoin)));
+                source.sendFailure(
+                        Component.literal("Not enough coins in wallet, only have " + wallet.get(bronzeCoin)));
                 return 0;
             }
 
@@ -273,7 +277,8 @@ public class PlayerCommand {
             int bronzeCoins = wallet.get(bronzeCoin);
             NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
-                    + village.getName() + " given " + numberFormat.format(amount) + " coins. Total: " + numberFormat.format(bronzeCoins)), false);
+                    + village.getName() + " given " + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();
@@ -321,13 +326,14 @@ public class PlayerCommand {
             // TODO remoe almost all playerDatabase calls within this file, use helpers.
             // TODO remoe almost all playerDatabase calls within this file, use helpers.
 
-//            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            // DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             savePlayer(playerSource.getUUID(), player);
 
             int bronzeCoins = wallet.get(bronzeCoin);
             NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
-                    + village.getName() + " taken " + numberFormat.format(amount) + " coins. Total: " + numberFormat.format(bronzeCoins)), false);
+                    + village.getName() + " taken " + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("give coins Exception thrown - see log"));
             ex.printStackTrace();

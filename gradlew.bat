@@ -26,9 +26,13 @@ if "%OS%"=="Windows_NT" setlocal
 
 set DIRNAME=%~dp0
 if "%DIRNAME%"=="" set DIRNAME=.
-@rem This is normally unused
+@rem This is normally unused    
 set APP_BASE_NAME=%~n0
 set APP_HOME=%DIRNAME%
+
+@rem Force project JDK for Forge/Gradle compatibility (Gradle 8.1.1 + Forge 1.20.1 expects Java 17).
+set "PROJECT_JAVA_HOME=C:\Program Files\Eclipse Adoptium\jdk-17.0.14.7-hotspot"
+if exist "%PROJECT_JAVA_HOME%\bin\java.exe" set "JAVA_HOME=%PROJECT_JAVA_HOME%"
 
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi

@@ -29,6 +29,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.ForcedChunksSavedData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraftforge.common.world.ForgeChunkManager;
@@ -39,8 +40,8 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
-    private static final List<String> VALID_PLOT_TYPES
-            = Arrays.asList("plot", "farm", "nursery", "kitchen", "restaurant", "house", "trainstation", "graveyard", "pasture");
+    private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen",
+            "restaurant", "house", "trainstation", "graveyard", "pasture");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -71,7 +72,8 @@ public class PlotCommand {
                             if (VALID_PLOT_TYPES.contains(plotType)) {
                                 return buyPlot(context.getSource(), plotType);
                             } else {
-                                context.getSource().sendFailure(Component.literal("Invalid plot type. Must be plot, farm, nursery, kitchen, restaurant, house."));
+                                context.getSource().sendFailure(Component.literal(
+                                        "Invalid plot type. Must be plot, farm, nursery, kitchen, restaurant, house."));
                                 return 0;
                             }
                         }));
@@ -84,17 +86,16 @@ public class PlotCommand {
                     deleteChunk(context.getSource());
                     return 0;
                 })
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(deleteBuilder);
 
-
         // Define ADMIN setvillage chunk to reclaim a single chunk.
-        LiteralArgumentBuilder <CommandSourceStack> reclaimBuilder = Commands.literal("reclaim")
+        LiteralArgumentBuilder<CommandSourceStack> reclaimBuilder = Commands.literal("reclaim")
                 .executes(context -> {
                     reclaimChunk(context.getSource());
                     return 0;
                 })
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(reclaimBuilder);
 
         // TODO do a /plot biomes command also!
@@ -123,7 +124,8 @@ public class PlotCommand {
             if (chunkData == null) {
                 context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
                 if (biomes.size() > 0) {
-                    context.getSource().sendSuccess(() -> Component.literal(", Biomes: " + String.join(", ", biomes)), false);
+                    context.getSource().sendSuccess(() -> Component.literal(", Biomes: " + String.join(", ", biomes)),
+                            false);
                 } else {
                     context.getSource().sendSuccess(() -> Component.literal(", No biomes found."), false);
                 }
@@ -133,31 +135,42 @@ public class PlotCommand {
             // Pull out plot info and owner and village.
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
             VillageData villageData = villageDataDB.getData(chunkData.getVillageId());
-            // village data is null in one chunk in vilalge.... not claimed properly or whats?
+            // village data is null in one chunk in vilalge.... not claimed properly or
+            // whats?
 
             // add some loggin aboiut chunk data
-            LOGGER.info("DEBUG: Chunk data: type=" + chunkData.getType() + 
-                       ", playerId=" + chunkData.getPlayerId() + 
-                       ", villageId=" + chunkData.getVillageId());
-
-
-
+            LOGGER.info("DEBUG: Chunk data: type=" + chunkData.getType() +
+                    ", playerId=" + chunkData.getPlayerId() +
+                    ", villageId=" + chunkData.getVillageId());
 
             // BUG here maybe. update playerid to uuid string.
             LOGGER.info("Plot info for " + chunkPos + ": player id = " + chunkData.getPlayerId()
                     + ", village id = " + chunkData.getVillageId() + ", type = " + chunkData.getType());
             LOGGER.info("Player name: " + chunkData.getNameForPlayer(serverLevel));
 
+            // Debug force-load state when checking plot info.
+            boolean vanillaForcedThisChunk = serverLevel.getForcedChunks().contains(chunkPos.toLong());
+            boolean forgeForcedThisChunk = isForgeForcedChunk(serverLevel, chunkPos);
+            boolean hasAnyForcedChunksInLevel = ForgeChunkManager.hasForcedChunks(serverLevel);
+            LOGGER.info("DEBUG: Force-load status for " + chunkPos
+                    + ": vanillaForcedThisChunk=" + vanillaForcedThisChunk
+                    + ", forgeForcedThisChunk=" + forgeForcedThisChunk
+                    + ", hasAnyForcedChunksInLevel=" + hasAnyForcedChunksInLevel);
+
             // Build a response message
-            MutableComponent response = Component.literal("---------- Plot info for " + chunkPos + ": ----------\n").withStyle(ChatFormatting.YELLOW)
-//                    .append(Component.literal("Owned by: " + chunkData.getNameForPlayer(serverLevel) + ", "))
-                    .append(Component.literal("Village: " + villageData.getName() + "\n").withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal("Type: " + chunkData.getType()+ "\n").withStyle(ChatFormatting.WHITE));
+            MutableComponent response = Component.literal("---------- Plot info for " + chunkPos + ": ----------\n")
+                    .withStyle(ChatFormatting.YELLOW)
+                    // .append(Component.literal("Owned by: " +
+                    // chunkData.getNameForPlayer(serverLevel) + ", "))
+                    .append(Component.literal("Village: " + villageData.getName() + "\n")
+                            .withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal("Type: " + chunkData.getType() + "\n").withStyle(ChatFormatting.WHITE));
             // todo if village show village unclaimed...
 
             // TODO get counts of biomes also.
             if (biomes.size() > 0) {
-                response.append(Component.literal("Biomes: " + String.join(", ", biomes)+"\n").withStyle(ChatFormatting.WHITE));
+                response.append(Component.literal("Biomes: " + String.join(", ", biomes) + "\n")
+                        .withStyle(ChatFormatting.WHITE));
             } else {
                 response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.WHITE));
             }
@@ -165,7 +178,10 @@ public class PlotCommand {
             // If farm plot show all crops planted.
             if (chunkData.getType().equalsIgnoreCase("farm")) {
                 // NOTE must be standing ON the crops directly y values.
-                response.append(Component.literal("Farm plot with crops planted: " + getCropsPlanted(playerSource.blockPosition().above(), serverLevel) + "\n").withStyle(ChatFormatting.GREEN));
+                response.append(Component
+                        .literal("Farm plot with crops planted: "
+                                + getCropsPlanted(playerSource.blockPosition().above(), serverLevel) + "\n")
+                        .withStyle(ChatFormatting.GREEN));
             }
 
             MutableComponent finalResponse = response;
@@ -181,7 +197,8 @@ public class PlotCommand {
     public static String getCropsPlanted(BlockPos blockPos, ServerLevel serverLevel) {
         LOGGER.info("DEBUGGER Crops planted at " + blockPos);
 
-        // Loop over each block in chunk at our feet and add crops to a set and increment counts.
+        // Loop over each block in chunk at our feet and add crops to a set and
+        // increment counts.
         Map<String, Integer> cropsCounts = new HashMap<>();
         ChunkPos chunkPos = new ChunkPos(blockPos);
         for (int x = 0; x < 16; x++) {
@@ -236,7 +253,8 @@ public class PlotCommand {
                 int biomeZ = chunkPos.z * 16 + z;
                 BlockPos blockPos2 = new BlockPos(biomeX, blockPos.getY(), biomeZ);
                 Biome biome = serverLevel.getBiome(blockPos2).value();
-                ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+                ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME)
+                        .getKey(biome);
                 String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
                 if (!biomes.contains(biomeName.toString())) {
                     biomes.add(biomeName);
@@ -329,7 +347,6 @@ public class PlotCommand {
                 return 0;
             }
 
-
             // STEP 3: Calc cost to buy plot and check players total.
             int cost = calculatePlotCost(village, plotType);
             Level level = playerSource.level();
@@ -355,16 +372,23 @@ public class PlotCommand {
             // Extra farm step, force chunk to stay loaded!
             if (plotType.equalsIgnoreCase("farm")) {
                 LOGGER.info("DEBUG1: Farming plot for " + chunkPos + ": " + village.getName());
-                ForgeChunkManager.forceChunk((ServerLevel) level, MODID, playerSource.getUUID(), chunkPos.x, chunkPos.z, true, true);
+                boolean chunkForced = ForgeChunkManager.forceChunk((ServerLevel) level, MODID, playerSource.getUUID(),
+                        chunkPos.x, chunkPos.z, true, true);
+                LOGGER.info("DEBUG1: forceChunk result for " + chunkPos + " = " + chunkForced);
+                if (!chunkForced) {
+                    source.sendFailure(Component.literal(
+                            "Farm chunk ticket was not added (already added or rejected). Check server log for DEBUG1 forceChunk result."));
+                }
             }
             LOGGER.info("Plot bought at " + playerSource.blockPosition().toShortString());
 
-            // STEP 5: Subtract money out of player.  TODO helper method hide this???
+            // STEP 5: Subtract money out of player. TODO helper method hide this???
             player.getWallet().remove(bronzeCoin, cost);
             playerDatabase.putData(playerSource.getUUID(), player);
 
             // Build a response message
-            MutableComponent response = Component.literal("Plot bought at " + playerSource.blockPosition().toShortString() + " as " + plotType + " for " + cost + " coins.");
+            MutableComponent response = Component.literal("Plot bought at "
+                    + playerSource.blockPosition().toShortString() + " as " + plotType + " for " + cost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -421,13 +445,13 @@ public class PlotCommand {
 
             // Remove any previous chunk.
             chunkDatabase.removeDataAsync(chunkPos.toLong(), null);
-            chunkDatabase.setDirty(); // TODO TEST 
+            chunkDatabase.setDirty(); // TODO TEST
 
             // Add to village now.
             ChunkData chunk = new ChunkData("village", playerSource.getId(), villageId);
             chunkDatabase.putData(chunkPos.toLong(), chunk);
             village.addClaimedChunk(chunkPos);
-            
+
             // Update structure claim flags for this chunk
             if (playerSource.level() instanceof ServerLevel serverLevel) {
                 StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
@@ -461,11 +485,45 @@ public class PlotCommand {
 
         // Plot Cost: 100 + 100 * plots TODO test
         // Plot Cost: 100 + 30 * plots TODO testing lower cost.
-        // Lowering from 30 to 25   Cost at our level was 730 a plot
+        // Lowering from 30 to 25 Cost at our level was 730 a plot
         // 730 / 30 = 24 plots
         int totalCost = baseCost + 25 * plotCnt;
         // make farm and some cost extra,
 
         return totalCost;
+    }
+
+    // Check if this exact chunk has a Forge ticket (block or entity, ticking or
+    // non-ticking).
+    private static boolean isForgeForcedChunk(ServerLevel level, ChunkPos chunkPos) {
+        ForcedChunksSavedData data = level.getDataStorage().get(ForcedChunksSavedData::load, "chunks");
+        if (data == null) {
+            return false;
+        }
+
+        long chunkLong = chunkPos.toLong();
+
+        for (var chunks : data.getBlockForcedChunks().getChunks().values()) {
+            if (chunks.contains(chunkLong)) {
+                return true;
+            }
+        }
+        for (var chunks : data.getBlockForcedChunks().getTickingChunks().values()) {
+            if (chunks.contains(chunkLong)) {
+                return true;
+            }
+        }
+        for (var chunks : data.getEntityForcedChunks().getChunks().values()) {
+            if (chunks.contains(chunkLong)) {
+                return true;
+            }
+        }
+        for (var chunks : data.getEntityForcedChunks().getTickingChunks().values()) {
+            if (chunks.contains(chunkLong)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

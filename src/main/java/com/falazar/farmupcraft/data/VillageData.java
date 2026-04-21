@@ -9,17 +9,16 @@ import net.minecraft.world.level.ChunkPos;
 import java.util.*;
 
 public class VillageData {
-    public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance ->
-                    instance.group(
-                            UUIDUtil.STRING_CODEC.fieldOf("uuid").forGetter(VillageData::getUUID),
-                            Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
-                            CodecUtils.CHUNK_POS_CODEC.fieldOf("position").forGetter(VillageData::getPosition),
-                            Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
-                            CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
-                            Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought),
-                            Codec.INT.optionalFieldOf("coins", 0).forGetter(VillageData::getCoins) // New field with default value
-                    ).apply(instance, VillageData::new)
-    );
+    public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            UUIDUtil.STRING_CODEC.fieldOf("uuid").forGetter(VillageData::getUUID),
+            Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
+            CodecUtils.CHUNK_POS_CODEC.fieldOf("position").forGetter(VillageData::getPosition),
+            Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
+            CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
+            Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought),
+            Codec.INT.optionalFieldOf("coins", 0).forGetter(VillageData::getCoins), // New field with default value
+            Codec.STRING.optionalFieldOf("last_ran_daily", "2000-01-01").forGetter(VillageData::getLastRanDaily))
+            .apply(instance, VillageData::new));
 
     private final UUID uuid;
     private String name;
@@ -27,17 +26,20 @@ public class VillageData {
     private int level;
     private List<ChunkPos> claimedChunks;
     private Set<Long> claimedChunkSet = new HashSet<>();
-    private final boolean bought;  // TODO what is this one? remove?
+    private final boolean bought; // TODO what is this one? remove?
     private int coins;
+    private String lastRanDaily;
 
     /**
      * Constructs a new VillageData object.
+     * 
      * @param uuid     unique id of village
      * @param name     the mame of village
      * @param level    the level of village
      * @param position the 3d position of village
      */
-    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks, boolean bought, int coins) {
+    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
+            boolean bought, int coins, String lastRanDaily) {
         this.uuid = uuid;
         this.name = name;
         this.position = position;
@@ -48,10 +50,12 @@ public class VillageData {
             claimedChunkSet.add(ChunkPos.asLong(pos.x, pos.z));
         }
         this.coins = coins;
+        this.lastRanDaily = lastRanDaily;
     }
 
     /**
      * Gets the village's unique id.
+     * 
      * @return the village's unique id
      */
     public UUID getUUID() {
@@ -60,6 +64,7 @@ public class VillageData {
 
     /**
      * Gets the village's name.
+     * 
      * @return the village's name
      */
     public String getName() {
@@ -73,6 +78,7 @@ public class VillageData {
 
     /**
      * Gets the village's position.
+     * 
      * @return the village's position
      */
     public ChunkPos getPosition() {
@@ -81,6 +87,7 @@ public class VillageData {
 
     /**
      * Gets the village's level.
+     * 
      * @return the village's level
      */
     public int getLevel() {
@@ -143,5 +150,22 @@ public class VillageData {
 
     public boolean hasEnoughCoins(int coins) {
         return this.coins >= coins;
+    }
+
+    public String getLastRanDaily() {
+        return lastRanDaily != null ? lastRanDaily : "2000-01-01";
+    }
+
+    public void setLastRanDaily(String date) {
+        this.lastRanDaily = date;
+    }
+
+    public boolean hasRanTodayAlready() {
+        String today = java.time.LocalDate.now().toString(); // yyyy-MM-dd
+        return today.equals(getLastRanDaily());
+    }
+
+    public void markDailyRanToday() {
+        this.lastRanDaily = java.time.LocalDate.now().toString();
     }
 }
