@@ -7,6 +7,8 @@ FIXED    Crop checker - Not working
     /show biomecrops forest - none 
 
    /village farms shows farms but says nothing is planted, hmmm checking wrong levels?
+
+   Holding sapling opening chest/door it dissappears cause plant rules kick in!!!
 END BUGS AREA
 
 
@@ -15,6 +17,7 @@ GENERAL SOON:
     TODO - Make village rundaily and market rundaily auto run as soon as they can, once a day. 
     Save a single var with it with the last Date ran, then just run and update if they dont match.
     Do not do any catch up mechanics if they missed a few days. 
+    Make market changes send text publicly.
 
     TODO - make a proper invite accept to join a village
 

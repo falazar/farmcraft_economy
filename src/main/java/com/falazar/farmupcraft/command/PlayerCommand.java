@@ -99,6 +99,10 @@ public class PlayerCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
             LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             PlayerData player = getPlayer(source);
             ServerLevel serverLevel = source.getLevel();

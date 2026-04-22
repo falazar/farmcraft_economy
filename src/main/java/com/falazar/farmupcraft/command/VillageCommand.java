@@ -348,8 +348,7 @@ public class VillageCommand {
                     .append(Component.literal("---------- Village Name: " + village.getName() + " ----------\n")
                             .withStyle(ChatFormatting.YELLOW)) // Yellow
                     .append(Component.literal("Level: " + village.getLevel() + " \n")) // White
-                    .append(Component.literal("Chunk Radius: " + getVillageChunkRadius(village) + " chunks from center \n")) // White
-                    .append(Component.literal("Target Total Chunks: " + (int)Math.pow((getVillageChunkRadius(village) * 2 + 1), 2) + " \n")) // White
+                    .append(Component.literal("Range: " + getVillageRadius(village) + " chunks \n")) // White
                     .append(Component.literal("Coins: " + numberFormat.format(village.getCoins()) + " \n")
                             .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if
                                                                                                             // negative,
@@ -424,12 +423,50 @@ public class VillageCommand {
         return structures;
     }
 
-    public static int getVillageChunkRadius(VillageData village) {
-        return 4 + village.getLevel();
-    }
-
     public static int getVillageRadius(VillageData village) {
         return 8 + 3 * village.getLevel();
+    }
+
+    // Runs hourly upkeep for villages of online players only.
+    // Returns the number of villages processed.
+    public static int runOnlinePlayerVillageUpkeep(net.minecraft.server.MinecraftServer server) {
+        int processed = 0;
+        try {
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            Level level = server.overworld();
+
+            // Collect unique village UUIDs from online players.
+            Set<UUID> villageIds = new HashSet<>();
+            for (net.minecraft.server.level.ServerPlayer onlinePlayer : server.getPlayerList().getPlayers()) {
+                PlayerData playerData = playerDatabase.getData(onlinePlayer.getUUID());
+                if (playerData == null || playerData.getHomeVillageUUID() == null)
+                    continue;
+                villageIds.add(playerData.getHomeVillageUUID());
+            }
+
+            if (villageIds.isEmpty()) {
+                LOGGER.info("runOnlinePlayerVillageUpkeep: no online players with a village.");
+                return 0;
+            }
+
+            for (UUID villageId : villageIds) {
+                VillageData village = villageDatabase.getData(villageId);
+                if (village == null)
+                    continue;
+                // Skip if upkeep already ran today for this village.
+                if (village.hasRanTodayAlready()) {
+                    LOGGER.info("runOnlinePlayerVillageUpkeep: {} already ran today, skipping.", village.getName());
+                    continue;
+                }
+                processVillageUpkeep(village, level);
+                processed++;
+            }
+        } catch (Exception ex) {
+            LOGGER.error("runOnlinePlayerVillageUpkeep: exception - " + ex.getMessage());
+            ex.printStackTrace();
+        }
+        return processed;
     }
 
     public static int getDailyCost(VillageData village) {
@@ -927,32 +964,42 @@ public class VillageCommand {
         return cleanedUpCount;
     }
 
+    // Shared helper: calculate and charge upkeep for a single village. Returns
+    // coins charged.
+    public static int processVillageUpkeep(VillageData village, Level level) {
+        int dailyCost = getDailyCost(village);
+        int claimedStructures = countVillageClaimedStructures(village, level);
+        int dailyCoins = claimedStructures * 100;
+        int totalCost = Math.max(0, dailyCost - dailyCoins);
+        village.subtractCoins(totalCost);
+        village.markDailyRanToday(); // stamp the date so we don't charge again today
+        ModEvents.getVillageDatabase().putData(village.getUUID(), village);
+        LOGGER.info("Village upkeep: {} charged {} coins (cost={}, earned={}).",
+                village.getName(), totalCost, dailyCost, dailyCoins);
+
+        // Broadcast upkeep result to all online players.
+        Component broadcastMsg = Component.literal("[Village] " + village.getName()
+                + " daily upkeep: -" + totalCost + " coins (cost=" + dailyCost + ", earned=" + dailyCoins + ")")
+                .withStyle(ChatFormatting.YELLOW);
+        if (level.getServer() != null) {
+            level.getServer().getPlayerList().broadcastSystemMessage(broadcastMsg, false);
+        }
+
+        return totalCost;
+    }
+
     public static int runVillageDailyUpkeep(CommandSourceStack source) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            // Load village from db that villager is in.
+            // Load village from db that player is in.
             PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
-            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
-            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+            VillageData village = ModEvents.getVillageDatabase().getData(player.getHomeVillageUUID());
 
-            // Get daily upkeep cost from village coins.
-            int dailyCost = getDailyCost(village);
+            // Calculate and charge upkeep via shared helper.
+            int totalCost = processVillageUpkeep(village, playerSource.level());
 
-            // Add in our structures coins.
-            int claimedStructures = countVillageClaimedStructures(village, playerSource.level());
-            int dailyCoins = claimedStructures * 100;
-            int totalCost = dailyCost - dailyCoins;
-            if (totalCost < 0) {
-                totalCost = 0;
-            }
-
-            // Subtract out our cost now.
-            village.subtractCoins(totalCost);
-            villageDatabase.putData(village.getUUID(), village);
-
-            // Build a response message.
             MutableComponent response = Component.literal("Village daily upkeep ran, charged " + totalCost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);

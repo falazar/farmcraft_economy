@@ -100,6 +100,7 @@ public class FarmUpCraft {
         PlotCommand.register(e.getDispatcher());
         VillageCommand.register(e.getDispatcher());
         MarketCommand.register(e.getDispatcher());
+        FarmCraftCommand.register(e.getDispatcher());
         TesterCommand.register(e.getDispatcher());
         NpcCommand.register(e.getDispatcher());
         StructureCommand.register(e.getDispatcher());
