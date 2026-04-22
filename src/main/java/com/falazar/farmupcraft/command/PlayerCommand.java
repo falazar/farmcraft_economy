@@ -52,27 +52,6 @@ public class PlayerCommand {
                 });
         builder.then(leaveVillageBuilder);
 
-        // Admin command joinvillage
-        // Define the "joinvillage" sub-command
-        LiteralArgumentBuilder<CommandSourceStack> joinVillageBuilder = Commands.literal("joinvillage")
-                .then(Commands.argument("village", StringArgumentType.string())
-                        .executes(context -> {
-                            String villageName = StringArgumentType.getString(context, "village");
-                            return setVillage(context.getSource(), villageName);
-                        }))
-                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
-        builder.then(joinVillageBuilder);
-
-        // Admin: Define the "givecoins" and amount sub-command for admin only.
-        LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
-                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
-                        .executes(context -> {
-                            int amount = IntegerArgumentType.getInteger(context, "amount");
-                            return givePlayerCoins(context.getSource(), amount);
-                        }))
-                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
-        builder.then(giveCoinsBuilder);
-
         // Define the "givevillagecoins" and amount sub-command.
         LiteralArgumentBuilder<CommandSourceStack> giveVillageCoinsBuilder = Commands.literal("givevillagecoins")
                 .then(Commands.argument("amount", IntegerArgumentType.integer(0))
@@ -90,6 +69,25 @@ public class PlayerCommand {
                             return takeVillageCoins(context.getSource(), amount);
                         }));
         builder.then(takeVillageCoinsBuilder);
+
+        // Admin-only sub-commands grouped under "/player admin ..."
+        LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
+                .requires(s -> s.hasPermission(2))
+                // joinvillage <village>
+                .then(Commands.literal("joinvillage")
+                        .then(Commands.argument("village", StringArgumentType.string())
+                                .executes(context -> {
+                                    String villageName = StringArgumentType.getString(context, "village");
+                                    return setVillage(context.getSource(), villageName);
+                                })))
+                // givecoins <amount>
+                .then(Commands.literal("givecoins")
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
+                                .executes(context -> {
+                                    int amount = IntegerArgumentType.getInteger(context, "amount");
+                                    return givePlayerCoins(context.getSource(), amount);
+                                })));
+        builder.then(adminBuilder);
 
         // Register the main command with the dispatcher
         pDispatcher.register(builder);

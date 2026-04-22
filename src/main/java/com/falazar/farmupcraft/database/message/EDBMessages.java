@@ -45,6 +45,12 @@ public class EDBMessages {
                 .consumerMainThread(DataBaseChunkS2C::handle)
                 .add();
 
+        net.messageBuilder(OpenJeiRecipePacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(OpenJeiRecipePacket::new)
+                .encoder(OpenJeiRecipePacket::toBytes)
+                .consumerMainThread(OpenJeiRecipePacket::handle)
+                .add();
+
         //net.registerMessage(id(), DataBaseEntryS2CO.class,
         //        DataBaseEntryS2CO::encode,
         //        DataBaseEntryS2CO::decode,

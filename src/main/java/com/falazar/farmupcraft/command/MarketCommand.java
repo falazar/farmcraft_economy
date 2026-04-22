@@ -12,14 +12,18 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.RecipeType;
 
 import java.io.FileNotFoundException;
 import java.io.InputStream;
@@ -224,18 +228,8 @@ public class MarketCommand {
                 // Highlight ones in your inventory now.
                 Item item = good.getItem();
                 if (item != null) {
-                    boolean inInventory = playerSource.getInventory().contains(item.getDefaultInstance());
-                    String itemName = item.getDescription().getString();
-                    if (inInventory) {
-                        int count = playerSource.getInventory().countItem(item);
-                        response = response
-                                .append(Component.literal(" -" + itemName + ": " + numberFormat.format(good.getCost())
-                                        + " coins (" + count + " cnt)\n").withStyle(ChatFormatting.GREEN));
-                    } else {
-                        response = response.append(Component
-                                .literal(" -" + itemName + ": " + numberFormat.format(good.getCost()) + " coins\n")
-                                .withStyle(ChatFormatting.WHITE));
-                    }
+                    response = response
+                            .append(buildItemLine(source, item, good.getItemId(), good.getCost(), playerSource));
                 } else {
                     response = response.append(
                             Component.literal(" -Unknown Item: " + numberFormat.format(good.getCost()) + " coins\n")
@@ -985,6 +979,45 @@ public class MarketCommand {
         }
     }
 
+    /**
+     * Builds a single styled chat line for a market item.
+     * If the item has a crafting recipe: teal/green + underlined + JEI click.
+     * If no recipe (e.g. oxidized copper): plain white/green + hover only.
+     */
+    private static MutableComponent buildItemLine(CommandSourceStack source, Item item, String itemId, int cost,
+            @Nullable Player playerSource) {
+        String itemName = item.getDescription().getString();
+        boolean inInventory = playerSource != null
+                && playerSource.getInventory().contains(item.getDefaultInstance());
+        int inventoryCount = inInventory ? playerSource.getInventory().countItem(item) : 0;
+        NumberFormat numberFormat = NumberFormat.getInstance();
+        String costStr = numberFormat.format(cost);
+        String label = inInventory
+                ? " -" + itemName + ": " + costStr + " coins (" + inventoryCount + " cnt)\n"
+                : " -" + itemName + ": " + costStr + " coins\n";
+
+        HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_ITEM,
+                new HoverEvent.ItemStackInfo(item.getDefaultInstance()));
+
+        // Check if item has any crafting recipe.
+        boolean hasRecipe = source.getServer() != null && source.getServer().getRecipeManager()
+                .getAllRecipesFor(RecipeType.CRAFTING)
+                .stream()
+                .anyMatch(r -> r.getResultItem(source.getServer().registryAccess()).getItem() == item);
+
+        Style style;
+        if (hasRecipe) {
+            ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/frecipe " + itemId);
+            ChatFormatting color = inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA;
+            style = Style.EMPTY.withColor(color).withUnderlined(true)
+                    .withClickEvent(clickEvent).withHoverEvent(hoverEvent);
+        } else {
+            ChatFormatting color = inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE;
+            style = Style.EMPTY.withColor(color).withHoverEvent(hoverEvent);
+        }
+        return Component.literal(label).withStyle(style);
+    }
+
     public static int showHighValueItems(CommandSourceStack source, int minCoins) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -1022,19 +1055,8 @@ public class MarketCommand {
 
                 Item item = good.getItem();
                 if (item != null) {
-                    boolean inInventory = playerSource != null
-                            && playerSource.getInventory().contains(item.getDefaultInstance());
-                    String itemName = item.getDescription().getString();
-                    if (inInventory) {
-                        int count = playerSource.getInventory().countItem(item);
-                        response = response.append(Component
-                                .literal(" -" + itemName + ": " + good.getCost() + " coins (" + count + " cnt)\n")
-                                .withStyle(ChatFormatting.GREEN));
-                    } else {
-                        response = response
-                                .append(Component.literal(" -" + itemName + ": " + good.getCost() + " coins\n")
-                                        .withStyle(ChatFormatting.WHITE));
-                    }
+                    response = response
+                            .append(buildItemLine(source, item, good.getItemId(), good.getCost(), playerSource));
                 } else {
                     response = response.append(Component.literal(" -Unknown Item: " + good.getCost() + " coins\n")
                             .withStyle(ChatFormatting.WHITE));
