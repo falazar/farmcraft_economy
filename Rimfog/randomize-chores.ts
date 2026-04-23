@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
-const filePath = path.join(__dirname, "chores.md");
+const filePath = path.resolve(process.cwd(), "Rimfog/chores.md");
 const content = fs.readFileSync(filePath, "utf-8");
 
 const lines = content.split("\n");

@@ -14,6 +14,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
@@ -69,6 +70,24 @@ public class PlayerCommand {
                             return takeVillageCoins(context.getSource(), amount);
                         }));
         builder.then(takeVillageCoinsBuilder);
+
+        // Border sub-commands: /player border show / /player border color <color>
+        SuggestionProvider<CommandSourceStack> colorSuggestions = (ctx, b) -> {
+            for (String c : new String[]{"blue", "yellow", "orange", "pink", "teal", "green", "red", "purple", "white"})
+                b.suggest(c);
+            return b.buildFuture();
+        };
+        LiteralArgumentBuilder<CommandSourceStack> borderBuilder = Commands.literal("border")
+                .then(Commands.literal("show")
+                        .executes(context -> setBorderShow(context.getSource())))
+                .then(Commands.literal("color")
+                        .then(Commands.argument("color", StringArgumentType.word())
+                                .suggests(colorSuggestions)
+                                .executes(context -> {
+                                    String color = StringArgumentType.getString(context, "color");
+                                    return setBorderColor(context.getSource(), color);
+                                })));
+        builder.then(borderBuilder);
 
         // Admin-only sub-commands grouped under "/player admin ..."
         LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
@@ -136,9 +155,8 @@ public class PlayerCommand {
                 }
             }
         } catch (Exception ex) {
-            LOGGER.info("DEBUG: Player info failed test name: " + source.getTextName());
-            source.sendFailure(Component.literal("player info Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("Player info error for " + source.getTextName() + ": " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("player info error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -166,8 +184,8 @@ public class PlayerCommand {
                     + playerSource.getScoreboardName() + " given " + numberFormat.format(amount) + " coins. Total: "
                     + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("givePlayerCoins error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("givePlayerCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -184,8 +202,8 @@ public class PlayerCommand {
             player.setHomeVillageId(null);
             savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("player info Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("leaveVillage error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("leaveVillage error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -209,8 +227,8 @@ public class PlayerCommand {
             player.setHomeVillageId(village.getUUID());
             savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("player info Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("setVillage error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("setVillage error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -282,8 +300,8 @@ public class PlayerCommand {
                     + village.getName() + " given " + numberFormat.format(amount) + " coins. Total: "
                     + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("giveVillageCoins error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("giveVillageCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -337,8 +355,45 @@ public class PlayerCommand {
                     + village.getName() + " taken " + numberFormat.format(amount) + " coins. Total: "
                     + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("takeVillageCoins error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("takeVillageCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    // Toggle border visibility on/off and save to PlayerData.
+    public static int setBorderShow(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) { source.sendFailure(Component.literal("Player not found.")); return 0; }
+            PlayerData player = getPlayer(source);
+            if (player == null) return 0;
+            boolean newVal = !player.isBorderShow();
+            player.setBorderShow(newVal);
+            savePlayer(playerSource.getUUID(), player);
+            source.sendSuccess(() -> Component.literal("Border display: " + (newVal ? "ON" : "OFF")), false);
+        } catch (Exception ex) {
+            LOGGER.error("setBorderShow error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("setBorderShow error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    // Set border color and save to PlayerData. Valid: blue, yellow, orange, pink, teal, green, red, purple, white
+    public static int setBorderColor(CommandSourceStack source, String color) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) { source.sendFailure(Component.literal("Player not found.")); return 0; }
+            PlayerData player = getPlayer(source);
+            if (player == null) return 0;
+            player.setBorderColor(color.toLowerCase());
+            savePlayer(playerSource.getUUID(), player);
+            source.sendSuccess(() -> Component.literal("Border color set to: " + color), false);
+        } catch (Exception ex) {
+            LOGGER.error("setBorderColor error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("setBorderColor error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }

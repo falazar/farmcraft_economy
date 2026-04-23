@@ -424,7 +424,7 @@ public class VillageCommand {
     }
 
     public static int getVillageRadius(VillageData village) {
-        return 8 + 3 * village.getLevel();
+        return 2 + 3 * village.getLevel();
     }
 
     // Runs hourly upkeep for villages of online players only.

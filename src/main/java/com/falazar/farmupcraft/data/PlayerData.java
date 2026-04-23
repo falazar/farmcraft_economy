@@ -19,10 +19,10 @@ public class PlayerData {
             instance.group(
                     Codec.INT.fieldOf("id").forGetter(PlayerData::getId),
                     UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID()).forGetter(PlayerData::getHomeVillageUUID),
-                    Wallet.CODEC.fieldOf("wallet").forGetter(PlayerData::getWallet)
+                    Wallet.CODEC.fieldOf("wallet").forGetter(PlayerData::getWallet),
+                    Codec.BOOL.optionalFieldOf("border_show", false).forGetter(PlayerData::isBorderShow),
+                    Codec.STRING.optionalFieldOf("border_color", "blue").forGetter(PlayerData::getBorderColor)
             ).apply(instance, PlayerData::new)
-            // DOES ABOVE WORK EASIER?
-//            ).apply(instance, (Integer id1, String homeVillageId, Integer coins1) -> new PlayerData(id1, homeVillageId, coins1))
     );
 
     // TODO change to UUID
@@ -32,9 +32,20 @@ public class PlayerData {
     private UUID homeVillageUUID;
     @Nonnull
     private final Wallet wallet;
+    private boolean borderShow;
+    private String borderColor;
     // todo add level
     // todo add experience
     // todo add lastPos
+
+    /** Full constructor used by CODEC. */
+    public PlayerData(int id, UUID homeVillageUUID, Wallet wallet, boolean borderShow, String borderColor) {
+        this.id = id;
+        this.homeVillageUUID = homeVillageUUID;
+        this.wallet = wallet;
+        this.borderShow = borderShow;
+        this.borderColor = borderColor;
+    }
 
     /**
      * Constructs a new PlayerData object.
@@ -43,9 +54,7 @@ public class PlayerData {
      * @param wallet         the wallet with coins the player has
      */
     public PlayerData(int id, UUID homeVillageUUID, Wallet wallet) {
-        this.id = id;
-        this.homeVillageUUID = homeVillageUUID;
-        this.wallet = wallet;
+        this(id, homeVillageUUID, wallet, false, "blue");
     }
 
     /**
@@ -88,6 +97,22 @@ public class PlayerData {
 
     public void setHomeVillageId(UUID homeVillageId) {
         this.homeVillageUUID = homeVillageId;
+    }
+
+    public boolean isBorderShow() {
+        return borderShow;
+    }
+
+    public void setBorderShow(boolean borderShow) {
+        this.borderShow = borderShow;
+    }
+
+    public String getBorderColor() {
+        return borderColor;
+    }
+
+    public void setBorderColor(String borderColor) {
+        this.borderColor = borderColor;
     }
 
     /**
