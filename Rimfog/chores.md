@@ -56,3 +56,5 @@ Set up a Jail
 Upgrade Village
 Buy Plots or Buildings
 Upgrade Gear
+Breed Villagers
+Find new farm animals

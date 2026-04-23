@@ -1,6 +1,7 @@
 
 BUGS LIST:   
     Overlay not updating after an action, like buy plot or village?
+
     GIVE player a UUID field properly
 
    /village farms shows farms but says nothing is planted, hmmm checking wrong levels?
@@ -12,19 +13,15 @@ BUGS LIST:
    command is broken, shows this, and only player name, but doesnt catch any errors, how can we get it to show what error is there.
 [13:47:30] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [PlayerCommand:104] DEBUG: Player info test name: BossPanda96366
 [13:47:30] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] ---------- Player Name: BossPanda96366 ----------
-
-
-5642 now.
 Should have about 1500 on player and 2570 took from village. 
 END BUGS AREA
 
-
+player coins: 1,592
 
 GENERAL SOON:
-    TODO - Make village rundaily and market rundaily auto run as soon as they can, once a day. 
-    Save a single var with it with the last Date ran, then just run and update if they dont match.
-    Do not do any catch up mechanics if they missed a few days. 
-    Make market changes send text publicly.
+    TODO - Make decay or uses for the cookware from harvestcraft 2.
+    if not in kitchen, if in kitchen free. 
+    start with 500 uses so it can do about 10 stacks of food before breaking.  
 
     TODO - make a proper invite accept to join a village
 
@@ -41,6 +38,8 @@ GENERAL SOON:
     DONE - make a skeleton that doesnt attack.
         - TODO Turn him into an NPC. made test command.
 
+    BUG: finding a structure after claiming doesnt add it to claimed list.
+
     TODO - show a description of village show in town center plot.
         only show once an hour, cache show message.
 
@@ -49,6 +48,8 @@ GENERAL SOON:
     DONE? TODO - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
 
     TODO - make admin commands anotehr color to tell?
+
+    BUG: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
 
     NOT DONE? - change center plot to a "village center" name.
 
