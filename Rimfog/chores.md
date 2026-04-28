@@ -58,3 +58,5 @@ Buy Plots or Buildings
 Upgrade Gear
 Breed Villagers
 Find new farm animals
+Find/Do Iron Veins
+Make Furniture

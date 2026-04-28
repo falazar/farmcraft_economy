@@ -112,7 +112,7 @@ public class CropsManager {
         // dirt/sand/grass, not farmland.
         ItemStack stack = event.getItemStack();
         if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
-            if (!getPlotType(clickedPos, level).equals("farm")) {
+            if (!ChunkManager.getPlotType(clickedPos, level).equals("farm")) {
                 event.setCanceled(true);
                 return;
             }
@@ -182,7 +182,7 @@ public class CropsManager {
             // TODO see if its our own farm!!!
 
             // STEP 4: See if we are on a farm plot now.
-            if (getPlotType(event.getPos(), level).equals("farm")) {
+            if (ChunkManager.getPlotType(event.getPos(), level).equals("farm")) {
                 // LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
             } else {
                 // Cancel event and return now.
@@ -283,7 +283,7 @@ public class CropsManager {
         // STEP 7: Add in percent if they are in a nursery.
         // TODO cleanup method.
         // TODO add nursery level.
-        if (getPlotType(event.getPos(), level).equals("nursery")) {
+        if (ChunkManager.getPlotType(event.getPos(), level).equals("nursery")) {
             successPercent += 20;
             LOGGER.info("DEBUG3: target fruit is in a nursery plot, adding bonus. successPercent is " + successPercent);
         }
@@ -330,7 +330,7 @@ public class CropsManager {
                 int bonusCnt = 1;
                 if (randomNum <= doubleSuccessPercent - 25) {
                     // Add another!
-                    bonusCnt = 2;
+                    bonusCnt = 2;   
                 }
 
                 // Give player a fruit item.
@@ -344,156 +344,6 @@ public class CropsManager {
                 LOGGER.info("DEBUG: block got bonus fruit named " + blockId);
             }
         }
-    }
-
-    // Check anytime a player enters a new chunk.
-    // Tell if they have entered a village or not.
-    @SubscribeEvent
-    public static void onPlayerEnterChunk(EntityEvent.EnteringSection event) {
-        try {
-            // Check if the event is on client side, then skip.
-            if (event.getEntity().level().isClientSide) {
-                return;
-            }
-
-            // Get the player and their current chunk position.
-            Entity entity = event.getEntity();
-            if (entity == null) {
-                return;
-            }
-            if (!(entity instanceof Player)) {
-                return;
-            }
-            Player player = (Player) event.getEntity();
-            // BlockPos pos = player.blockPosition();
-
-            // If changed only y level, skip this notice!!! jumping in a farm triggers a ton
-            // of these.
-            // Change this later for dungeon areas.
-            // What is SectionPos object? Is this a chunk, plus y and others.
-            SectionPos oldPos = event.getOldPos();
-            SectionPos newPos = event.getNewPos();
-            // Log for debugging help.
-            // LOGGER.info("DEBUG: onPlayerEnterChunk triggered at position " +
-            // pos.toShortString() + " from old position " + oldPos.toShortString() + " to
-            // new position " + newPos.toShortString());
-
-            // Get village name from old position, and new position, compare, show if
-            // different.
-            String lastChunkVillageName = findVillageByChunkPos(oldPos.chunk());
-            String currChunkVillageName = findVillageByChunkPos(newPos.chunk());
-
-            // Check for structures in the new section
-            checkForStructuresInSection(player, newPos);
-
-            if (currChunkVillageName == null && lastChunkVillageName != null) {
-                // Send leaving village message.
-                player.displayClientMessage(Component.literal("You left the village of " + lastChunkVillageName),
-                        false);
-                return;
-            } else if (currChunkVillageName != null && lastChunkVillageName == null) {
-                // Send entering village message.
-                player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName),
-                        false);
-                return;
-            } else if (currChunkVillageName != null && lastChunkVillageName != null) {
-                // If same village name no message needed
-                if (currChunkVillageName.equals(lastChunkVillageName)) {
-                    return;
-                }
-                // Send entering village message.
-                player.displayClientMessage(Component.literal("You entered the village of " + currChunkVillageName),
-                        false);
-                return;
-            } else {
-                // No change in village locations.
-                return;
-            }
-
-        } catch (Exception ex) {
-            LOGGER.error("Error in onPlayerEnterChunk: " + ex.getMessage());
-            ex.printStackTrace();
-        }
-    }
-
-    /**
-     * Checks if the given section contains any structures and notifies the player.
-     * Also marks structures as visited in the database.
-     */
-    private static void checkForStructuresInSection(Player player, SectionPos sectionPos) {
-        try {
-            if (!(player.level() instanceof ServerLevel serverLevel)) {
-                return;
-            }
-
-            // Get the structure database
-            var gameStructureDatabase = ModEvents.getGameStructureDatabase(serverLevel);
-
-            // Check all structures in the database to see if any are in this section
-            for (Long structureId : gameStructureDatabase.getKeys()) {
-                GameStructureData structureData = gameStructureDatabase.getData(structureId);
-                if (structureData == null) {
-                    continue;
-                }
-
-                // Check if this structure is in the current section using SectionPos comparison
-                SectionPos structureSection = SectionPos.of(structureData.getCenterPos());
-                if (!structureSection.equals(sectionPos)) {
-                    continue;
-                }
-
-                // Send message to player
-                String claimedStatus = structureData.isOnClaimedPlot() ? " (claimed)" : "";
-                String visitedStatus = structureData.wasVisited() ? " (visited)" : " (new!)";
-                player.displayClientMessage(
-                        Component.literal("You discovered: " + structureData.getName() + claimedStatus + visitedStatus),
-                        false);
-
-                // Mark as visited if not already (but not in creative mode)
-                if (!structureData.wasVisited() && !player.isCreative()) {
-                    structureData.setWasVisited(true);
-                    gameStructureDatabase.putData(structureId, structureData);
-                    gameStructureDatabase.setDirty();
-                    LOGGER.info(
-                            "Marked structure as visited: " + structureData.getName() + " (ID: " + structureId + ")");
-                }
-            }
-
-        } catch (Exception ex) {
-            LOGGER.error("Error checking for structures in section: " + ex.getMessage());
-            ex.printStackTrace();
-        }
-    }
-
-    // TODO Move to proper object home.
-    // Check plot type pos is on now.
-    public static String getPlotType(BlockPos pos, Level level) {
-        // TODO: can we get level somehow easier? internal.
-        ChunkPos chunkPos = new ChunkPos(pos);
-        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData data = dataBase.getData(chunkPos.toLong());
-        if (data == null) {
-            // LOGGER.info("DEBUG3: checkPlotType: no data found for chunk at " + chunkPos);
-            return "";
-        }
-
-        // LOGGER.info("DEBUG3: checkPlotType: found data for chunk at " + chunkPos + "
-        // with type " + data.getType());
-        return data.getType();
-    }
-
-    // Get the current plot we are on now.
-    public static ChunkData getPlot(BlockPos pos) {
-        ChunkPos chunkPos = new ChunkPos(pos);
-        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData data = dataBase.getData(chunkPos.toLong());
-        if (data == null) {
-            LOGGER.info("DEBUG4: getplot: no data found for chunk at " + chunkPos);
-            return null;
-        }
-        LOGGER.info("DEBUG4: getplot: found data for chunk at " + chunkPos);
-
-        return data;
     }
 
     // NOTE: Is about 3 hours now with 400 growth.
@@ -1121,7 +971,7 @@ public class CropsManager {
 
         // STEP 3: Add in bonus for nursery plots.
         Level level = event.getPlayer().getCommandSenderWorld();
-        if (getPlotType(event.getPos(), level).equals("nursery")) {
+        if (ChunkManager.getPlotType(event.getPos(), level).equals("nursery")) {
             successRate += 20;
             LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus.  successRate = " + successRate);
 
@@ -1208,7 +1058,7 @@ public class CropsManager {
         // LOGGER.info("DEBUG: allowSapling LEAVES BREAK successRate = " + successRate);
 
         // STEP 2: If in a nursery plot, add bonus.
-        if (CropsManager.getPlotType(pos, level).equals("nursery")) {
+        if (ChunkManager.getPlotType(pos, level).equals("nursery")) {
             // LOGGER.info("DEBUG3: allowSapling target leaves block is in a nursery plot,
             // adding bonus. ");
             successRate += 30;
@@ -1257,7 +1107,8 @@ public class CropsManager {
         // STEP 3: Only apply rules if actually planting on a dirt surface.
         // Without this, right-clicking chests/doors while holding a sapling would
         // trigger the random failure roll and shrink the stack.
-        // BlockTags.DIRT covers: dirt, coarse_dirt, rooted_dirt, podzol, mycelium, grass_block.
+        // BlockTags.DIRT covers: dirt, coarse_dirt, rooted_dirt, podzol, mycelium,
+        // grass_block.
         BlockState clickedState = level.getBlockState(clickedPos);
         if (!clickedState.is(BlockTags.DIRT)) {
             return;
@@ -1308,7 +1159,7 @@ public class CropsManager {
         int goodChance = 10;
 
         // STEP 5: Roll random chance of failure, if not in a nursery.
-        String plotType = getPlotType(clickedPos, level);
+        String plotType = ChunkManager.getPlotType(clickedPos, level);
         if (plotType.equals("nursery")) {
             LOGGER.info("DEBUG: allowSapling target block is in a nursery plot, adding bonus. ");
             goodChance = 65;

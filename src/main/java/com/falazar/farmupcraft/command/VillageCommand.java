@@ -291,6 +291,13 @@ public class VillageCommand {
             chunkDataDatabase.putData(chunkPos.toLong(), data);
 
             LOGGER.info("Plot bought at " + chunkPos);
+
+            // Auto-scan for nearby structures in a 30-chunk radius on village creation.
+            if (player.level() instanceof ServerLevel serverLevel) {
+                LOGGER.info("Auto-scanning for structures within 30 chunks of new village " + villageName);
+                StructureCommand.findNearbyStructuresForVillage(
+                        player.blockPosition(), serverLevel, player, villageData, "all", 30);
+            }
             // TODO1 call a set plot method, separate this out.
             // TODO1 add plot to city.
 
