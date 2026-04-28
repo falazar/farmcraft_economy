@@ -1,22 +1,13 @@
 
 BUGS LIST:   
-    Overlay not updating after an action, like buy plot or village?
-
     GIVE player a UUID field properly
 
    /village farms shows farms but says nothing is planted, hmmm checking wrong levels?
-
-   Holding sapling opening chest/door it dissappears cause plant rules kick in!!!
-
-   BUG: I just took money from village /player takevillagecoins  
-   then /player info
-   command is broken, shows this, and only player name, but doesnt catch any errors, how can we get it to show what error is there.
-[13:47:30] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [PlayerCommand:104] DEBUG: Player info test name: BossPanda96366
-[13:47:30] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] ---------- Player Name: BossPanda96366 ----------
-Should have about 1500 on player and 2570 took from village. 
 END BUGS AREA
 
-player coins: 1,592
+
+TODO TEST:
+  See if we can add a point to JEI map, and then add a colored area!
 
 GENERAL SOON:
     TODO - Make decay or uses for the cookware from harvestcraft 2.

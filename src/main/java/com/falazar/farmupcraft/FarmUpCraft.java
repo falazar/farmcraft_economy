@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.command.*;
+import com.falazar.farmupcraft.command.AiCommand;
 import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.data.rules.crop.CropRules;
 import com.falazar.farmupcraft.registry.FUCRegistries;
@@ -105,6 +106,7 @@ public class FarmUpCraft {
         NpcCommand.register(e.getDispatcher());
         StructureCommand.register(e.getDispatcher());
         ZoneCommand.register(e.getDispatcher());
+        AiCommand.register(e.getDispatcher());
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
