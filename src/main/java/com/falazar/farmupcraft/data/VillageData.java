@@ -16,8 +16,12 @@ public class VillageData {
             Codec.INT.fieldOf("level").forGetter(VillageData::getLevel),
             CodecUtils.CHUNK_POS_CODEC.listOf().fieldOf("claimed_chunks").forGetter(VillageData::getClaimedChunks),
             Codec.BOOL.fieldOf("bought").forGetter(VillageData::isBought),
-            Codec.INT.optionalFieldOf("coins", 0).forGetter(VillageData::getCoins), // New field with default value
-            Codec.STRING.optionalFieldOf("last_ran_daily", "2000-01-01").forGetter(VillageData::getLastRanDaily))
+            Codec.INT.optionalFieldOf("coins", 0).forGetter(VillageData::getCoins),
+            Codec.STRING.optionalFieldOf("last_ran_daily", "2000-01-01").forGetter(VillageData::getLastRanDaily),
+            Codec.STRING.optionalFieldOf("animal_type", "").forGetter(VillageData::getAnimalType),
+            Codec.STRING.optionalFieldOf("last_animal_type_change", "2000-01-01").forGetter(VillageData::getLastAnimalTypeChange),
+            Codec.STRING.optionalFieldOf("founder", "").forGetter(VillageData::getFounder),
+            UUIDUtil.STRING_CODEC.listOf().optionalFieldOf("member_uuids", new ArrayList<>()).forGetter(VillageData::getMemberUUIDs))
             .apply(instance, VillageData::new));
 
     private final UUID uuid;
@@ -29,6 +33,10 @@ public class VillageData {
     private final boolean bought; // TODO what is this one? remove?
     private int coins;
     private String lastRanDaily;
+    private String animalType;       // e.g. "cow", "sheep", "pig", "chicken"
+    private String lastAnimalTypeChange;
+    private String founder;           // Player name who founded the village
+    private List<UUID> memberUUIDs;   // UUIDs of all players who are members of this village
 
     /**
      * Constructs a new VillageData object.
@@ -39,7 +47,8 @@ public class VillageData {
      * @param position the 3d position of village
      */
     public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
-            boolean bought, int coins, String lastRanDaily) {
+            boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange, String founder,
+            List<UUID> memberUUIDs) {
         this.uuid = uuid;
         this.name = name;
         this.position = position;
@@ -51,6 +60,10 @@ public class VillageData {
         }
         this.coins = coins;
         this.lastRanDaily = lastRanDaily;
+        this.animalType = animalType != null ? animalType : "";
+        this.lastAnimalTypeChange = lastAnimalTypeChange != null ? lastAnimalTypeChange : "2000-01-01";
+        this.founder = founder != null ? founder : "";
+        this.memberUUIDs = memberUUIDs != null ? new ArrayList<>(memberUUIDs) : new ArrayList<>();
     }
 
     /**
@@ -167,5 +180,53 @@ public class VillageData {
 
     public void markDailyRanToday() {
         this.lastRanDaily = java.time.LocalDate.now().toString();
+    }
+
+    public String getAnimalType() {
+        return animalType != null ? animalType : "";
+    }
+
+    public void setAnimalType(String animalType) {
+        this.animalType = animalType;
+    }
+
+    public String getLastAnimalTypeChange() {
+        return lastAnimalTypeChange != null ? lastAnimalTypeChange : "2000-01-01";
+    }
+
+    public void setLastAnimalTypeChange(String date) {
+        this.lastAnimalTypeChange = date;
+    }
+
+    // Returns true if it has been at least 7 days since the animal type was last changed.
+    public boolean canChangeAnimalType() {
+        java.time.LocalDate last = java.time.LocalDate.parse(getLastAnimalTypeChange());
+        return java.time.LocalDate.now().isAfter(last.plusDays(6));
+    }
+
+    public String getFounder() {
+        return founder != null ? founder : "";
+    }
+
+    public void setFounder(String founder) {
+        this.founder = founder;
+    }
+
+    public List<UUID> getMemberUUIDs() {
+        if (memberUUIDs == null) memberUUIDs = new ArrayList<>();
+        return memberUUIDs;
+    }
+
+    public void addMember(UUID playerUUID) {
+        if (memberUUIDs == null) memberUUIDs = new ArrayList<>();
+        if (!memberUUIDs.contains(playerUUID)) memberUUIDs.add(playerUUID);
+    }
+
+    public void removeMember(UUID playerUUID) {
+        if (memberUUIDs != null) memberUUIDs.remove(playerUUID);
+    }
+
+    public boolean isMember(UUID playerUUID) {
+        return memberUUIDs != null && memberUUIDs.contains(playerUUID);
     }
 }

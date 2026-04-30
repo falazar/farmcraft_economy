@@ -119,7 +119,14 @@ public class ForgeEvents {
 
             if (!playerDatabase.containsKey(uuid)) {
                 CoinStack bronzeStack = new CoinStack(CoinRegistry.getCoin(CoinRegistry.BRONZE_COIN), 10);
-                playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), UUID.randomUUID(), new Wallet(List.of(bronzeStack))));
+                playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), uuid, UUID.randomUUID(), new Wallet(List.of(bronzeStack))));
+            } else {
+                // Ensure the playerUUID field is set on existing records (e.g. old saves before the field was added).
+                PlayerData existing = playerDatabase.getData(uuid);
+                if (existing != null && (existing.getPlayerUUID() == null || existing.getPlayerUUID().equals(new UUID(0L, 0L)))) {
+                    existing.setPlayerUUID(uuid);
+                    playerDatabase.putData(uuid, existing);
+                }
             }
 
             for (ResourceLocation dataBaseName : DataBaseManager.getDataBasesToSync()) {

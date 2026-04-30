@@ -1,25 +1,35 @@
 
 BUGS LIST:   
-    GIVE player a UUID field properly
+    TODO CHECK - make a proper invite accept to join a village
 
-   /village farms shows farms but says nothing is planted, hmmm checking wrong levels?
+    TODO CHECK /village farms shows farms but says nothing is planted, hmmm checking wrong levels?
 END BUGS AREA
 
 
 TODO TEST:
-  See if we can add a point to JEI map, and then add a colored area!
+  TODO CHECK - Add a point to JourneyMap, waypoint and colored chunk area!
 
 GENERAL SOON:
-    TODO - Make decay or uses for the cookware from harvestcraft 2.
+    TODO CHECK - Make lava be gathered from a cauldron to a hopper.   
+
+    TODO CHECK - limit number of each type to 1 per village level, 2 for houses, no limits on regular plots
+
+    TODO CHECK - Make decay or uses for the cookware from harvestcraft 2.
     if not in kitchen, if in kitchen free. 
     start with 500 uses so it can do about 10 stacks of food before breaking.  
     
-    TODO - make a proper invite accept to join a village
-
-    TODO - make breeding animals not allowed except within village.
+    TODO CHECK - make breeding animals not allowed except within village.
         limit breeding type of animal to 1 per village, stored on village object.
         once per day on breeding and milking
 
+    TODO - flag that says every 5 min if im not in hard mode, if only one player on, and it has my name!!!!!!!
+    
+
+    TODO CHECK: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
+
+
+FUTURE STUFF: 
+Dont start yet not fully defined.
     TODO - create zone? or gameZone db object to save structures chunks and island and lakes and maybe country chunks? x y z
 
     TODO - levelup village for 9 and 10 should get double chunks added.
@@ -31,20 +41,13 @@ GENERAL SOON:
 
     BUG: finding a structure after claiming doesnt add it to claimed list.
 
-    TODO - show a description of village show in town center plot.
+    TODO CHECK - show a description of village show in town center plot.
         only show once an hour, cache show message.
 
     TODO - Create a find caves command - find largest caves in area, save area to DB for mob use.
 
-    DONE? TODO - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
-
-    TODO - make admin commands anotehr color to tell?
-
-    BUG: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
-
-    NOT DONE? - change center plot to a "village center" name.
-
-    TODO - flag that says every 5 min if im not in hard mode, if one player on, and it has my name!!!!!!!
+    DONE - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
+ 
     TODO - add nursery to keep loaded chunks?  how to test afterwards?  hardcode them for awhile, when entering a nursery chunk reset it?
        otherwise only growing when nearby, and only helps full time players.
 
@@ -67,16 +70,15 @@ GENERAL SOON:
             Adds more danger for these areas, many are empty right now.
             higher chance add spawner - make more mobs if in hard mode.
 
-    TODO - Diamond Border change into a toggleAble command.
 
-    TODO - Add clickable link in /player info that goes to the village info automatically.
+    TODO CHECK - Add clickable link in /player info that goes to the village info automatically.
 
     TODO - buyable eggs for villagers if we have less than 3 alive?
 
     TODO - break up CropsManager into several other things.  should be events or?  check another project?
 
     // Recipes and boosts and such
-    TODO - make emu and duck eggs usable in cooking.
+    TODO CHECK - make emu and duck eggs usable in cooking.
     TODO - make cows and animals use a new grain per village. alfalfa has a use then.
     TODO - animate boats have them move each night possibly come to attack or trade.
 
@@ -118,16 +120,14 @@ PLAYERS:
 
 MAP
 Get a way to show village areas (or others) on JourneyMap
-    --TODO They had a decent integration a couple years back, should be able to use.
+    --TODO CHECK - waypoint and chunk highlight commands added via /farmcraft map
     --REF: https://github.com/TeamJM/journeymap-api/blob/1.20.x_1.9-forge/src/main/java/example/mod/client/plugin/SamplePolygonOverlayFactory.java
     --Similar: https://www.reddit.com/r/feedthebeast/comments/gq172e/this_is_my_mod_mapfrontiers_an_addon_for/
     -- REF: https://teamjm.github.io/journeymap-docs/5.9.x/Tools%20and%20Customisation/integration/
 
 #############################################################
 Adventure Areas
-    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
-    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
-    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
+
 
 Create find islands and lakes command
     -- TODO MOSTLY DONE Command created -

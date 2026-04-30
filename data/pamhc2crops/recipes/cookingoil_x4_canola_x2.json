@@ -1,0 +1,20 @@
+{
+	"type": "minecraft:crafting_shapeless",
+	
+	"ingredients":
+	[
+ {
+      "tag": "forge:tool_roller"
+    },
+
+    {
+      "item": "pamhc2crops:canolaitem"
+    },{
+      "item": "pamhc2crops:canolaitem"
+    }
+	],
+	
+	"result": {"item": "pamhc2foodcore:cookingoilitem",
+	"count": 4}
+	
+}

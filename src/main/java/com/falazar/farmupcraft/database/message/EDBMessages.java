@@ -51,6 +51,18 @@ public class EDBMessages {
                 .consumerMainThread(OpenJeiRecipePacket::handle)
                 .add();
 
+        net.messageBuilder(AddJMWaypointPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(AddJMWaypointPacket::new)
+                .encoder(AddJMWaypointPacket::toBytes)
+                .consumerMainThread(AddJMWaypointPacket::handle)
+                .add();
+
+        net.messageBuilder(HighlightChunkPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(HighlightChunkPacket::new)
+                .encoder(HighlightChunkPacket::toBytes)
+                .consumerMainThread(HighlightChunkPacket::handle)
+                .add();
+
         //net.registerMessage(id(), DataBaseEntryS2CO.class,
         //        DataBaseEntryS2CO::encode,
         //        DataBaseEntryS2CO::decode,

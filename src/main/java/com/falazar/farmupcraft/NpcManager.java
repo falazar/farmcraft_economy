@@ -1,17 +1,27 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.data.NpcData;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.NpcConversationLogger;
+import com.falazar.farmupcraft.util.NpcDataLoader;
+import com.falazar.farmupcraft.util.OllamaService;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
+import net.minecraftforge.event.ServerChatEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
@@ -19,133 +29,174 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 public class NpcManager {
     public static final CustomLogger LOGGER = new CustomLogger(NpcManager.class.getSimpleName());
 
-//    @SubscribeEvent
-//    public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
-//
-//        // Step 1: If in creative mode, skip all rules and allow planting all.
-//        Player player = (Player) event.getEntity();
-//        if (player.getUsedItemHand() != InteractionHand.MAIN_HAND) return;
-//        if (player.isCreative()) {
-////            LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
-//            return;
-//        }
-//
-//        // STEP 2: Test if target block is farmland, if not leave.
-//        Level level = event.getLevel();
-//        BlockPos clickedPos = event.getPos();
-//        BlockState clickedState = level.getBlockState(clickedPos);
-//
-//        // Return if clicked block is not farmland
-//        boolean isFarmBelow = false;
-//
-//        // Notice allowing some planting in non farm plot areas, if already plowed.
-//
-//
-//        // Return if the placement would be on top of farmland (if face is known)
-//        if (event.getFace() != null) {
-//            BlockPos placementPos = clickedPos.relative(event.getFace());
-//            BlockPos blockBelow = placementPos.below();
-//            BlockState stateBelow = level.getBlockState(blockBelow);
-//
-//            if (stateBelow.is(FUCTags.FARMLAND)) {
-//                isFarmBelow = true;
-//            }
-//        }
-//        if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
-//            return;
-//        }
-//
-//
-//        // STEP 3: If sugarcane or sweetberries, make sure they are on a farm plot only.
-//        ItemStack stack = event.getItemStack();
-//        // TODO TEST sugarcane and sweetberries.
-//        if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
-//            LOGGER.info("DEBUG: sugarcane or sweetberries, farm check.");
-//            if (!getPlotType(clickedPos, level).equals("farm")) {
-//                event.setCanceled(true);
-//                return;
-//            }
-//        }
-//
-//        // STEP 4: Test if holding a vanilla or harvestcraft item, if not leave.
-//        if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
-//            return;
-//        }
-//
-//        // Setup all of our biomes and crops rules allowed, saves to cache.
-//        // TODO move me, call one time only at start.
-//        //not needed anymore, is defined in CropItemDataJsonManager
-//        //setupBiomeCrops(event);  // TEMP TESTER AREA.
-//
-//        // STEP 5: Get current biome the block is in.
-//        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
-//
-//        // The biome has rules defined for what can happen in it or not!
-//        BiomeRulesManager manager = BiomeRulesManager.get(event.getLevel());
-//        if (manager == null || !manager.hasRules()) return;
-//
-//        BiomeRulesInstance instance = manager.getBiomeRules(biome);
-//        if (instance == null) return;
-//
-//        // Check if the crop is allowed in the biome
+    /** How long (ms) a conversation window stays open after right-clicking. */
+    private static final long CONVERSATION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
-    /// /        if (!isCropAllowed(manager, instance, stack, biome, event)) {
-    /// /            // Cancel event and return now.
-    /// /            event.setCanceled(true);
-    /// /        }
-//    }
+    /** Max blocks distance to still receive a reply. */
+    private static final double MAX_TALK_DISTANCE = 10.0;
 
+    /**
+     * Active conversations: player UUID → the NPC they are talking to.
+     * Cleared when the timer expires or the player moves too far away.
+     */
+    private static final Map<UUID, ActiveConversation> ACTIVE_CONVERSATIONS = new ConcurrentHashMap<>();
 
-    // On right click an npc, show a description and say hello.
+    // -------------------------------------------------------------------------
+    // Right-click — open conversation window
+    // -------------------------------------------------------------------------
+
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickNpc(PlayerInteractEvent.EntityInteract event) {
-        if (event.getLevel().isClientSide()) {
-            return; // server side only.
-        }
-        if (event.getHand() != InteractionHand.MAIN_HAND) {
+        if (event.getLevel().isClientSide())
             return;
-        }
-        // Check that player is doing this.
-        if (event.getEntity() == null || !(event.getEntity() instanceof Player)) {
-//            LOGGER.info("DEBUG: not a player, leaving.");
+        if (event.getHand() != InteractionHand.MAIN_HAND)
             return;
-        }
+
+        Entity source = event.getEntity();
+        if (!(source instanceof Player player))
+            return;
+
         Entity target = event.getTarget();
-        // Check if the target is an NPC (Minecraft villager for now.)
-        if (!(target instanceof Villager)) {
-//            LOGGER.info("DEBUG: not a Villager, leaving.");
+        if (!(target instanceof Villager villager))
             return;
-        }
-        LOGGER.info("DEBUG: right click Villager target: " + target);
 
-        Player player = event.getEntity();
+        String npcName = villager.getName().getString();
+        UUID npcUUID = villager.getUUID();
 
-        // Say hello and your name.
-        MutableComponent message = Component.literal("Hello, I am ")
-                .append(Component.literal(target.getName().getString()).withStyle(ChatFormatting.GOLD))
+        LOGGER.info("Right-click on villager: {} ({})", npcName, npcUUID);
+
+        // Always say hello.
+        MutableComponent greeting = Component.literal("Hello, I am ")
+                .append(Component.literal(npcName).withStyle(ChatFormatting.GOLD))
                 .append(Component.literal("!"))
                 .withStyle(ChatFormatting.GREEN);
+        player.displayClientMessage(greeting, false);
 
-        // Give a description if available.
-        String description = getNpcDescription(target);
-        if (description != null && !description.isEmpty()) {
-            message.append(Component.literal("\n" + description).withStyle(ChatFormatting.GRAY));
-        }
-        player.displayClientMessage(message, false);
-    }
-
-    public static String getNpcDescription(Entity entity) {
-        // For now, we will just return a static description.}
-        String desc;
-        if (entity instanceof Villager villager) {
-            desc = "I am a villager of profession: " + villager.getVillagerData().getProfession().toString();
-        } else {
-            desc = "I am not a villager.";
+        // Check if this villager has an AI profile on disk.
+        if (!NpcDataLoader.hasProfile(npcName, npcUUID)) {
+            player.displayClientMessage(
+                    Component.literal("(This villager has no profile and cannot be spoken to.)")
+                            .withStyle(ChatFormatting.GREEN),
+                    false);
+            return;
         }
 
-        // TODO create an NPC data object.
+        // Open conversation window for 2 minutes.
+        ACTIVE_CONVERSATIONS.put(player.getUUID(),
+                new ActiveConversation(npcUUID, npcName, villager, System.currentTimeMillis()));
 
-        return desc;
+        player.displayClientMessage(
+                Component.literal("[NPC] " + npcName + " is listening. Say something in chat within 2 minutes!")
+                        .withStyle(ChatFormatting.GREEN),
+                false);
     }
 
+    // -------------------------------------------------------------------------
+    // Chat event — intercept player messages while in conversation
+    // -------------------------------------------------------------------------
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onPlayerChat(ServerChatEvent event) {
+        Player player = event.getPlayer();
+        UUID playerUUID = player.getUUID();
+
+        ActiveConversation conv = ACTIVE_CONVERSATIONS.get(playerUUID);
+        if (conv == null)
+            return;
+
+        // Check timer.
+        if (System.currentTimeMillis() - conv.startedAt > CONVERSATION_TIMEOUT_MS) {
+            ACTIVE_CONVERSATIONS.remove(playerUUID);
+            player.displayClientMessage(
+                    Component.literal("[NPC] Your conversation with " + conv.npcName + " has timed out.")
+                            .withStyle(ChatFormatting.GREEN),
+                    false);
+            return;
+        }
+
+        // Check distance — villager must still be nearby.
+        double dist = player.distanceTo(conv.villager);
+        if (dist > MAX_TALK_DISTANCE) {
+            ACTIVE_CONVERSATIONS.remove(playerUUID);
+            player.displayClientMessage(
+                    Component.literal("[NPC] You moved too far from " + conv.npcName + ".")
+                            .withStyle(ChatFormatting.GREEN),
+                    false);
+            return;
+        }
+
+        // Load profile from disk (cheap — only reads one file).
+        NpcData profile = NpcDataLoader.findProfile(conv.npcName, conv.npcUUID);
+        if (profile == null) {
+            ACTIVE_CONVERSATIONS.remove(playerUUID);
+            return;
+        }
+
+        // Log and broadcast the player's message publicly before canceling.
+        // WHITE matches normal vanilla player chat color.
+        String playerMessage = event.getMessage().getString();
+        player.getServer().getPlayerList().broadcastSystemMessage(
+                Component.literal("<" + player.getName().getString() + "> " + playerMessage)
+                        .withStyle(ChatFormatting.WHITE),
+                false);
+
+        // Append to logs/<playerName>/<YY-MM-DD>/NPC.txt
+        NpcConversationLogger.log(player.getName().getString(), player.getName().getString(), playerMessage);
+        LOGGER.info("[NPC Conversation] <{}> to {}: {}", player.getName().getString(), conv.npcName, playerMessage);
+
+        // Cancel so the vanilla chat handler doesn't also send it.
+        event.setCanceled(true);
+
+        // TODO: Send the full conversation history to the AI instead of just the latest
+        // message. Track a List<ChatMessage> in ActiveConversation (alternating
+        // user/assistant turns) and pass the whole list to OllamaService.chat().
+
+        // Build a system prompt that gives the AI the NPC's personality.
+        String systemPrompt = buildSystemPrompt(profile, player.getName().getString(), playerMessage);
+
+        player.displayClientMessage(
+                Component.literal("[NPC] " + conv.npcName + " is thinking...").withStyle(ChatFormatting.GREEN), false);
+
+        MinecraftServer server = player.getServer();
+        OllamaService.chat(systemPrompt)
+                .thenAccept(reply -> server.execute(() -> {
+                    // Append NPC reply to logs/<playerName>/<YY-MM-DD>/NPC.txt
+                    NpcConversationLogger.log(player.getName().getString(), conv.npcName, reply);
+                    LOGGER.info("[NPC Conversation] <{}> to {}: {}", conv.npcName, player.getName().getString(), reply);
+                    player.displayClientMessage(
+                            Component.literal("[NPC] " + conv.npcName + ": " + reply)
+                                    .withStyle(ChatFormatting.GREEN),
+                            false);
+                }))
+                .exceptionally(err -> {
+                    server.execute(() -> player.displayClientMessage(
+                            Component.literal("[NPC Error] " + err.getMessage())
+                                    .withStyle(ChatFormatting.GREEN),
+                            false));
+                    return null;
+                });
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private static String buildSystemPrompt(NpcData profile, String playerName, String playerMessage) {
+        return "You are a Minecraft villager named " + profile.getName() + ". " +
+                profile.getDescription() + " " +
+                "Keep your reply short (1-3 sentences), in character, and friendly. " +
+                "The player '" + playerName + "' says to you: " + playerMessage;
+    }
+
+    /** Clears a conversation if one is active for the given player. */
+    public static void clearConversation(UUID playerUUID) {
+        ACTIVE_CONVERSATIONS.remove(playerUUID);
+    }
+
+    // -------------------------------------------------------------------------
+    // Inner record
+    // -------------------------------------------------------------------------
+
+    private record ActiveConversation(UUID npcUUID, String npcName, Villager villager, long startedAt) {
+    }
 }

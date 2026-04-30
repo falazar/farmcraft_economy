@@ -1,0 +1,19 @@
+{
+	"type": "minecraft:crafting_shapeless",
+	
+	"ingredients":
+	[
+    {
+      "tag": "forge:cactus_plants"
+    },
+    {
+      "tag": "forge:cactus_plants"
+    }
+
+
+	],
+	
+	"result": {"item": "minecraft:cactus",
+	"count": 2}
+	
+}

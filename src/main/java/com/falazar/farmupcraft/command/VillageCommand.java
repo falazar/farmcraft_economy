@@ -173,6 +173,46 @@ public class VillageCommand {
                 });
         builder.then(villageVillagersBuilder);
 
+        // Define the "setanimal" sub-command - set the village breeding animal type.
+        LiteralArgumentBuilder<CommandSourceStack> setAnimalBuilder = Commands.literal("setanimal")
+                .then(Commands.argument("animalType", StringArgumentType.word())
+                        .suggests((context, builder2) -> {
+                            builder2.suggest("cow");
+                            builder2.suggest("sheep");
+                            builder2.suggest("pig");
+                            builder2.suggest("chicken");
+                            return builder2.buildFuture();
+                        })
+                        .executes(context -> {
+                            String animalType = StringArgumentType.getString(context, "animalType");
+                            return setVillageAnimalType(context.getSource(), animalType);
+                        }));
+        builder.then(setAnimalBuilder);
+
+        // Define the "setfounder" sub-command. ADMIN ONLY.
+        LiteralArgumentBuilder<CommandSourceStack> setFounderBuilder = Commands.literal("setfounder")
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .executes(context -> {
+                            String playerName = StringArgumentType.getString(context, "playerName");
+                            return setVillageFounder(context.getSource(), playerName);
+                        }))
+                .requires(s -> s.hasPermission(2));
+        builder.then(setFounderBuilder);
+
+        // Define the "invite" sub-command — send a village invite to an online player.
+        LiteralArgumentBuilder<CommandSourceStack> inviteBuilder = Commands.literal("invite")
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .executes(context -> {
+                            String playerName = StringArgumentType.getString(context, "playerName");
+                            return invitePlayerToVillage(context.getSource(), playerName);
+                        }));
+        builder.then(inviteBuilder);
+
+        // Define the "accept" sub-command — accept a pending village invite.
+        LiteralArgumentBuilder<CommandSourceStack> acceptBuilder = Commands.literal("accept")
+                .executes(context -> acceptVillageInvite(context.getSource()));
+        builder.then(acceptBuilder);
+
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -266,10 +306,11 @@ public class VillageCommand {
 
             // Step 8: Create Village object and save it
             UUID villageId = UUID.randomUUID();
+            String founderName = player.getName().getString();
             VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks,
-                    true, 0, "2000-01-01");
+                    true, 0, "2000-01-01", "", "2000-01-01", founderName, new java.util.ArrayList<>());
             villageDatabase.putData(villageId, villageData);
-            LOGGER.info("Village " + villageName + " created with id " + villageId +
+            LOGGER.info("Village " + villageName + " created by " + founderName + " with id " + villageId +
                     " saved with " + villageChunks.size() + " chunks around " + player.blockPosition());
 
             // STEP 9: Buy plot and mark to db.
@@ -301,8 +342,9 @@ public class VillageCommand {
             // TODO1 call a set plot method, separate this out.
             // TODO1 add plot to city.
 
-            // STEP 10: Add player to village list.
-            // TODO: Implement
+            // STEP 10: Add player to village member list.
+            villageData.addMember(player.getUUID());
+            villageDatabase.putData(villageId, villageData);
 
             // STEP 11: Add village to player.
             playerData.setHomeVillageId(villageId);
@@ -397,9 +439,35 @@ public class VillageCommand {
 
             // STEP 5: Show villager count
             BlockPos villageCenter = village.getPosition().getWorldPosition();
-            int villagerCount = countVillagers(villageCenter, playerSource.level(), 10); // 10 chunk radius around
-                                                                                         // village center
+            int villagerCount = countVillagers(villageCenter, playerSource.level(), 10);
             response = response.append(Component.literal(" Villagers count: " + villagerCount + "\n"));
+
+            // STEP 6: Show founder.
+            String founder = village.getFounder();
+            if (!founder.isEmpty()) {
+                response = response.append(Component.literal(" Founder: " + founder + "\n"));
+            }
+
+            // STEP 7: Show animal type if set.
+            String animalType = village.getAnimalType();
+            if (!animalType.isEmpty()) {
+                response = response.append(Component.literal(" Breeding animal: " + animalType + "\n"));
+            }
+
+            // STEP 8: Show member list.
+            List<UUID> members = village.getMemberUUIDs();
+            if (!members.isEmpty()) {
+                StringBuilder memberNames = new StringBuilder();
+                for (UUID memberUUID : members) {
+                    if (memberNames.length() > 0)
+                        memberNames.append(", ");
+                    memberNames.append(getPlayerName(source.getServer(), memberUUID));
+                }
+                response = response.append(Component.literal(" Members (" + members.size() + "): " + memberNames + "\n")
+                        .withStyle(ChatFormatting.AQUA));
+            } else {
+                response = response.append(Component.literal(" Members: none\n").withStyle(ChatFormatting.GRAY));
+            }
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
@@ -413,6 +481,30 @@ public class VillageCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    /**
+     * Resolves a player UUID to a display name.
+     * Checks online players first, then falls back to the server's profile cache
+     * (usercache.json).
+     * Vanilla creates and maintains the cache automatically — no setup needed.
+     *
+     * @param server the Minecraft server instance
+     * @param uuid   the player UUID to look up
+     * @return display name, appended with " (online)" if currently connected, or a
+     *         short UUID if unknown
+     */
+    public static String getPlayerName(net.minecraft.server.MinecraftServer server, UUID uuid) {
+        net.minecraft.server.level.ServerPlayer online = server.getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            return online.getName().getString() + " (online)";
+        }
+        if (server.getProfileCache() != null) {
+            return server.getProfileCache().get(uuid)
+                    .map(com.mojang.authlib.GameProfile::getName)
+                    .orElse(uuid.toString().substring(0, 8) + "...");
+        }
+        return uuid.toString().substring(0, 8) + "...";
     }
 
     // TODO Create getGameStructures method stub.
@@ -654,6 +746,231 @@ public class VillageCommand {
             MutableComponent response = Component.literal("Village renamed to: " + villageData.getName());
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Village Invite System (in-memory only, 10-minute TTL, no server-restart
+    // persistence)
+    // -------------------------------------------------------------------------
+    private record PendingInvite(UUID villageId, String inviterName, long expiryMs) {
+    }
+
+    /** key = invited player name (lowercase) */
+    private static final Map<String, PendingInvite> PENDING_INVITES = new HashMap<>();
+
+    /** Remove expired entries (called lazily on invite/accept). */
+    private static void cleanExpiredInvites() {
+        long now = System.currentTimeMillis();
+        PENDING_INVITES.entrySet().removeIf(e -> e.getValue().expiryMs() < now);
+    }
+
+    public static int invitePlayerToVillage(CommandSourceStack source, String targetName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player inviter = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (inviter == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Inviter must be in a village.
+            PlayerData inviterData = ModEvents.getPlayerDatabase().getData(inviter.getUUID());
+            if (inviterData == null || inviterData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not in a village."));
+                return 0;
+            }
+
+            VillageData village = ModEvents.getVillageDatabase().getData(inviterData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Could not find your village data."));
+                return 0;
+            }
+
+            // Find the target player online.
+            net.minecraft.server.level.ServerPlayer target = source.getServer().getPlayerList()
+                    .getPlayerByName(targetName);
+            if (target == null) {
+                source.sendFailure(Component.literal("Player '" + targetName + "' is not online."));
+                return 0;
+            }
+
+            // Don't invite yourself.
+            if (target.getUUID().equals(inviter.getUUID())) {
+                source.sendFailure(Component.literal("You cannot invite yourself."));
+                return 0;
+            }
+
+            // Check if target already in a village.
+            PlayerData targetData = ModEvents.getPlayerDatabase().getData(target.getUUID());
+            if (targetData != null && targetData.getHomeVillageUUID() != null
+                    && ModEvents.getVillageDatabase().getData(targetData.getHomeVillageUUID()) != null) {
+                source.sendFailure(Component.literal(targetName + " is already a member of a village."));
+                return 0;
+            }
+
+            cleanExpiredInvites();
+            long expiryMs = System.currentTimeMillis() + 10L * 60 * 1000; // 10 minutes
+            PENDING_INVITES.put(targetName.toLowerCase(),
+                    new PendingInvite(village.getUUID(), inviter.getName().getString(), expiryMs));
+
+            // Tell the inviter.
+            source.sendSuccess(() -> Component.literal(
+                    "Invite sent to " + targetName + " to join village '" + village.getName()
+                            + "'. It expires in 10 minutes."),
+                    false);
+
+            // Send private message to the invited player.
+            target.sendSystemMessage(Component.literal(
+                    "[Village] " + inviter.getName().getString() + " has invited you to join village '"
+                            + village.getName() + "'. Type /village accept to join! (Expires in 10 minutes)")
+                    .withStyle(ChatFormatting.GREEN));
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static int acceptVillageInvite(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            cleanExpiredInvites();
+            PendingInvite invite = PENDING_INVITES.remove(player.getName().getString().toLowerCase());
+            if (invite == null) {
+                source.sendFailure(Component.literal("You have no pending village invite (or it has expired)."));
+                return 0;
+            }
+
+            // Double-check target is not already in a village.
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDb.getData(player.getUUID());
+            if (playerData == null) {
+                source.sendFailure(Component.literal("Your player data was not found."));
+                return 0;
+            }
+            if (playerData.getHomeVillageUUID() != null
+                    && ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID()) != null) {
+                source.sendFailure(Component.literal("You are already a member of a village."));
+                return 0;
+            }
+
+            // Ensure village still exists.
+            VillageData village = ModEvents.getVillageDatabase().getData(invite.villageId());
+            if (village == null) {
+                source.sendFailure(Component.literal("The village you were invited to no longer exists."));
+                return 0;
+            }
+
+            // Join the village.
+            playerData.setHomeVillageId(invite.villageId());
+            playerDb.putData(player.getUUID(), playerData);
+            village.addMember(player.getUUID());
+            ModEvents.getVillageDatabase().putData(village.getUUID(), village);
+
+            source.sendSuccess(() -> Component.literal(
+                    "You have joined the village '" + village.getName() + "'! Welcome!")
+                    .withStyle(ChatFormatting.GREEN), false);
+
+            // Broadcast to village members who are online.
+            Component joinMsg = Component.literal("[Village] " + player.getName().getString()
+                    + " has joined the village '" + village.getName() + "'!")
+                    .withStyle(ChatFormatting.YELLOW);
+            for (net.minecraft.server.level.ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+                PlayerData onlineData = playerDb.getData(online.getUUID());
+                if (onlineData != null && invite.villageId().equals(onlineData.getHomeVillageUUID())) {
+                    online.sendSystemMessage(joinMsg);
+                }
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+
+    private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken");
+
+    // Sets the village's allowed breeding animal type. Can only be changed once per
+    // week.
+    public static int setVillageAnimalType(CommandSourceStack source, String animalType) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            if (!VALID_ANIMAL_TYPES.contains(animalType.toLowerCase())) {
+                source.sendFailure(Component.literal("Invalid animal type. Must be: cow, sheep, pig, or chicken."));
+                return 0;
+            }
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData villageData = villageDatabase.getData(player.getHomeVillageUUID());
+            if (villageData == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // Enforce once-per-week limit (skip for creative/admin).
+            if (!playerSource.isCreative() && !villageData.canChangeAnimalType()) {
+                source.sendFailure(Component.literal(
+                        "Village animal type was recently changed. You can change it again after 7 days. Last changed: "
+                                + villageData.getLastAnimalTypeChange()));
+                return 0;
+            }
+
+            String lower = animalType.toLowerCase();
+            villageData.setAnimalType(lower);
+            villageData.setLastAnimalTypeChange(java.time.LocalDate.now().toString());
+            villageDatabase.putData(villageData.getUUID(), villageData);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Village breeding animal set to: " + lower + ". Only " + lower + "s may be bred in pastures."),
+                    false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Sets the village founder. Admin only.
+    public static int setVillageFounder(CommandSourceStack source, String playerName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData villageData = villageDatabase.getData(player.getHomeVillageUUID());
+            if (villageData == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            villageData.setFounder(playerName);
+            villageDatabase.putData(villageData.getUUID(), villageData);
+            source.sendSuccess(() -> Component.literal("Village founder set to: " + playerName), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -951,16 +1268,26 @@ public class VillageCommand {
                     }
                 }
 
-                // If 3 or more sides are claimed, claim this chunk.
-                if (sidesClaimed >= 3) {
-                    LOGGER.info("DEBUG Reclaiming chunk " + chunkPos.toString() + " with " + sidesClaimed
-                            + " sides claimed.");
+                // If all 4 sides are claimed, auto-claim this chunk (it's fully surrounded).
+                if (sidesClaimed >= 4) {
+                    LOGGER.info(
+                            "DEBUG Reclaiming surrounded chunk " + chunkPos.toString() + " with all 4 sides claimed.");
 
-                    // ChunkData chunkData = new ChunkData("village", playerSource.getId(),
-                    // village.getUUID());
-                    // chunkDatabase.putData(chunkPos.toLong(), chunkData);
-                    // village.addClaimedChunk(chunkPos);
-                    cleanedUpCount++;
+                    DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+                    ChunkData existing = chunkDatabase.getData(chunkPos.toLong());
+                    // Only claim if unclaimed or belongs to this village already.
+                    if (existing == null || village.getUUID().equals(existing.getVillageId())) {
+                        ChunkData chunkData = new ChunkData("village", playerData.getId(), village.getUUID());
+                        chunkDatabase.putData(chunkPos.toLong(), chunkData);
+                        village.addClaimedChunk(chunkPos);
+
+                        // Update structure claim flags for this chunk.
+                        if (playerSource.level() instanceof ServerLevel serverLevel) {
+                            StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
+                        }
+
+                        cleanedUpCount++;
+                    }
                 }
             }
         }
@@ -1150,14 +1477,11 @@ public class VillageCommand {
                 LOGGER.info("DEBUG Chunk " + chunkPos.toString() + " has height " + height);
                 // TODO TEST
 
-                // Get all biomes in this chunk at surface level.
-                // todo make another helper that actually has the count also!!!
+                // Get all biomes in this chunk at surface level with counts.
                 // TODO this is showing lush caves, our y value is still off somehow....
                 PlotCommand.getChunkBiomes(blockPos, level)
-                        .forEach((biomeName) -> {
-                            // response.append(Component.literal(biomeName + " (" + biomeCount + "), "));
-                            response.append(Component.literal(biomeName + ", "));
-                        });
+                        .forEach((biomeName, count) -> response
+                                .append(Component.literal(biomeName + " (" + count + "), ")));
                 // TODO add line break..
 
                 BlockPos cropBlockPos = chunkPos.getMiddleBlockPosition(height);
@@ -1456,13 +1780,13 @@ public class VillageCommand {
                 continue;
             }
 
-            // Check if this structure is in the player's village (has chunk data)
+            // Check if this structure's chunk belongs to THIS village specifically.
             ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
             DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
             ChunkData chunkData = chunkDatabase.getData(structureChunk.toLong());
 
-            // Only include structures that have chunk data (are in village areas)
-            if (chunkData != null) {
+            // Only include structures in chunks owned by this village (not any village).
+            if (chunkData != null && village.getUUID().equals(chunkData.getVillageId())) {
                 structuresList.add(new AbstractMap.SimpleEntry<>(structureId, structureData));
             }
         }
@@ -1574,7 +1898,11 @@ public class VillageCommand {
                     Math.abs(villagerPos.getY() - playerSource.blockPosition().getY()) +
                     Math.abs(villagerPos.getZ() - playerSource.blockPosition().getZ());
 
-            // Send to chat
+            // Log name + UUID so you can copy them for npcData/ profile files.
+            LOGGER.info("Villager: name='{}', uuid={}, profession={}", v.getName().getString(), villager.getUUID(),
+                    profession);
+
+            // Chat only shows name, profession, distance — UUID is in logs only.
             MutableComponent villagerResponse = Component
                     .literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance);
             source.sendSuccess(() -> villagerResponse, false);

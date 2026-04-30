@@ -41,7 +41,7 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
     private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen",
-            "restaurant", "house", "trainstation", "graveyard", "pasture");
+            "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -98,6 +98,22 @@ public class PlotCommand {
                 .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(reclaimBuilder);
 
+        // Define the "visitor" sub-command — add or remove allowed visitors on a plot.
+        LiteralArgumentBuilder<CommandSourceStack> visitorBuilder = Commands.literal("visitor")
+                .then(Commands.literal("add")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .executes(context -> {
+                                    String name = StringArgumentType.getString(context, "playerName");
+                                    return setPlotVisitor(context.getSource(), name, true);
+                                })))
+                .then(Commands.literal("remove")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .executes(context -> {
+                                    String name = StringArgumentType.getString(context, "playerName");
+                                    return setPlotVisitor(context.getSource(), name, false);
+                                })));
+        builder.then(visitorBuilder);
+
         // TODO do a /plot biomes command also!
 
         // Register the main "plot" command with the dispatcher
@@ -116,16 +132,18 @@ public class PlotCommand {
             ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
             // Get all biomes for all blocks in this chunk.
             ServerLevel serverLevel = context.getSource().getLevel();
-            List<String> biomes = getChunkBiomes(playerSource.blockPosition(), serverLevel);
+            Map<String, Integer> biomes = getChunkBiomes(playerSource.blockPosition(), serverLevel);
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ChunkData chunkData = dataBase.getData(chunkPos.toLong());
 
             // If no data, then not owned by a village.
             if (chunkData == null) {
                 context.getSource().sendFailure(Component.literal("Plot at " + chunkPos + " is not owned."));
-                if (biomes.size() > 0) {
-                    context.getSource().sendSuccess(() -> Component.literal(", Biomes: " + String.join(", ", biomes)),
-                            false);
+                if (!biomes.isEmpty()) {
+                    String biomeStr = biomes.entrySet().stream()
+                            .map(e -> e.getKey() + " (" + e.getValue() + ")")
+                            .collect(java.util.stream.Collectors.joining(", "));
+                    context.getSource().sendSuccess(() -> Component.literal(", Biomes: " + biomeStr), false);
                 } else {
                     context.getSource().sendSuccess(() -> Component.literal(", No biomes found."), false);
                 }
@@ -168,8 +186,11 @@ public class PlotCommand {
             // todo if village show village unclaimed...
 
             // TODO get counts of biomes also.
-            if (biomes.size() > 0) {
-                response.append(Component.literal("Biomes: " + String.join(", ", biomes) + "\n")
+            if (!biomes.isEmpty()) {
+                String biomeStr = biomes.entrySet().stream()
+                        .map(e -> e.getKey() + " (" + e.getValue() + ")")
+                        .collect(java.util.stream.Collectors.joining(", "));
+                response.append(Component.literal("Biomes: " + biomeStr + "\n")
                         .withStyle(ChatFormatting.WHITE));
             } else {
                 response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.WHITE));
@@ -177,10 +198,10 @@ public class PlotCommand {
 
             // If farm plot show all crops planted.
             if (chunkData.getType().equalsIgnoreCase("farm")) {
-                // NOTE must be standing ON the crops directly y values.
+                // Scan a Y range around the player to reliably find crops.
                 response.append(Component
                         .literal("Farm plot with crops planted: "
-                                + getCropsPlanted(playerSource.blockPosition().above(), serverLevel) + "\n")
+                                + getCropsPlanted(playerSource.blockPosition(), serverLevel) + "\n")
                         .withStyle(ChatFormatting.GREEN));
             }
 
@@ -194,27 +215,27 @@ public class PlotCommand {
     }
 
     // Get all crops planted in the chunk at this position.
+    // Scans Y-1 to Y+2 around the given position to reliably detect crops
+    // regardless of exact player height.
     public static String getCropsPlanted(BlockPos blockPos, ServerLevel serverLevel) {
         LOGGER.info("DEBUGGER Crops planted at " + blockPos);
 
-        // Loop over each block in chunk at our feet and add crops to a set and
-        // increment counts.
         Map<String, Integer> cropsCounts = new HashMap<>();
         ChunkPos chunkPos = new ChunkPos(blockPos);
+        int baseY = blockPos.getY();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                // Get the block at the given chunk position
-                BlockPos blockPos2 = new BlockPos(chunkPos.x * 16 + x, blockPos.getY(), chunkPos.z * 16 + z);
-                // Check if the crop has a proper tag.
-                // FUCTags.VANILLA_AND_MODDED_CROPS
-                ItemStack itemStack = serverLevel.getBlockState(blockPos2).getBlock().asItem().getDefaultInstance();
-                if (itemStack.is(FUCTags.VANILLA_AND_MODDED_CROPS)) {
-                    String cropName = itemStack.getDescriptionId();
-                    // Add to crops set.
-                    // Remove the modid prefix if it exists. and "seeditem" suffix.
-                    // Break first two dotted names spaces out.
-                    cropName = cropName.replaceFirst("^[^.]+\\.[^.]+\\.", "").replaceAll("seeditem$", "");
-                    cropsCounts.put(cropName, cropsCounts.getOrDefault(cropName, 0) + 1);
+                int worldX = chunkPos.x * 16 + x;
+                int worldZ = chunkPos.z * 16 + z;
+                // Scan a small vertical range so we catch crops regardless of player Y offset.
+                for (int dy = -1; dy <= 2; dy++) {
+                    BlockPos blockPos2 = new BlockPos(worldX, baseY + dy, worldZ);
+                    ItemStack itemStack = serverLevel.getBlockState(blockPos2).getBlock().asItem().getDefaultInstance();
+                    if (itemStack.is(FUCTags.VANILLA_AND_MODDED_CROPS)) {
+                        String cropName = itemStack.getDescriptionId();
+                        cropName = cropName.replaceFirst("^[^.]+\\.[^.]+\\.", "").replaceAll("seeditem$", "");
+                        cropsCounts.merge(cropName, 1, Integer::sum);
+                    }
                 }
             }
         }
@@ -241,28 +262,26 @@ public class PlotCommand {
         }
     }
 
-    // Given current block position, get all biomes in the chunk at this y level.
-    public static List<String> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
+    // Given current block position, get all biomes in the chunk at this y level
+    // with counts.
+    public static Map<String, Integer> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
         ChunkPos chunkPos = new ChunkPos(blockPos);
 
-        List<String> biomes = new ArrayList<>();
+        Map<String, Integer> biomeCounts = new LinkedHashMap<>();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                // Get the biome at the given chunk position
                 int biomeX = chunkPos.x * 16 + x;
                 int biomeZ = chunkPos.z * 16 + z;
-                BlockPos blockPos2 = new BlockPos(biomeX, blockPos.getY(), biomeZ);
+                BlockPos blockPos2 = new BlockPos(biomeX, 100, biomeZ);
                 Biome biome = serverLevel.getBiome(blockPos2).value();
                 ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME)
                         .getKey(biome);
                 String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
-                if (!biomes.contains(biomeName.toString())) {
-                    biomes.add(biomeName);
-                }
+                biomeCounts.merge(biomeName, 1, Integer::sum);
             }
         }
 
-        return biomes;
+        return biomeCounts;
     }
 
     // Buy with an optional type, farm, village, etc.
@@ -294,8 +313,10 @@ public class PlotCommand {
             }
             // TODO TEST
             if (!Objects.equals(chunk.getType(), "village") && !Objects.equals(chunk.getType(), "plot")) {
-                source.sendFailure(Component.literal("Plot has already been purchased."));
-                return 0;
+                if (!playerSource.isCreative()) {
+                    source.sendFailure(Component.literal("Plot has already been purchased."));
+                    return 0;
+                }
             }
 
             // STEP 2: Check if the player is in the village that matches the chunk.
@@ -347,12 +368,25 @@ public class PlotCommand {
                 return 0;
             }
 
-            // STEP 3: Calc cost to buy plot and check players total.
+            // STEP 2.6: Enforce per-type limits: "plot" = unlimited, "house" = 2 per level,
+            // all others = 1 per level. Creative players bypass.
+            if (!playerSource.isCreative()) {
+                if (!plotType.equalsIgnoreCase("plot")) {
+                    int existing = countPlotType(village, plotType);
+                    int limit = plotType.equalsIgnoreCase("house") ? village.getLevel() * 2 : village.getLevel();
+                    if (existing >= limit) {
+                        source.sendFailure(Component.literal(
+                                "Village limit reached for type '" + plotType + "': "
+                                + existing + "/" + limit + " (village level " + village.getLevel() + ")."));
+                        return 0;
+                    }
+                }
+            }
             int cost = calculatePlotCost(village, plotType);
             Level level = playerSource.level();
             Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
             Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!player.getWallet().hasEnough(bronzeCoin, cost)) {
+            if (!playerSource.isCreative() && !player.getWallet().hasEnough(bronzeCoin, cost)) {
                 source.sendFailure(Component.literal("Player does not have enough money."));
                 // Show cost and coins
                 source.sendFailure(Component.literal("Cost: " + cost));
@@ -362,6 +396,10 @@ public class PlotCommand {
 
             // STEP 4: Buy plot and mark to db, and village.
             chunk.setType(plotType);
+            // For house plots, record the owner UUID so access can be restricted.
+            if (plotType.equalsIgnoreCase("house")) {
+                chunk.setOwnerUUID(playerSource.getUUID());
+            }
             chunkDataDatabase.putData(chunkPos.toLong(), chunk);
 
             // Update structure claim flags for this chunk
@@ -383,7 +421,8 @@ public class PlotCommand {
             LOGGER.info("Plot bought at " + playerSource.blockPosition().toShortString());
 
             // STEP 5: Subtract money out of player. TODO helper method hide this???
-            player.getWallet().remove(bronzeCoin, cost);
+            if (!playerSource.isCreative())
+                player.getWallet().remove(bronzeCoin, cost);
             playerDatabase.putData(playerSource.getUUID(), player);
 
             // Build a response message
@@ -391,6 +430,54 @@ public class PlotCommand {
                     + playerSource.blockPosition().toShortString() + " as " + plotType + " for " + cost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Add or remove a visitor on the current house plot. Only the plot owner can do
+    // this.
+    public static int setPlotVisitor(CommandSourceStack source, String visitorName, boolean add) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+            ChunkData chunk = chunkDb.getData(chunkPos.toLong());
+            if (chunk == null) {
+                source.sendFailure(Component.literal("You are not standing on a claimed plot."));
+                return 0;
+            }
+            if (!chunk.getType().equalsIgnoreCase("house")) {
+                source.sendFailure(Component.literal("You must be standing on a house plot to manage visitors."));
+                return 0;
+            }
+
+            // Only the owner (or creative/admin) can manage the visitor list.
+            if (!playerSource.isCreative()) {
+                if (chunk.getOwnerUUID() == null || !chunk.getOwnerUUID().equals(playerSource.getUUID())) {
+                    source.sendFailure(Component.literal("Only the plot owner can manage visitors."));
+                    return 0;
+                }
+            }
+
+            if (add) {
+                chunk.addVisitor(visitorName);
+                chunkDb.putData(chunkPos.toLong(), chunk);
+                source.sendSuccess(() -> Component.literal(visitorName + " added as a visitor to this plot."), false);
+            } else {
+                chunk.removeVisitor(visitorName);
+                chunkDb.putData(chunkPos.toLong(), chunk);
+                source.sendSuccess(() -> Component.literal(visitorName + " removed from visitors of this plot."),
+                        false);
+            }
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -465,6 +552,18 @@ public class PlotCommand {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
         }
+    }
+
+    /** Counts how many chunks in the village already have the given plot type. */
+    public static int countPlotType(VillageData villageData, String plotType) {
+        int count = 0;
+        for (ChunkPos pos : villageData.getClaimedChunks()) {
+            ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(pos.toLong());
+            if (chunkData != null && chunkData.getType().equalsIgnoreCase(plotType)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public static int calculatePlotCost(VillageData villageData, String plotType) {

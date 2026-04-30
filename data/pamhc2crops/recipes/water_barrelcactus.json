@@ -1,0 +1,11 @@
+{
+	"type": "minecraft:crafting_shapeless",
+	"ingredients": 
+	[
+	{"item": "pamhc2crops:barrelcactusitem"},
+	{"item": "minecraft:bucket"}
+	],
+	
+	"result": {"item": "minecraft:water_bucket"}
+
+}

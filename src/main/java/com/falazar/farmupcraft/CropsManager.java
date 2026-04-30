@@ -330,7 +330,7 @@ public class CropsManager {
                 int bonusCnt = 1;
                 if (randomNum <= doubleSuccessPercent - 25) {
                     // Add another!
-                    bonusCnt = 2;   
+                    bonusCnt = 2;
                 }
 
                 // Give player a fruit item.
@@ -853,178 +853,11 @@ public class CropsManager {
         return null;
     }
 
-    // TODO: move to stone? manager class.
-    // On breaking stone, sometimes it will fail and you will not get back any
-    // items.
-    // You can increase the rate with skills and special items...
-    // cobblestone and deepslate drop rate here.
-    @SubscribeEvent
-    public static void onBreakStone(BlockEvent.BreakEvent event) {
-        Player player = event.getPlayer();
-        if (player == null) {
-            return;
-        }
+    // Moved to StoneManager.java
+    // @SubscribeEvent onBreakStone
 
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
-        String s = component.toString();
-        // LOGGER.info("DEBUG1: " + s + " all tags = " +
-        // blockState.getTags().map(itemTagKey ->
-        // itemTagKey.toString()).collect(Collectors.toList()));
-
-        // Only do rule if base stones or dirt.
-        if (!blockState.is(BlockTags.BASE_STONE_OVERWORLD)
-                && !blockState.is(BlockTags.DIRT)
-                && !blockState.is(BlockTags.BASE_STONE_NETHER)) {
-            return;
-        }
-
-        // LOGGER.info("DEBUG2: Testing2 here we found base stone/dirt");
-
-        // STEP 1: Get SuccessRate
-        int baseSuccessRate = 30; // 50% chance to fail loot at start.
-        int successRate = baseSuccessRate;
-        // change to 30% start?
-
-        // Make generics.
-        // // CHECK 1: Add skill percent now.
-        // if (player.hasSkill("moreStoneDrops")) {
-        // baseSuccessRate += player.getRoleLevel("miner") * 4;
-        // }
-        // else {
-        // STEP 2: Add basic smaller skill percent now for non miners.
-        successRate += player.experienceLevel * 2;
-        // }
-        // LOGGER.info("DEBUG3: before stoneSuccessRate = " + successRate);
-
-        // STEP 3: Add for blocks broken experience.
-        ServerPlayer serverPlayer = (ServerPlayer) event.getPlayer();
-        int stoneBroken = serverPlayer.getStats().getValue(Stats.BLOCK_MINED.get(blockState.getBlock()));
-        int brokenPercent = stoneBroken / 10000;
-        successRate += brokenPercent;
-        // LOGGER.info("DEBUG3: test stoneBroken = " + stoneBroken + " brokenPercent = "
-        // + brokenPercent +
-        // " new successRate = " + successRate);
-
-        // STEP 4: Roll and check for success.
-        // TODO make roll a mini method.
-        Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
-        // LOGGER.info("DEBUG3: Random Num = " + randomNum);
-        if (randomNum >= successRate) {
-            // LOGGER.info("DEBUG: DESTROYING stone block, no drops..." + successRate);
-            event.getLevel().destroyBlock(event.getPos(), false);
-            event.setCanceled(true);
-            // TODO send a failure message on occasion if havnt since logged in.
-            return;
-        }
-        // LOGGER.info("DEBUG3: ALLOWING stone block drops...");
-
-        // SECOND ABILITY (only if above worked)
-        // trencher
-        // if (player.hasSkill("trencher")) {
-        // attemptTrenchBreak(player, event.getPos());
-        // }
-
-        // TODO add bonus stone.
-
-    }
-
-    // TODO: move to wood? manager class.
-    // On breaking logs, sometimes it will fail and you will not get back any items.
-    // You can increase the rate with skills and special items...
-    @SubscribeEvent
-    public static void onBreakLogs(BlockEvent.BreakEvent event) {
-        Player player = event.getPlayer();
-        if (player == null) {
-            return;
-        }
-
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-        MutableComponent component = Component.translatable(blockState.getBlock().getDescriptionId());
-        // String s = component.toString();
-        // LOGGER.info("DEBUG1: " + s + " all tags = " +
-        // blockState.getTags().map(itemTagKey ->
-        // itemTagKey.toString()).collect(Collectors.toList()));
-
-        // Only do rule if logs.
-        if (!blockState.is(BlockTags.LOGS)) {
-            return;
-        }
-
-        // LOGGER.info("DEBUG2: Testing2 here we found logs.");
-
-        // STEP 1: Calculate SuccessRate.
-        int baseSuccessRate = 40; // 40% chance to get drops at start.
-        int successRate = baseSuccessRate;
-
-        // Make generic skills?
-        // // CHECK 1: Add skill percent now.
-        // if (player.hasSkill("moreStoneDrops")) {
-        // successRate += player.getRoleLevel("miner") * 4;
-        // }
-        // else {
-        // STEP 2: Add basic smaller skill percent now for non-loggers.
-        successRate += player.experienceLevel;
-        LOGGER.info("DEBUG3: added player exp successRate = " + successRate);
-        // }
-
-        // STEP 3: Add in bonus for nursery plots.
-        Level level = event.getPlayer().getCommandSenderWorld();
-        if (ChunkManager.getPlotType(event.getPos(), level).equals("nursery")) {
-            successRate += 20;
-            LOGGER.info("DEBUG3: target block is in a nursery plot, adding bonus.  successRate = " + successRate);
-
-            // STEP 4: If in nursery, add in for certain biomes.
-            // For birch if in any birch biome, add bonus.
-            String biomeName = level.getBiome(event.getPos()).unwrapKey().map(ResourceKey::location)
-                    .map(ResourceLocation::getPath).orElse("unknown");
-            if (biomeName.contains("birch")) {
-                // Add bonus for birch and forest biomes.
-                successRate += 20;
-                LOGGER.info("DEBUG3: target block is in a birch biome, adding bonus. " + biomeName + " successRate = "
-                        + successRate);
-            }
-        }
-
-        // STEP 5: TODO add in bonus for logs itemsBroken, like in fruit trees method,
-        // so we get better over time!=
-
-        // For Falazar now, increase as faking a skill...
-        // successRate = 100;
-
-        // STEP 6: Roll and check for success.
-        // TODO make roll a mini method.
-        LOGGER.info("DEBUG: LOG successRate = " + successRate);
-        Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= successRate) {
-            LOGGER.info("DEBUG: DESTROYING Log block, no drops..." + successRate);
-            event.getLevel().destroyBlock(event.getPos(), false);
-            event.setCanceled(true);
-            // TODO send a failure message on occasion if havnt since logged in.
-            return;
-        }
-        // LOGGER.info("DEBUG3: ALLOWING log block drops...");
-
-        // TODO TEST
-        // TODO later give bonus wood if high score.
-        // STEP 7: Add bonus wood for high rolls.
-        randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum <= successRate / 6) {
-            // Give bonus wood.
-            int bonusWood = 1;
-            ItemStack stack = new ItemStack(Items.OAK_LOG, bonusWood);
-            player.addItem(stack);
-            // Only show this message 1 out of 10 times.
-            randomNum = rand.nextInt(10); // 10% 0-9
-            if (randomNum == 0) {
-                player.displayClientMessage(Component.literal("You got " + bonusWood + " bonus logs!"), false);
-            }
-            LOGGER.info("DEBUG: Giving bonus wood: " + bonusWood + " at " + event.getPos());
-        }
-
-    }
+    // Moved to WoodManager.java
+    // @SubscribeEvent onBreakLogs
 
     // Make a method that lowers event that causes saplings to fall from tree leaves
     // block rate by a lot.

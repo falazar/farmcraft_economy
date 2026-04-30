@@ -1,0 +1,8 @@
+{
+	"type": "minecraft:smelting",
+	"ingredient": {"tag": "forge:crops/sunchoke"},
+	"result": "pamhc2crops:bakedsunchokeitem",
+	"experience": 0.35,
+	"cookingtime": 200
+
+}

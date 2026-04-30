@@ -10,7 +10,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 
-import javax.annotation.Nonnull;
 import java.util.UUID;
 
 public class PlayerData {
@@ -18,6 +17,7 @@ public class PlayerData {
     public static final Codec<PlayerData> CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
                     Codec.INT.fieldOf("id").forGetter(PlayerData::getId),
+                    UUIDUtil.STRING_CODEC.optionalFieldOf("player_uuid", new UUID(0L, 0L)).forGetter(PlayerData::getPlayerUUID),
                     UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID()).forGetter(PlayerData::getHomeVillageUUID),
                     Wallet.CODEC.fieldOf("wallet").forGetter(PlayerData::getWallet),
                     Codec.BOOL.optionalFieldOf("border_show", false).forGetter(PlayerData::isBorderShow),
@@ -25,12 +25,9 @@ public class PlayerData {
             ).apply(instance, PlayerData::new)
     );
 
-    // TODO change to UUID
-    @Nonnull
     private final int id;
-    @Nonnull
+    private UUID playerUUID;
     private UUID homeVillageUUID;
-    @Nonnull
     private final Wallet wallet;
     private boolean borderShow;
     private String borderColor;
@@ -39,8 +36,9 @@ public class PlayerData {
     // todo add lastPos
 
     /** Full constructor used by CODEC. */
-    public PlayerData(int id, UUID homeVillageUUID, Wallet wallet, boolean borderShow, String borderColor) {
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, Wallet wallet, boolean borderShow, String borderColor) {
         this.id = id;
+        this.playerUUID = playerUUID;
         this.homeVillageUUID = homeVillageUUID;
         this.wallet = wallet;
         this.borderShow = borderShow;
@@ -50,11 +48,12 @@ public class PlayerData {
     /**
      * Constructs a new PlayerData object.
      * @param id            the integer ID representing the player entity, NOT the player's UUID
+     * @param playerUUID    the stable UUID of the player
      * @param homeVillageUUID uuid value for village id.
      * @param wallet         the wallet with coins the player has
      */
-    public PlayerData(int id, UUID homeVillageUUID, Wallet wallet) {
-        this(id, homeVillageUUID, wallet, false, "blue");
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, Wallet wallet) {
+        this(id, playerUUID, homeVillageUUID, wallet, false, "blue");
     }
 
     /**
@@ -78,6 +77,18 @@ public class PlayerData {
      */
     public int getId() {
         return id;
+    }
+
+    /**
+     * Gets the stable UUID of the player.
+     * @return the player's UUID
+     */
+    public UUID getPlayerUUID() {
+        return playerUUID;
+    }
+
+    public void setPlayerUUID(UUID playerUUID) {
+        this.playerUUID = playerUUID;
     }
 
     /**

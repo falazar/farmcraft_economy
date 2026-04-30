@@ -1,0 +1,8 @@
+{
+	"type": "minecraft:campfire_cooking",
+	"ingredient": {"tag": "forge:crops/nettles"},
+	"result": "pamhc2crops:hotnettleteaitem",
+	"experience": 0.35,
+	"cookingtime": 600
+
+}
