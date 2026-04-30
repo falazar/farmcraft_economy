@@ -6,6 +6,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.HopperBlockEntity;
@@ -45,14 +47,20 @@ public class CauldronHopperHandler {
             return;
 
         Level level = event.level;
+            if (!(level instanceof ServerLevel serverLevel))
+            return;
 
-        // Iterate all loaded hopper block entities in this level.
-        level.blockEntityList.stream()
-                .filter(be -> be instanceof HopperBlockEntity)
-                .forEach(be -> tryExtractLavaFromCauldron(level, be));
+        // Iterate all loaded hopper block entities across loaded chunks.
+        for (LevelChunk chunk : serverLevel.getChunkSource().getLoadedChunks()) {
+            for (BlockEntity be : chunk.getBlockEntities().values()) {
+                if (be instanceof HopperBlockEntity) {
+                    tryExtractLavaFromCauldron(serverLevel, be);
+                }
+            }
+        }
     }
 
-    private static void tryExtractLavaFromCauldron(Level level, BlockEntity be) {
+    private static void tryExtractLavaFromCauldron(ServerLevel level, BlockEntity be) {
         BlockPos hopperPos = be.getBlockPos();
         BlockPos cauldronPos = hopperPos.above();
 
