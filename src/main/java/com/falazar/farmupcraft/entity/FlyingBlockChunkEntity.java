@@ -1,15 +1,14 @@
 package com.falazar.farmupcraft.entity;
 
 
-import com.falazar.farmupcraft.FarmUpCraft;
-import com.falazar.farmupcraft.entity.curves.ArcCurve;
-import com.falazar.farmupcraft.entity.curves.VerticalHopCurve;
+import com.falazar.farmupcraft.entity.curves.*;
 import com.falazar.farmupcraft.util.CustomLogger;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.NbtUtils;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
@@ -20,11 +19,9 @@ import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
-import net.minecraft.world.Containers;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
@@ -49,7 +46,7 @@ public class FlyingBlockChunkEntity extends Entity {
     private int lerpStepsRemaining = 0;
 
     private BlockState blockState;
-    private MotionCurve curve; // Not saved directly — see below
+    private SerializableMotionCurve curve; // Not saved directly — see below
     private int duration;
     private boolean shouldPlaceBlock;
     private boolean impactHandled = false;
@@ -60,12 +57,11 @@ public class FlyingBlockChunkEntity extends Entity {
     public FlyingBlockChunkEntity(EntityType<?> type, Level level) {
         super(type, level);
         this.blockState = Blocks.DIRT.defaultBlockState();
-        this.curve = t -> this.position();
         this.duration = 20;
         this.shouldPlaceBlock = false;
     }
 
-    public FlyingBlockChunkEntity(Level level, MotionCurve curve, BlockState blockState, int duration, boolean shouldPlaceBlock) {
+    public FlyingBlockChunkEntity(Level level, SerializableMotionCurve curve, BlockState blockState, int duration, boolean shouldPlaceBlock) {
         super(FUCEntities.FLYING_BLOCK_CHUNK.get(), level);
         this.blockState = blockState;
         this.curve = curve;
@@ -86,9 +82,9 @@ public class FlyingBlockChunkEntity extends Entity {
 
         if (level().isClientSide) {
 
-            if (level().isClientSide && age % 2 == 0 ) {
-                level().addParticle(ParticleTypes.CLOUD, getX(), getY(), getZ(), 0, 0.01, 0);
-            }
+            //if (level().isClientSide && age % 2 == 0 ) {
+            //    level().addParticle(ParticleTypes.CLOUD, getX(), getY(), getZ(), 0, 0.01, 0);
+            //}
 
             if (lerpStepsRemaining > 0 && serverTargetPos != null) {
                 double dx = (serverTargetPos.x - getX()) / lerpStepsRemaining;
@@ -105,13 +101,16 @@ public class FlyingBlockChunkEntity extends Entity {
 
         double t = Mth.clamp(age / (double) duration, 0.0, 1.1);
 
-
+        if (curve == null) {
+            discard();
+            return;
+        }
         Vec3 pos = curve.compute(t);
         this.setPos(pos);
         checkBlockCollision();
 
         if (landed) {
-            if(!level().getBlockState(blockPosition().below()).isAir()) {
+            if (!level().getBlockState(blockPosition().below()).isAir()) {
                 onImpact();
             }
 
@@ -122,7 +121,7 @@ public class FlyingBlockChunkEntity extends Entity {
                         && blockState.canSurvive(level(), blockPosition()) || !level().getBlockState(blockPosition()).canOcclude()) {
                     level().setBlock(blockPosition(), blockState, 3);
                 } else {
-                    dropBrokenBlockLoot(blockState,blockPosition());
+                    dropBrokenBlockLoot(blockState, blockPosition());
                 }
             } else {
                 dropBrokenBlockLoot(blockState, blockPosition());
@@ -152,7 +151,7 @@ public class FlyingBlockChunkEntity extends Entity {
     @Override
     public void handleEntityEvent(byte pId) {
         super.handleEntityEvent(pId);
-        if(pId == 17) {
+        if (pId == 17) {
             for (int i = 0; i < 16; i++) {
                 double x = getX() + (random.nextDouble() - 0.5) * 1.5;
                 double y = getY();
@@ -205,6 +204,7 @@ public class FlyingBlockChunkEntity extends Entity {
     public float getImpactDamageAmount() {
         return 6.0F;
     }
+
     protected void checkBlockCollision() {
         if (!level().getBlockState(blockPosition()).isAir()) {
             onImpact(); // Early impact
@@ -218,8 +218,10 @@ public class FlyingBlockChunkEntity extends Entity {
         this.age = tag.getInt("Age");
         this.duration = tag.getInt("Duration");
         this.shouldPlaceBlock = tag.getBoolean("PlaceBlock");
-        Vec3 start = this.position();
-        this.curve = new VerticalHopCurve(start, start,1.5);
+        if (tag.contains("Curve")) {
+            this.curve = MotionCurves.DISPATCH_CODEC.parse(NbtOps.INSTANCE, tag.get("Curve")).resultOrPartial(LOGGER::error).orElse(new DefaultCurve(this.blockPosition().getCenter()));
+        }
+
     }
 
 
@@ -229,14 +231,16 @@ public class FlyingBlockChunkEntity extends Entity {
         tag.putInt("Duration", duration);
         tag.putInt("Age", age);
         tag.putBoolean("PlaceBlock", shouldPlaceBlock);
-    }
+        tag.put("Curve", MotionCurves.DISPATCH_CODEC.encodeStart(NbtOps.INSTANCE, curve).getOrThrow(false, LOGGER::error));
 
+    }
 
 
     @Override
     public Packet<ClientGamePacketListener> getAddEntityPacket() {
         return new ClientboundAddEntityPacket(this, Block.getId(this.getBlockState()));
     }
+
     public void recreateFromPacket(ClientboundAddEntityPacket pPacket) {
         super.recreateFromPacket(pPacket);
         this.blockState = Block.stateById(pPacket.getData());
@@ -251,6 +255,7 @@ public class FlyingBlockChunkEntity extends Entity {
     public void setStartPos(BlockPos pStartPos) {
         this.entityData.set(DATA_START_POS, pStartPos);
     }
+
     public BlockPos getStartPos() {
         return this.entityData.get(DATA_START_POS);
     }

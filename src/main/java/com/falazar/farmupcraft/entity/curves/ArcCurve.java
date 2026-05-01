@@ -1,6 +1,5 @@
 package com.falazar.farmupcraft.entity.curves;
 
-import com.falazar.farmupcraft.entity.MotionCurve;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 

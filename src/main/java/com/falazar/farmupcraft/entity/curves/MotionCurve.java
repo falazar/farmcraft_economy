@@ -1,4 +1,4 @@
-package com.falazar.farmupcraft.entity;
+package com.falazar.farmupcraft.entity.curves;
 
 
 import net.minecraft.world.phys.Vec3;

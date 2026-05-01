@@ -1,6 +1,5 @@
 package com.falazar.farmupcraft.entity.curves;
 
-import com.falazar.farmupcraft.entity.MotionCurve;
 import net.minecraft.world.phys.Vec3;
 
 public class BurstCurve implements MotionCurve {

@@ -1,14 +1,19 @@
 package com.falazar.farmupcraft.structure;
 
+import com.mojang.datafixers.util.Pair;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.*;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Rotation;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 
+import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 public class BuildableStructureInstance {
@@ -32,7 +37,7 @@ public class BuildableStructureInstance {
             BuildableStructure.StructureBuildTask task = structure.blockTasks.get(progress);
 
             // Rotate relative position
-            BlockPos rotatedRelPos = rotate(task.relativePos);
+            BlockPos rotatedRelPos = task.relativePos.rotate(rotation);
             BlockPos placePos = origin.offset(rotatedRelPos);
 
             // Rotate block state
@@ -55,6 +60,34 @@ public class BuildableStructureInstance {
             spawnEntities(level);
         }
     }
+
+    public List<BuildStep> getNextBuildSteps(Level level, int blocksToFetch) {
+        structure.ensurePopulated(null); // Only needed if not already initialized
+
+        List<BuildStep> steps = new ArrayList<>();
+
+        int built = 0;
+        while (progress < structure.blockTasks.size() && built < blocksToFetch) {
+            BuildableStructure.StructureBuildTask task = structure.blockTasks.get(progress);
+
+            BlockPos rotatedRelPos = rotate(task.relativePos);
+            BlockPos placePos = origin.offset(rotatedRelPos);
+            BlockState rotatedState = task.state.rotate(rotation);
+
+            steps.add(new BuildStep(placePos, rotatedState, task.tag));
+            progress++;
+            built++;
+        }
+
+        if (progress >= structure.blockTasks.size()) {
+            //// Trigger entity spawning if needed
+            //// (Optional: only spawn once here or mark with a boolean)
+            //spawnEntities(level);
+        }
+
+        return steps;
+    }
+
 
     public BlockPos rotate(BlockPos pos) {
         return switch (rotation) {
@@ -103,5 +136,8 @@ public class BuildableStructureInstance {
     public Rotation getRotation() {
         return rotation;
     }
+
+    public record BuildStep(BlockPos position, BlockState state, @Nullable CompoundTag tag) {}
+
 }
 

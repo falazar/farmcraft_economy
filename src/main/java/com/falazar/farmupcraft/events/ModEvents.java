@@ -2,6 +2,7 @@ package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
 import com.falazar.farmupcraft.data.*;
+import com.falazar.farmupcraft.entity.curves.*;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.database.*;
 import com.falazar.farmupcraft.database.serializers.*;
@@ -136,6 +137,13 @@ public class ModEvents {
 //                    goodsDb.setDirty();
 
                     DataBaseManager.registerDataBaseAccess(WORLD_DATA_DATABASE.getDatabaseName(), WORLD_DATA_DATABASE);
+
+
+                    MotionCurves.register("vertical_hop", VerticalHopCurve.CODEC);
+                    MotionCurves.register("eased_linear", EasedLinearMotionCurve.CODEC);
+                    MotionCurves.register("chained", ChainedMotionCurve.CODEC);
+                    MotionCurves.register("default", DefaultCurve.CODEC);
+                    MotionCurves.register("eased_motion", EasedMotionCurve.CODEC);
                 }
         );
 
