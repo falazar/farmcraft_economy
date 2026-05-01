@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.AIManager;
 import com.falazar.farmupcraft.data.NpcData;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.NpcConversationLogger;
@@ -152,7 +153,7 @@ public class NpcManager {
         // user/assistant turns) and pass the whole list to OllamaService.chat().
 
         // Build a system prompt that gives the AI the NPC's personality.
-        String systemPrompt = buildSystemPrompt(profile, player.getName().getString(), playerMessage);
+        String systemPrompt = AIManager.buildNpcSystemPrompt(profile, player.getName().getString(), playerMessage);
 
         player.displayClientMessage(
                 Component.literal("[NPC] " + conv.npcName + " is thinking...").withStyle(ChatFormatting.GREEN), false);
@@ -180,13 +181,6 @@ public class NpcManager {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
-
-    private static String buildSystemPrompt(NpcData profile, String playerName, String playerMessage) {
-        return "You are a Minecraft villager named " + profile.getName() + ". " +
-                profile.getDescription() + " " +
-                "Keep your reply short (1-3 sentences), in character, and friendly. " +
-                "The player '" + playerName + "' says to you: " + playerMessage;
-    }
 
     /** Clears a conversation if one is active for the given player. */
     public static void clearConversation(UUID playerUUID) {

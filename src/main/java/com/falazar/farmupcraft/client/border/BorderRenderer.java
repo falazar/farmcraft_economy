@@ -92,7 +92,7 @@ public class BorderRenderer {
                 double yMin = 0;
                 double yMax = level.getMaxBuildHeight(); // Or a fixed height, like 256
 
-                float alpha = 0.5f;
+                float alpha = 0.12f;
 
                 long longKey = ChunkPos.asLong(chunkX, chunkZ);
                 // boolean containsKey = chunkDataDataBase.containsKey(ChunkPos.asLong(chunkX,

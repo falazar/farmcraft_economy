@@ -1,6 +1,5 @@
 package com.falazar.farmupcraft.data;
 
-import com.falazar.farmupcraft.currency.Wallet;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.UUIDUtil;
@@ -13,14 +12,14 @@ import java.util.UUID;
 
 public class NpcData {
 
-    public static final Codec<NpcData> CODEC = RecordCodecBuilder.create(instance ->
-                    instance.group(
-                            UUIDUtil.STRING_CODEC.fieldOf("id").forGetter(NpcData::getUUID),
-                            Codec.STRING.fieldOf("name").forGetter(NpcData::getName),
-                            UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID()).forGetter(NpcData::getHomeVillageUUID),
-                            Codec.STRING.optionalFieldOf("description", "").forGetter(NpcData::getDescription)
-                    ).apply(instance, NpcData::new)
-    );
+    public static final Codec<NpcData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            UUIDUtil.STRING_CODEC.fieldOf("id").forGetter(NpcData::getUUID),
+            Codec.STRING.fieldOf("name").forGetter(NpcData::getName),
+            UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID())
+                    .forGetter(NpcData::getHomeVillageUUID),
+            Codec.STRING.optionalFieldOf("description", "").forGetter(NpcData::getDescription),
+            Codec.STRING.optionalFieldOf("personality", "").forGetter(NpcData::getPersonality))
+            .apply(instance, NpcData::new));
 
     @Nonnull
     private final UUID uuid;
@@ -30,24 +29,29 @@ public class NpcData {
     private UUID homeVillageUUID;
     @Nonnull
     private String description = "";
+    @Nonnull
+    private String personality = "";
     // todo add lastPos
 
-    /**
-     * Constructs a new NpdData object.
-     *
-     * @param uuid              the UUID representing the npc entity.
-     * @param homeVillageUUID uuid value for village id.
-     */
+    /** Legacy constructor — no personality. */
     public NpcData(UUID uuid, String name, UUID homeVillageUUID, String description) {
+        this(uuid, name, homeVillageUUID, description, "");
+    }
+
+    public NpcData(UUID uuid, String name, UUID homeVillageUUID, String description, String personality) {
         this.uuid = uuid;
         this.name = name;
         this.homeVillageUUID = homeVillageUUID;
         this.description = description;
+        this.personality = personality;
     }
 
     /**
      * Gets the UUID.
-     * <p>This is the in-game UUID used to identify entities.</p>
+     * <p>
+     * This is the in-game UUID used to identify entities.
+     * </p>
+     * 
      * @return the npcs entity UUID
      */
     public UUID getUUID() {
@@ -56,6 +60,7 @@ public class NpcData {
 
     /**
      * Gets the home village id of the NPC.
+     * 
      * @return the NPC's home village id
      */
     public UUID getHomeVillageUUID() {
@@ -80,8 +85,18 @@ public class NpcData {
     public String getDescription() {
         return description;
     }
+
     public void setDescription(@Nonnull String description) {
         this.description = description;
+    }
+
+    @Nonnull
+    public String getPersonality() {
+        return personality;
+    }
+
+    public void setPersonality(@Nonnull String personality) {
+        this.personality = personality;
     }
 
 }

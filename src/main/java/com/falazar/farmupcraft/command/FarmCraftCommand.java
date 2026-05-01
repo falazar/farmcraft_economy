@@ -1,9 +1,14 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.PlayerData;
+import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.data.WorldData;
+import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.message.AddJMWaypointPacket;
 import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.database.message.HighlightChunkPacket;
+import com.falazar.farmupcraft.database.message.ShowVillageChunksPacket;
 import com.falazar.farmupcraft.database.message.OpenJeiRecipePacket;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.events.WorldScheduler;
@@ -22,6 +27,10 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
 public class FarmCraftCommand {
     public static final CustomLogger LOGGER = new CustomLogger(FarmCraftCommand.class.getSimpleName());
 
@@ -37,7 +46,8 @@ public class FarmCraftCommand {
                 .requires(source -> source.hasPermission(2))
                 .executes(context -> runHourlyChecks(context.getSource())));
 
-        // /farmcraft map waypoint <x> <y> <z> <name> - add a JourneyMap waypoint (admin only)
+        // /farmcraft map waypoint <x> <y> <z> <name> - add a JourneyMap waypoint (admin
+        // only)
         builder.then(Commands.literal("map")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.literal("waypoint")
@@ -66,11 +76,21 @@ public class FarmCraftCommand {
                         .then(Commands.argument("label", StringArgumentType.greedyString())
                                 .executes(context -> highlightHereChunk(
                                         context.getSource(),
-                                        StringArgumentType.getString(context, "label"))))));
+                                        StringArgumentType.getString(context, "label")))))
+                // /farmcraft map village - draw all claimed village chunks on JourneyMap
+                // /farmcraft map village clear - remove all village chunk overlays
+                .then(Commands.literal("village")
+                        .executes(context -> showVillageChunks(context.getSource()))
+                        .then(Commands.literal("clear")
+                                .executes(context -> clearVillageChunks(context.getSource()))))
+                // /farmcraft map clear - remove ALL farmcraft overlays (chunks, village, etc.)
+                .then(Commands.literal("clear")
+                        .executes(context -> clearAllMapOverlays(context.getSource()))));
 
         pDispatcher.register(builder);
 
-        // /frecipe <itemId> - sends OpenJeiRecipePacket to the player so JEI opens client-side
+        // /frecipe <itemId> - sends OpenJeiRecipePacket to the player so JEI opens
+        // client-side
         pDispatcher.register(Commands.literal("frecipe")
                 .then(Commands.argument("itemId", StringArgumentType.greedyString())
                         .executes(context -> {
@@ -118,7 +138,9 @@ public class FarmCraftCommand {
     public static int runHourlyChecks(CommandSourceStack source) {
         try {
             WorldScheduler.runHourlyChecks();
-            source.sendSuccess(() -> Component.literal("Hourly checks triggered manually.").withStyle(ChatFormatting.GREEN), false);
+            source.sendSuccess(
+                    () -> Component.literal("Hourly checks triggered manually.").withStyle(ChatFormatting.GREEN),
+                    false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception running hourly checks - see log"));
             ex.printStackTrace();
@@ -144,8 +166,10 @@ public class FarmCraftCommand {
         }
         String dimId = player.level().dimension().location().toString();
         EDBMessages.sendToPlayer(new AddJMWaypointPacket(x, y, z, name, dimId), player);
-        source.sendSuccess(() -> Component.literal("Waypoint \"" + name + "\" added at " + x + ", " + y + ", " + z + ".")
-                .withStyle(ChatFormatting.GREEN), false);
+        source.sendSuccess(
+                () -> Component.literal("Waypoint \"" + name + "\" added at " + x + ", " + y + ", " + z + ".")
+                        .withStyle(ChatFormatting.GREEN),
+                false);
         return 1;
     }
 
@@ -157,8 +181,10 @@ public class FarmCraftCommand {
         }
         String dimId = player.level().dimension().location().toString();
         EDBMessages.sendToPlayer(new HighlightChunkPacket(chunkX, chunkZ, label, dimId, 0x00FF00), player);
-        source.sendSuccess(() -> Component.literal("Chunk [" + chunkX + ", " + chunkZ + "] highlighted as \"" + label + "\".")
-                .withStyle(ChatFormatting.GREEN), false);
+        source.sendSuccess(
+                () -> Component.literal("Chunk [" + chunkX + ", " + chunkZ + "] highlighted as \"" + label + "\".")
+                        .withStyle(ChatFormatting.GREEN),
+                false);
         return 1;
     }
 
@@ -171,7 +197,80 @@ public class FarmCraftCommand {
         ChunkPos pos = new ChunkPos(player.blockPosition());
         String dimId = player.level().dimension().location().toString();
         EDBMessages.sendToPlayer(new HighlightChunkPacket(pos.x, pos.z, label, dimId, 0x00FF00), player);
-        source.sendSuccess(() -> Component.literal("Your current chunk [" + pos.x + ", " + pos.z + "] highlighted as \"" + label + "\".")
+        source.sendSuccess(() -> Component
+                .literal("Your current chunk [" + pos.x + ", " + pos.z + "] highlighted as \"" + label + "\".")
+                .withStyle(ChatFormatting.GREEN), false);
+        return 1;
+    }
+
+    /**
+     * /farmcraft map village — draws a colored overlay on every claimed village chunk in JourneyMap.
+     * Blue (0x0055FF) = chunk has a plot type (farm, house, pasture, etc.)
+     * Green (0x00E000) = chunk is claimed but has no plot ("village" type)
+     */
+    public static int showVillageChunks(CommandSourceStack source) {
+        Entity entity = source.getEntity();
+        if (!(entity instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("Must be a player."));
+            return 0;
+        }
+        DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+        PlayerData playerData = playerDb.getData(player.getUUID());
+        if (playerData == null || playerData.getHomeVillageUUID() == null) {
+            source.sendFailure(Component.literal("You are not a member of any village."));
+            return 0;
+        }
+        VillageData village = ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID());
+        if (village == null) {
+            source.sendFailure(Component.literal("Village data not found."));
+            return 0;
+        }
+        DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+        List<int[]> chunks = new ArrayList<>();
+        for (ChunkPos cp : village.getClaimedChunks()) {
+            ChunkData cd = chunkDb.getData(cp.toLong());
+            String type = cd != null ? cd.getType() : "village";
+            boolean hasPlot = !type.equalsIgnoreCase("village") && !type.equalsIgnoreCase("village center");
+            int color = hasPlot ? 0x0055FF : 0x00E000; // blue = plot, green = village-only
+            chunks.add(new int[] { cp.x, cp.z, color });
+        }
+        String dimId = player.level().dimension().location().toString();
+        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(chunks, true, dimId), player);
+        source.sendSuccess(() -> Component.literal(
+                "Showing " + chunks.size() + " village chunks on map. Use /village map clear to remove.")
+                .withStyle(ChatFormatting.GREEN), false);
+        return 1;
+    }
+
+    /**
+     * /farmcraft map village clear — removes all village chunk overlays from JourneyMap.
+     */
+    public static int clearVillageChunks(CommandSourceStack source) {
+        Entity entity = source.getEntity();
+        if (!(entity instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("Must be a player."));
+            return 0;
+        }
+        String dimId = player.level().dimension().location().toString();
+        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimId), player);
+        source.sendSuccess(() -> Component.literal("Village chunk overlays cleared.")
+                .withStyle(ChatFormatting.GREEN), false);
+        return 1;
+    }
+
+    /**
+     * /farmcraft map clear — removes ALL farmcraft map overlays (chunk highlights,
+     * village overlays, etc.).
+     */
+    public static int clearAllMapOverlays(CommandSourceStack source) {
+        Entity entity = source.getEntity();
+        if (!(entity instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("Must be a player."));
+            return 0;
+        }
+        String dimId = player.level().dimension().location().toString();
+        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimId), player);
+        source.sendSuccess(() -> Component.literal("All map overlays cleared.")
                 .withStyle(ChatFormatting.GREEN), false);
         return 1;
     }

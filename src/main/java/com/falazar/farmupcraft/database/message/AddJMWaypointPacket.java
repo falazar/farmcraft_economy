@@ -70,7 +70,7 @@ public class AddJMWaypointPacket {
                 dim,
                 new BlockPos(msg.x, msg.y, msg.z));
         waypoint.setColor(0xFFD700); // gold yellow
-        waypoint.setPersistent(false);
+        waypoint.setPersistent(true); // persistent = shows in waypoint manager, can be edited/removed by player
 
         try {
             api.show(waypoint);

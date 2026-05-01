@@ -2,7 +2,6 @@ package com.falazar.farmupcraft.datagen.custom;
 
 import com.falazar.farmupcraft.FarmUpCraft;
 import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.CurrencyCost;
 import com.falazar.farmupcraft.data.GoodsData;
 import com.falazar.farmupcraft.data.MarketData;
 import com.falazar.farmupcraft.registry.CoinRegistry;
@@ -39,7 +38,7 @@ public class MarketDataDataGenerator extends MarketDataProvider {
         
 //        for(Item item : ForgeRegistries.ITEMS.getValues()) {
 //            if(item.getDescriptionId().contains("pamhc2crops") || item.getDescriptionId().contains("pamhc2foodcore") || item.getDescriptionId().contains("pamhc2foodextended")) {
-//                data.add(new GoodsData(item, new CurrencyCost(bronzeCoin, 10)));
+//                // data.add(new GoodsData(item, ...));
 //            }
 //        }
 //

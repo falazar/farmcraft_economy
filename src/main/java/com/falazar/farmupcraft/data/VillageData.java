@@ -19,9 +19,12 @@ public class VillageData {
             Codec.INT.optionalFieldOf("coins", 0).forGetter(VillageData::getCoins),
             Codec.STRING.optionalFieldOf("last_ran_daily", "2000-01-01").forGetter(VillageData::getLastRanDaily),
             Codec.STRING.optionalFieldOf("animal_type", "").forGetter(VillageData::getAnimalType),
-            Codec.STRING.optionalFieldOf("last_animal_type_change", "2000-01-01").forGetter(VillageData::getLastAnimalTypeChange),
+            Codec.STRING.optionalFieldOf("last_animal_type_change", "2000-01-01")
+                    .forGetter(VillageData::getLastAnimalTypeChange),
             Codec.STRING.optionalFieldOf("founder", "").forGetter(VillageData::getFounder),
-            UUIDUtil.STRING_CODEC.listOf().optionalFieldOf("member_uuids", new ArrayList<>()).forGetter(VillageData::getMemberUUIDs))
+            UUIDUtil.STRING_CODEC.listOf().optionalFieldOf("member_uuids", new ArrayList<>())
+                    .forGetter(VillageData::getMemberUUIDs),
+            Codec.STRING.optionalFieldOf("animal_grains", "").forGetter(VillageData::getAnimalGrains))
             .apply(instance, VillageData::new));
 
     private final UUID uuid;
@@ -33,10 +36,11 @@ public class VillageData {
     private final boolean bought; // TODO what is this one? remove?
     private int coins;
     private String lastRanDaily;
-    private String animalType;       // e.g. "cow", "sheep", "pig", "chicken"
+    private String animalType; // e.g. "cow", "sheep", "pig", "chicken"
     private String lastAnimalTypeChange;
-    private String founder;           // Player name who founded the village
-    private List<UUID> memberUUIDs;   // UUIDs of all players who are members of this village
+    private String founder; // Player name who founded the village
+    private List<UUID> memberUUIDs; // UUIDs of all players who are members of this village
+    private String animalGrains; // Serialized map: "cow=item1,item2|sheep=item3,item4|..."
 
     /**
      * Constructs a new VillageData object.
@@ -46,14 +50,16 @@ public class VillageData {
      * @param level    the level of village
      * @param position the 3d position of village
      */
+    // Full constructor used by Codec.
     public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
-            boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange, String founder,
-            List<UUID> memberUUIDs) {
+            boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange,
+            String founder,
+            List<UUID> memberUUIDs, String animalGrains) {
         this.uuid = uuid;
         this.name = name;
         this.position = position;
         this.level = level;
-        this.claimedChunks = new ArrayList<>(claimedChunks); // Convert to mutable list
+        this.claimedChunks = new ArrayList<>(claimedChunks);
         this.bought = bought;
         for (ChunkPos pos : claimedChunks) {
             claimedChunkSet.add(ChunkPos.asLong(pos.x, pos.z));
@@ -64,6 +70,16 @@ public class VillageData {
         this.lastAnimalTypeChange = lastAnimalTypeChange != null ? lastAnimalTypeChange : "2000-01-01";
         this.founder = founder != null ? founder : "";
         this.memberUUIDs = memberUUIDs != null ? new ArrayList<>(memberUUIDs) : new ArrayList<>();
+        this.animalGrains = animalGrains != null ? animalGrains : "";
+    }
+
+    // Convenience constructor for new village creation (no grain assignment yet).
+    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
+            boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange,
+            String founder,
+            List<UUID> memberUUIDs) {
+        this(uuid, name, position, level, claimedChunks, bought, coins, lastRanDaily, animalType,
+                lastAnimalTypeChange, founder, memberUUIDs, "");
     }
 
     /**
@@ -198,7 +214,8 @@ public class VillageData {
         this.lastAnimalTypeChange = date;
     }
 
-    // Returns true if it has been at least 7 days since the animal type was last changed.
+    // Returns true if it has been at least 7 days since the animal type was last
+    // changed.
     public boolean canChangeAnimalType() {
         java.time.LocalDate last = java.time.LocalDate.parse(getLastAnimalTypeChange());
         return java.time.LocalDate.now().isAfter(last.plusDays(6));
@@ -213,20 +230,78 @@ public class VillageData {
     }
 
     public List<UUID> getMemberUUIDs() {
-        if (memberUUIDs == null) memberUUIDs = new ArrayList<>();
+        if (memberUUIDs == null)
+            memberUUIDs = new ArrayList<>();
         return memberUUIDs;
     }
 
     public void addMember(UUID playerUUID) {
-        if (memberUUIDs == null) memberUUIDs = new ArrayList<>();
-        if (!memberUUIDs.contains(playerUUID)) memberUUIDs.add(playerUUID);
+        if (memberUUIDs == null)
+            memberUUIDs = new ArrayList<>();
+        if (!memberUUIDs.contains(playerUUID))
+            memberUUIDs.add(playerUUID);
     }
 
     public void removeMember(UUID playerUUID) {
-        if (memberUUIDs != null) memberUUIDs.remove(playerUUID);
+        if (memberUUIDs != null)
+            memberUUIDs.remove(playerUUID);
     }
 
     public boolean isMember(UUID playerUUID) {
         return memberUUIDs != null && memberUUIDs.contains(playerUUID);
+    }
+
+    // --- Animal grain requirements ---
+
+    public String getAnimalGrains() {
+        return animalGrains != null ? animalGrains : "";
+    }
+
+    public void setAnimalGrains(String animalGrains) {
+        this.animalGrains = animalGrains != null ? animalGrains : "";
+    }
+
+    public boolean hasAnimalGrainsAssigned() {
+        return animalGrains != null && !animalGrains.isEmpty();
+    }
+
+    /** Returns the grain requirements as a map: animal type -> [grain1, grain2]. */
+    public Map<String, List<String>> getAnimalGrainsMap() {
+        Map<String, List<String>> map = new LinkedHashMap<>();
+        if (animalGrains == null || animalGrains.isEmpty())
+            return map;
+        for (String entry : animalGrains.split("\\|")) {
+            int eq = entry.indexOf('=');
+            if (eq < 0)
+                continue;
+            String animal = entry.substring(0, eq);
+            String[] grains = entry.substring(eq + 1).split(",");
+            List<String> grainList = new ArrayList<>();
+            for (String g : grains)
+                if (!g.isEmpty())
+                    grainList.add(g);
+            map.put(animal, grainList);
+        }
+        return map;
+    }
+
+    /** Serializes a grain map back into the stored string. */
+    public void setAnimalGrainsFromMap(Map<String, List<String>> map) {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, List<String>> e : map.entrySet()) {
+            if (sb.length() > 0)
+                sb.append('|');
+            sb.append(e.getKey()).append('=').append(String.join(",", e.getValue()));
+        }
+        this.animalGrains = sb.toString();
+    }
+
+    /**
+     * Returns the two required grain item IDs for the given animal type, or empty
+     * list.
+     */
+    public List<String> getGrainsForAnimal(String animalType) {
+        Map<String, List<String>> map = getAnimalGrainsMap();
+        return map.getOrDefault(animalType, new ArrayList<>());
     }
 }

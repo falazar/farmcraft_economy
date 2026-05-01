@@ -5,7 +5,10 @@ import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
+import com.falazar.farmupcraft.util.AnimalGrainAssigner;
 import com.falazar.farmupcraft.util.CustomLogger;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraftforge.registries.ForgeRegistries;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionHand;
@@ -161,9 +164,10 @@ public class AnimalsManager {
             }
 
             // STEP 4: For farm animals only, enforce the village species restriction.
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = null;
             if (isFarmAnimal(animal)) {
-                DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
-                VillageData village = villageDb.getData(playerData.getHomeVillageUUID());
+                village = villageDb.getData(playerData.getHomeVillageUUID());
                 if (village != null && !village.getAnimalType().isEmpty()) {
                     String allowed = village.getAnimalType();
                     String animalSpecies = getAnimalSpeciesName(animal);
@@ -176,6 +180,46 @@ public class AnimalsManager {
                                         .withStyle(ChatFormatting.RED),
                                 false);
                         return;
+                    }
+                }
+            }
+
+            // STEP 5: Grain requirement — player must have both required grains in inventory.
+            if (isFarmAnimal(animal)) {
+                if (village == null) village = villageDb.getData(playerData.getHomeVillageUUID());
+                if (village != null) {
+                    // Assign grains on first use if not yet set.
+                    if (!village.hasAnimalGrainsAssigned()) {
+                        AnimalGrainAssigner.assignGrains(village);
+                        villageDb.putData(village.getUUID(), village);
+                    }
+                    String animalSpecies = getAnimalSpeciesName(animal);
+                    java.util.List<String> required = village.getGrainsForAnimal(animalSpecies);
+                    if (!required.isEmpty()) {
+                        java.util.List<String> missing = new java.util.ArrayList<>();
+                        for (String itemId : required) {
+                            net.minecraft.world.item.Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemId));
+                            if (item == null || !player.getInventory().hasAnyOf(java.util.Set.of(item))) {
+                                missing.add(AnimalGrainAssigner.displayName(itemId));
+                            }
+                        }
+                        if (!missing.isEmpty()) {
+                            event.setCanceled(true);
+                            player.displayClientMessage(
+                                    Component.literal("To breed " + animalSpecies + "s you need: "
+                                            + String.join(" & ", missing) + " in your inventory.")
+                                            .withStyle(ChatFormatting.RED),
+                                    false);
+                            return;
+                        }
+                        // Consume one of each required grain.
+                        for (String itemId : required) {
+                            net.minecraft.world.item.Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemId));
+                            if (item != null) {
+                                player.getInventory().clearOrCountMatchingItems(
+                                        stack -> stack.is(item), 1, player.inventoryMenu.getCraftSlots());
+                            }
+                        }
                     }
                 }
             }

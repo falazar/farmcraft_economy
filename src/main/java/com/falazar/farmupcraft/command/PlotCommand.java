@@ -384,13 +384,11 @@ public class PlotCommand {
             }
             int cost = calculatePlotCost(village, plotType);
             Level level = playerSource.level();
-            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!playerSource.isCreative() && !player.getWallet().hasEnough(bronzeCoin, cost)) {
+            if (!playerSource.isCreative() && player.getCoins() < cost) {
                 source.sendFailure(Component.literal("Player does not have enough money."));
                 // Show cost and coins
                 source.sendFailure(Component.literal("Cost: " + cost));
-                source.sendFailure(Component.literal("Player Coins: " + player.getWallet().get(bronzeCoin)));
+                source.sendFailure(Component.literal("Player Coins: " + player.getCoins()));
                 return 0;
             }
 
@@ -421,8 +419,9 @@ public class PlotCommand {
             LOGGER.info("Plot bought at " + playerSource.blockPosition().toShortString());
 
             // STEP 5: Subtract money out of player. TODO helper method hide this???
-            if (!playerSource.isCreative())
-                player.getWallet().remove(bronzeCoin, cost);
+            if (!playerSource.isCreative()) {
+                player.removeCoins(cost);
+            }
             playerDatabase.putData(playerSource.getUUID(), player);
 
             // Build a response message

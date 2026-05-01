@@ -6,9 +6,12 @@ import com.falazar.farmupcraft.data.GameStructureData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.database.message.ShowVillageChunksPacket;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
+import com.falazar.farmupcraft.util.AnimalGrainAssigner;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -24,10 +27,12 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -213,6 +218,21 @@ public class VillageCommand {
                 .executes(context -> acceptVillageInvite(context.getSource()));
         builder.then(acceptBuilder);
 
+        // Define the "animals" sub-command — show grain requirements per animal type.
+        LiteralArgumentBuilder<CommandSourceStack> animalsBuilder = Commands.literal("animals")
+                .executes(context -> showVillageAnimals(context.getSource()));
+        builder.then(animalsBuilder);
+
+        // Define the "map" sub-command — show/clear village chunk overlays on
+        // JourneyMap.
+        // /village map → show blue (plot) / green (claimed) overlays
+        // /village map clear → remove all overlays
+        LiteralArgumentBuilder<CommandSourceStack> mapBuilder = Commands.literal("map")
+                .executes(context -> FarmCraftCommand.showVillageChunks(context.getSource()))
+                .then(Commands.literal("clear")
+                        .executes(context -> FarmCraftCommand.clearVillageChunks(context.getSource())));
+        builder.then(mapBuilder);
+
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -265,32 +285,30 @@ public class VillageCommand {
                 return 0;
             }
 
-            // STEP 4: Calc cost to buy village.
-            // int cost = calculateVillageCost(village, player, plotType);
-            // if (player.checkPlayerMoney(cost)) {
-            // context.getSource().sendFailure(Component.literal("Player does not have
-            // enough money."));
-            // return 0;
-            // }
-            // TODO put this back in
-            int cost = 500; // TODO remove this and use calc cost.
-            // if (currencyCost.canAfford(wallet)) {
-            // do something
-            // }
-
-            // STEP 5: TODO Subtract money out of player.
-            // player.subtractMoney(cost);
+            // STEP 4: Calculate dynamic village buy cost.
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            int cost = calculateVillageBuyCost();
+            if (playerData.getCoins() < cost) {
+                source.sendFailure(Component.literal("Not enough coins to buy a village. Cost: " + cost
+                        + ", you have: " + playerData.getCoins()));
+                return 0;
+            }
 
             // Step 6: TODO Check if player is in another village right now.
             UUID homeVillageId = playerData.getHomeVillageUUID();
-            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
             if (homeVillageId != null) {
-                // VillageData homeVillage = villageDatabase.getData(homeVillageId);
-                // if (homeVillage != null) {
-                // source.sendFailure(Component.literal("Player is already in a village: " +
-                // homeVillage.getName()));
-                // return 0;
-                // }
+                VillageData homeVillage = villageDatabase.getData(homeVillageId);
+                if (homeVillage != null) {
+                    source.sendFailure(Component.literal("Player is already in a village: " +
+                            homeVillage.getName()));
+                    return 0;
+                }
+            }
+
+            // STEP 5: Subtract money from the player.
+            if (!playerData.removeCoins(cost)) {
+                source.sendFailure(Component.literal("Failed to deduct coins for village purchase."));
+                return 0;
             }
 
             // Step 7: Generate all chunk positions in the radius
@@ -314,7 +332,6 @@ public class VillageCommand {
                     " saved with " + villageChunks.size() + " chunks around " + player.blockPosition());
 
             // STEP 9: Buy plot and mark to db.
-            // TODO1 this doesnt buy the plot does it?
             // TODO1 THESE villageId TO USE UUIDS
             // Mark chunks to village.
             for (ChunkPos pos : villageChunks) {
@@ -344,6 +361,8 @@ public class VillageCommand {
 
             // STEP 10: Add player to village member list.
             villageData.addMember(player.getUUID());
+            // Assign grain requirements for this village based on its position.
+            AnimalGrainAssigner.assignGrains(villageData);
             villageDatabase.putData(villageId, villageData);
 
             // STEP 11: Add village to player.
@@ -355,6 +374,7 @@ public class VillageCommand {
             // STEP 12: Build a response message and send.
             MutableComponent response = Component.literal("Village bought at " + chunkPos);
             response = response.append(Component.literal(" and created with name " + villageName));
+            response = response.append(Component.literal(" for " + cost + " coins."));
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -362,6 +382,58 @@ public class VillageCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    // Show grain requirements for all farm animals in the player's village.
+    public static int showVillageAnimals(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDb.getData(playerSource.getUUID());
+            if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You don't belong to a village."));
+                return 0;
+            }
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = villageDb.getData(playerData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Village not found."));
+                return 0;
+            }
+            // Assign grains lazily if not yet set.
+            if (!village.hasAnimalGrainsAssigned()) {
+                AnimalGrainAssigner.assignGrains(village);
+                villageDb.putData(village.getUUID(), village);
+            }
+            source.sendSuccess(() -> Component.literal("=== " + village.getName() + " Animal Grain Requirements ===")
+                    .withStyle(ChatFormatting.GOLD), false);
+            java.util.Map<String, java.util.List<String>> map = village.getAnimalGrainsMap();
+            for (String animal : AnimalGrainAssigner.ANIMAL_TYPES) {
+                java.util.List<String> grains = map.getOrDefault(animal, java.util.List.of());
+                String grainsText = grains.stream()
+                        .map(AnimalGrainAssigner::displayName)
+                        .collect(java.util.stream.Collectors.joining(" & "));
+                source.sendSuccess(() -> Component.literal("  " + capitalize(animal) + ": ")
+                        .withStyle(ChatFormatting.YELLOW)
+                        .append(Component.literal(grainsText).withStyle(ChatFormatting.WHITE)), false);
+            }
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in showVillageAnimals: " + e.getMessage());
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty())
+            return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     // Show the village that current player has home in.
@@ -574,6 +646,12 @@ public class VillageCommand {
         return dailyCost;
     }
 
+    /** Village buy price: base 500 + 200 per existing village in the world. */
+    public static int calculateVillageBuyCost() {
+        int existingVillageCount = ModEvents.getVillageDatabase().getSize();
+        return 500 + (Math.max(0, existingVillageCount) * 200);
+    }
+
     public static int getPlotCount(VillageData village) {
         int plotCnt = 0;
         for (ChunkPos pos : village.getClaimedChunks()) {
@@ -760,8 +838,8 @@ public class VillageCommand {
     private record PendingInvite(UUID villageId, String inviterName, long expiryMs) {
     }
 
-    /** key = invited player name (lowercase) */
-    private static final Map<String, PendingInvite> PENDING_INVITES = new HashMap<>();
+    /** key = invited player UUID */
+    private static final Map<UUID, PendingInvite> PENDING_INVITES = new HashMap<>();
 
     /** Remove expired entries (called lazily on invite/accept). */
     private static void cleanExpiredInvites() {
@@ -815,8 +893,11 @@ public class VillageCommand {
 
             cleanExpiredInvites();
             long expiryMs = System.currentTimeMillis() + 10L * 60 * 1000; // 10 minutes
-            PENDING_INVITES.put(targetName.toLowerCase(),
+            PENDING_INVITES.put(target.getUUID(),
                     new PendingInvite(village.getUUID(), inviter.getName().getString(), expiryMs));
+
+            LOGGER.info("Invite stored: {} invited {} (uuid={}) to village {}",
+                    inviter.getName().getString(), targetName, target.getUUID(), village.getName());
 
             // Tell the inviter.
             source.sendSuccess(() -> Component.literal(
@@ -824,11 +905,14 @@ public class VillageCommand {
                             + "'. It expires in 10 minutes."),
                     false);
 
-            // Send private message to the invited player.
-            target.sendSystemMessage(Component.literal(
-                    "[Village] " + inviter.getName().getString() + " has invited you to join village '"
-                            + village.getName() + "'. Type /village accept to join! (Expires in 10 minutes)")
-                    .withStyle(ChatFormatting.GREEN));
+            // Notify the invited player — both in chat and above the hotbar so it is hard
+            // to miss.
+            Component inviteMsg = Component.literal(
+                    "[Village] " + inviter.getName().getString() + " invited you to '" + village.getName()
+                            + "'! Type /village accept to join!")
+                    .withStyle(ChatFormatting.GREEN);
+            target.sendSystemMessage(inviteMsg);
+            target.displayClientMessage(inviteMsg, false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -846,7 +930,7 @@ public class VillageCommand {
             }
 
             cleanExpiredInvites();
-            PendingInvite invite = PENDING_INVITES.remove(player.getName().getString().toLowerCase());
+            PendingInvite invite = PENDING_INVITES.remove(player.getUUID());
             if (invite == null) {
                 source.sendFailure(Component.literal("You have no pending village invite (or it has expired)."));
                 return 0;
@@ -1030,11 +1114,7 @@ public class VillageCommand {
 
             // a. Check cost to level up
             int levelUpCost = currLevel * 300;
-            // todo helper method.
-            Level level = playerSource.level();
-            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!player.getWallet().hasEnough(bronzeCoin, levelUpCost)) {
+            if (player.getCoins() < levelUpCost) {
                 failedChecks = true;
                 failureMessages = failureMessages.append(
                         Component.literal("Not enough coins to level up village. Cost is " + levelUpCost + " coins\n"));
@@ -1068,7 +1148,7 @@ public class VillageCommand {
             }
 
             // STEP 4: Subtract money out of player. TODO helper method hide this???
-            player.getWallet().remove(bronzeCoin, levelUpCost);
+            player.removeCoins(levelUpCost);
             ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
 
             // STEP 5: Update level in db.
@@ -1902,9 +1982,20 @@ public class VillageCommand {
             LOGGER.info("Villager: name='{}', uuid={}, profession={}", v.getName().getString(), villager.getUUID(),
                     profession);
 
-            // Chat only shows name, profession, distance — UUID is in logs only.
+            // Chat shows name, profession, coordinates, and a clickable [TP] link in
+            // creative.
             MutableComponent villagerResponse = Component
-                    .literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance);
+                    .literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance
+                            + " [" + villagerPos.getX() + "," + villagerPos.getY() + "," + villagerPos.getZ() + "]");
+            // Append a clickable [TP] link in creative mode.
+            if (playerSource instanceof ServerPlayer sp && sp.getAbilities().instabuild) {
+                String tpCmd = "/tp " + villagerPos.getX() + " " + villagerPos.getY() + " " + villagerPos.getZ();
+                MutableComponent tpLink = Component.literal(" [TP]")
+                        .withStyle(s -> s
+                                .withColor(ChatFormatting.AQUA)
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, tpCmd)));
+                villagerResponse.append(tpLink);
+            }
             source.sendSuccess(() -> villagerResponse, false);
         }
 

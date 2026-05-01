@@ -13,6 +13,7 @@ GENERAL SOON:
     TODO CHECK - Make lava be gathered from a cauldron to a hopper.   
 
     TODO CHECK - limit number of each type to 1 per village level, 2 for houses, no limits on regular plots
+    - farm worked, test others. 
 
     TODO CHECK - Make decay or uses for the cookware from harvestcraft 2.
     if not in kitchen, if in kitchen free. 
@@ -22,10 +23,44 @@ GENERAL SOON:
         limit breeding type of animal to 1 per village, stored on village object.
         once per day on breeding and milking
 
-    TODO - flag that says every 5 min if im not in hard mode, if only one player on, and it has my name!!!!!!!
+    TODO CHECK - flag that says every 5 min if im not in hard mode, if only one player on, and it has my name!!!!!!!
     
+    TODO CHECK - fix cutting table recipes, they are still on simple for stones!
 
     TODO CHECK: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
+
+    TODO CHECK - When logging in shuffle sort the todo list file in Rimfog dir, keyed to todays date  so it doesnt change. 
+    Then suggest to the player to Have Fun and do some of those Tasks: and list first four. 
+didnt show this any??
+
+    TODO CHECK - when a /market show command is run, make sure the initial stuff has been run and setup. 
+      if no items in market we need to call the method to add 5 wood items, 5 stone, 10 general and 15 food
+
+    TODO CHECK - add a commmand to initialize all villagers in the village, grab that list, and create a json npcData file (only if not existing) for them giving a wide variety of personality types and habits and likes and dislikes. 
+
+CURRENT SECTION:
+    TODO CHECK BUG - added a waypoint with /farmcraft map waypoint -2305 65 1885 TASTERY!
+    But then we couldnt edit or remove it, ack...
+    make a remove method also, but try and make sure its created as a normal one so we can edit?
+    It did show up on the map though, yay!  is it a temp one?
+
+    TODO CHECK - can we make the chunk color more transparent, just barely visible maybe 10% 15%
+    and command to turn it off on that chunk
+
+    TODO CHECK - make a map command that will draw the squares on every claimed chunk in your Village
+    And one to toggle them off again. 
+
+TODO CHECK BUG - Tested the grinder, it returned one too our inventory with an NBT tag but cant tell any uses, 
+and then it returned the original, so lets find another way to do this. 
+Similar to picks and shovels and a fish knife from other mod. 
+
+TODO CHECK - Make each breed of farm animals require 2 different types of grain, keyed off the xz combo value
+so sheep might be corn and wheat and chickens might be alfalfa and millet
+Include all grains and hays, they should be set and saved to village on creation. 
+if village loaded and they are not set, go ahead and call the function then.
+/village animals  should show that list
+
+
 
 
 FUTURE STUFF: 
@@ -58,8 +93,6 @@ Dont start yet not fully defined.
         push back 3 type command.
         stretch left 2 type command
 
-    TODO - fix cutting table recipes, they are still on simple for stones!
-
     TODO - have a daily task sign in village center, with a list of tasks that would give more daily XP.
         ie hunt mobs, explore, fix town roads, fix town walls, breed villagers, breed animals, plant trees, plant crops, harvest crops, build a house, build a farm, build a mine, build a nursery, build a port, build a rail station, build a market.
 
@@ -75,7 +108,7 @@ Dont start yet not fully defined.
 
     TODO - buyable eggs for villagers if we have less than 3 alive?
 
-    TODO - break up CropsManager into several other things.  should be events or?  check another project?
+    TODO CHECK - break up CropsManager into several other things.  should be events or?  check another project?
 
     // Recipes and boosts and such
     TODO CHECK - make emu and duck eggs usable in cooking.
@@ -84,17 +117,7 @@ Dont start yet not fully defined.
 
 
 MARKETS - Get them up and fully working.
-  --DONE - TODO Market command Updates prices daily. -JAMES
-    -- TODO auto run use general db object?
-  --DONE - Market command Adds new random items daily. -JAMES
-    -- TODO auto run
   --TODO - Graphical UI laters.
-  --DONE - Create 4 market type files, listing all items. - JAMES TODO
-  --DONE - Pull in 4 market type files. Import to DB
-  --DONE update goods data and market objects to be right.
-  --DONE - Allow player to browser 4 markets -JAMES
-  --DONE - Allow player to sell all in inventory for a market type. -JAMES
-    -- mostly done - check wallet saving.
 
 VILLAGES:
   TODO ignore (dont shrink, if level is reduced)
@@ -102,14 +125,6 @@ VILLAGES:
   TODO require growth something to level next
   TODO - have structures give coins to village, and resources, and add to village growth.
   TODO - have village record villagers count.
-  DONE Add coins to village, single value?
-  DONE Create addCoins() method to village and subtractCoins() method.
-  DONE Add player putCoins and takeCoins methods
-  DONE Add a setLevel method to village
-  DONE Add chunks when level is grown
-  DONE Add chunks randomly along edges, half chance in oceans...
-  DONE - auto grab any with 3-4 of 4 sides added already!  removes holes
-  DONE - Add levelUpVillage() method that adds one level.
 
 PLAYERS:
     TODO Add level and experience fields.
@@ -126,7 +141,7 @@ Get a way to show village areas (or others) on JourneyMap
     -- REF: https://teamjm.github.io/journeymap-docs/5.9.x/Tools%20and%20Customisation/integration/
 
 #############################################################
-Adventure Areas
+Adventure Project
 
 
 Create find islands and lakes command
@@ -200,14 +215,3 @@ QUESTS:
     TODO test dialogue
 
 
-DONE LIST:
-    DONE - Add journey map to test builder.
-    DONE - make a market show high to show only expensive items, default 10 and above enter number for limit
-    DONE - FIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
-    DONE Add biomes info onto plot info and format and color it.
-    DONE - make a book with writing in it.
-    DONE - place a book in a chest.
-    DONE - make tree planting fail often, except fruit ones?
-    DONE - give more bonus fruit for ones in an orchard!  great area to plant.
-
-6-20-2025

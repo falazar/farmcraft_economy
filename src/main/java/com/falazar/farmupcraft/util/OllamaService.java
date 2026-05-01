@@ -35,6 +35,7 @@ public class OllamaService {
 
     /** The Ollama model to use. Change this to any model shown by `ollama list`. */
     public static final String DEFAULT_MODEL = "gemini-3-flash-preview:cloud";
+    // todo it wants a subscription now, oops
 
     // Use 127.0.0.1 explicitly — on Windows, "localhost" can resolve to IPv6 (::1)
     // while Ollama only listens on IPv4, causing "Connection refused".

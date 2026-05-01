@@ -63,6 +63,12 @@ public class EDBMessages {
                 .consumerMainThread(HighlightChunkPacket::handle)
                 .add();
 
+        net.messageBuilder(ShowVillageChunksPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(ShowVillageChunksPacket::new)
+                .encoder(ShowVillageChunksPacket::toBytes)
+                .consumerMainThread(ShowVillageChunksPacket::handle)
+                .add();
+
         //net.registerMessage(id(), DataBaseEntryS2CO.class,
         //        DataBaseEntryS2CO::encode,
         //        DataBaseEntryS2CO::decode,

@@ -86,6 +86,39 @@ public class NpcDataLoader {
         return Files.exists(dir.resolve(name + "-" + uuid + ".json"));
     }
 
+    /**
+     * Writes (or overwrites) a profile JSON file to the npcData/ directory.
+     *
+     * @param name        the villager's display name
+     * @param uuid        the villager's entity UUID
+     * @param description a short description sentence
+     * @param personality the AI-generated multi-paragraph personality text
+     * @return true on success
+     */
+    public static boolean writeProfile(String name, UUID uuid, String description, String personality) {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return false;
+        String filename = name + "-" + uuid + ".json";
+        // Escape quotes in AI-generated text for safe JSON embedding.
+        String safeDesc = description.replace("\\", "\\\\").replace("\"", "\\\"");
+        String safePers = personality.replace("\\", "\\\\").replace("\"", "\\\"");
+        String json = "{\n" +
+                "  \"uuid\":        \"" + uuid + "\",\n" +
+                "  \"name\":        \"" + name + "\",\n" +
+                "  \"description\": \"" + safeDesc + "\",\n" +
+                "  \"personality\": \"" + safePers + "\"\n" +
+                "}\n";
+        try {
+            Files.writeString(dir.resolve(filename), json, StandardCharsets.UTF_8);
+            LOGGER.info("NpcDataLoader: wrote profile for '{}' → {}", name, filename);
+            return true;
+        } catch (IOException e) {
+            LOGGER.error("NpcDataLoader: failed to write profile for '{}': {}", name, e.getMessage());
+            return false;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------

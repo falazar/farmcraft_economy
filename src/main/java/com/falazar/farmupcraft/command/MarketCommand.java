@@ -202,6 +202,33 @@ public class MarketCommand {
         return 0;
     }
 
+    /**
+     * Seeds a market type with default item counts if empty. Returns 1 on success,
+     * 0 if no items could be seeded.
+     */
+    public static int seedMarketType(CommandSourceStack source, String type) {
+        int seedCount = switch (type) {
+            case "food" -> 15;
+            case "general" -> 10;
+            case "wood" -> 5;
+            case "stone" -> 5;
+            default -> 5;
+        };
+        source.sendSuccess(
+                () -> Component.literal("Market " + type + " is empty — seeding with " + seedCount + " items..."),
+                false);
+        for (int i = 0; i < seedCount; i++) {
+            addRandomItemToMarket(source, type);
+        }
+        Collection<GoodsData> check = getFilteredActiveGoods(type);
+        if (check == null || check.isEmpty()) {
+            source.sendFailure(Component.literal("Could not seed market for type: " + type
+                    + " — no items imported yet? Run /market importall first."));
+            return 0;
+        }
+        return 1;
+    }
+
     public static int showMarketList(CommandSourceStack source, String type) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -210,8 +237,9 @@ public class MarketCommand {
             // STEP 1: Get filtered sorted list of GoodsData by type.
             Collection<GoodsData> goodsDataList = getFilteredActiveGoods(type);
             if (goodsDataList == null || goodsDataList.isEmpty()) {
-                source.sendFailure(Component.literal("No items found for market type: " + type));
-                return 0;
+                if (seedMarketType(source, type) == 0)
+                    return 0;
+                goodsDataList = getFilteredActiveGoods(type);
             }
             MutableComponent response = Component
                     .literal("Market " + type + " items (" + goodsDataList.size() + "): \n")

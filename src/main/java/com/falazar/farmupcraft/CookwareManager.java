@@ -24,9 +24,12 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
  * juicer).
  * <p>
  * Rules:
- * - Each cookware item starts with {@link #COOKWARE_MAX_USES} uses (500).
+ * - Each cookware item starts with {@link #COOKWARE_MAX_USES} uses (500)
+ * outside a kitchen,
+ * or {@link #COOKWARE_KITCHEN_USES} uses (10,000) when first used inside a
+ * kitchen.
  * - Using cookware in a crafting recipe outside a kitchen costs 1 use.
- * - Using it inside a kitchen plot costs 0 uses (free).
+ * - Using it inside a kitchen plot costs 1 use, but starts at 10,000.
  * - When uses reach 0, the cookware is not returned (it breaks).
  */
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
@@ -35,22 +38,22 @@ public class CookwareManager {
     public static final CustomLogger LOGGER = new CustomLogger(CookwareManager.class.getSimpleName());
 
     public static final int COOKWARE_MAX_USES = 500;
+    public static final int COOKWARE_KITCHEN_USES = 10000;
     private static final String NBT_USES = "farmupcraft_cookware_uses";
 
     // All cookware item IDs from pamhc2foodcore.
     private static final String CUTTING_BOARD = "pamhc2foodcore:cuttingboarditem";
-    private static final String GRINDER       = "pamhc2foodcore:grinderitem";
-    private static final String JUICER        = "pamhc2foodcore:juiceritem";
-    private static final String MIXING_BOWL   = "pamhc2foodcore:mixingbowlitem";
-    private static final String POT           = "pamhc2foodcore:potitem";
-    private static final String ROLLING_PIN   = "pamhc2foodcore:rolleritem";
-    private static final String SAUCEPAN      = "pamhc2foodcore:saucepanitem";
-    private static final String SKILLET       = "pamhc2foodcore:skilletitem";
-    private static final String BAKEWARE      = "pamhc2foodcore:bakewareitem";
+    private static final String GRINDER = "pamhc2foodcore:grinderitem";
+    private static final String JUICER = "pamhc2foodcore:juiceritem";
+    private static final String MIXING_BOWL = "pamhc2foodcore:mixingbowlitem";
+    private static final String POT = "pamhc2foodcore:potitem";
+    private static final String ROLLING_PIN = "pamhc2foodcore:rolleritem";
+    private static final String SAUCEPAN = "pamhc2foodcore:saucepanitem";
+    private static final String SKILLET = "pamhc2foodcore:skilletitem";
+    private static final String BAKEWARE = "pamhc2foodcore:bakewareitem";
 
     private static final java.util.Set<String> COOKWARE_IDS = java.util.Set.of(
-            CUTTING_BOARD, GRINDER, JUICER, MIXING_BOWL, POT, ROLLING_PIN, SAUCEPAN, SKILLET, BAKEWARE
-    );
+            CUTTING_BOARD, GRINDER, JUICER, MIXING_BOWL, POT, ROLLING_PIN, SAUCEPAN, SKILLET, BAKEWARE);
 
     @SubscribeEvent
     public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
@@ -68,60 +71,49 @@ public class CookwareManager {
             if (!resultId.startsWith("pamhc2foodcore:") && !resultId.startsWith("pamhc2foodextended:"))
                 return;
 
-            // Scan the crafting grid for a cookware item.
+            // Find the cookware slot in the crafting grid.
+            // After crafting, PAM's cookware is already back in its grid slot as a
+            // remaining item. We modify it in-place — no inventory.add() needed.
             Container grid = event.getInventory();
-            ItemStack cookware = ItemStack.EMPTY;
+            int cookwareSlot = -1;
             for (int i = 0; i < grid.getContainerSize(); i++) {
-                ItemStack slot = grid.getItem(i);
-                if (isCookware(slot)) {
-                    cookware = slot.copy();
+                if (isCookware(grid.getItem(i))) {
+                    cookwareSlot = i;
                     break;
                 }
             }
-            if (cookware.isEmpty())
+            if (cookwareSlot < 0)
                 return;
 
-            // Determine current uses (initialise to max on first craft).
-            int uses = cookware.hasTag() ? cookware.getOrCreateTag().getInt(NBT_USES) : 0;
-            if (uses <= 0)
-                uses = COOKWARE_MAX_USES;
+            ItemStack cookware = grid.getItem(cookwareSlot);
 
-            // Check if player is standing on a kitchen plot.
             boolean inKitchen = isInKitchen(player);
 
-            if (inKitchen) {
-                // Kitchen: return cookware with same uses (no decay).
-                ItemStack returned = cookware.copy();
-                returned.setCount(1);
-                returned.getOrCreateTag().putInt(NBT_USES, uses);
-                player.getInventory().add(returned);
-                LOGGER.info("Kitchen cookware: returned {} with {} uses.", getCookwareName(cookware), uses);
-            } else {
-                int newUses = uses - 1;
-                if (newUses > 0) {
-                    // Return cookware with decremented uses.
-                    ItemStack returned = cookware.copy();
-                    returned.setCount(1);
-                    returned.getOrCreateTag().putInt(NBT_USES, newUses);
-                    player.getInventory().add(returned);
+            // Initialise uses on first use — kitchen tools start at 10,000, others at 500.
+            int uses = cookware.hasTag() ? cookware.getOrCreateTag().getInt(NBT_USES) : 0;
+            if (uses <= 0)
+                uses = inKitchen ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
 
-                    // Warn the player when getting low.
-                    if (newUses <= 50) {
-                        player.displayClientMessage(
-                                Component.literal("Warning: your " + getCookwareName(cookware)
-                                        + " only has " + newUses + " uses left!")
-                                        .withStyle(ChatFormatting.YELLOW),
-                                true);
-                    }
-                    LOGGER.info("Cookware used: {} now has {} uses remaining.", getCookwareName(cookware), newUses);
-                } else {
-                    // Uses exhausted — do not return the item.
+            int newUses = uses - 1;
+            if (newUses > 0) {
+                cookware.getOrCreateTag().putInt(NBT_USES, newUses);
+                int warnThreshold = inKitchen ? 500 : 50;
+                if (newUses <= warnThreshold) {
                     player.displayClientMessage(
-                            Component.literal("Your " + getCookwareName(cookware) + " broke from overuse!")
-                                    .withStyle(ChatFormatting.RED),
+                            Component.literal("Warning: your " + getCookwareName(cookware)
+                                    + " only has " + newUses + " uses left!")
+                                    .withStyle(ChatFormatting.YELLOW),
                             true);
-                    LOGGER.info("Cookware broke: {} had 0 uses left.", getCookwareName(cookware));
                 }
+                LOGGER.info("Cookware used: {} now has {} uses remaining.", getCookwareName(cookware), newUses);
+            } else {
+                // Uses exhausted — remove from grid so it doesn't return to inventory.
+                grid.setItem(cookwareSlot, ItemStack.EMPTY);
+                player.displayClientMessage(
+                        Component.literal("Your " + getCookwareName(cookware) + " broke from overuse!")
+                                .withStyle(ChatFormatting.RED),
+                        true);
+                LOGGER.info("Cookware broke: {} had 0 uses left.", getCookwareName(cookware));
             }
         } catch (Exception ex) {
             LOGGER.error("Error in onItemCrafted (CookwareManager): " + ex.getMessage());
@@ -154,15 +146,15 @@ public class CookwareManager {
             return "cookware";
         return switch (key.toString()) {
             case CUTTING_BOARD -> "cutting board";
-            case GRINDER       -> "grinder";
-            case JUICER        -> "juicer";
-            case MIXING_BOWL   -> "mixing bowl";
-            case POT           -> "pot";
-            case ROLLING_PIN   -> "rolling pin";
-            case SAUCEPAN      -> "saucepan";
-            case SKILLET       -> "skillet";
-            case BAKEWARE      -> "baking dish";
-            default            -> "cookware";
+            case GRINDER -> "grinder";
+            case JUICER -> "juicer";
+            case MIXING_BOWL -> "mixing bowl";
+            case POT -> "pot";
+            case ROLLING_PIN -> "rolling pin";
+            case SAUCEPAN -> "saucepan";
+            case SKILLET -> "skillet";
+            case BAKEWARE -> "baking dish";
+            default -> "cookware";
         };
     }
 
@@ -175,5 +167,15 @@ public class CookwareManager {
             return COOKWARE_MAX_USES;
         int uses = stack.getOrCreateTag().getInt(NBT_USES);
         return uses > 0 ? uses : COOKWARE_MAX_USES;
+    }
+
+    /**
+     * Returns the max uses for the bar display — infers kitchen (10,000) vs normal
+     * (500)
+     * by whether the stored value exceeds the normal max.
+     */
+    public static int getMaxUsesForDisplay(ItemStack stack) {
+        int uses = getRemainingUses(stack);
+        return uses > COOKWARE_MAX_USES ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
     }
 }

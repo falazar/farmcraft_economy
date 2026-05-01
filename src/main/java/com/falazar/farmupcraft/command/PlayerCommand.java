@@ -1,13 +1,9 @@
 package com.falazar.farmupcraft.command;
 
-import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
-import com.falazar.farmupcraft.registry.CoinRegistry;
-import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -18,7 +14,6 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.Registry;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -41,11 +36,18 @@ public class PlayerCommand {
         // Define the base command "player"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("player");
 
-        // Define the "info" sub-command
+        // Define the "info" sub-command — /player info shows self, /player info <name>
+        // shows another player (admin)
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(context -> {
                     return showPlayerInfo(context.getSource());
-                });
+                })
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .requires(s -> s.hasPermission(2))
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "playerName");
+                            return showPlayerInfoByName(context.getSource(), name);
+                        }));
         builder.then(infoBuilder);
 
         // Define the leave village command.
@@ -134,12 +136,8 @@ public class PlayerCommand {
                             + " ----------")
                     .withStyle(ChatFormatting.YELLOW), false);
 
-            // STEP 2: Get money from wallet.
-            // TODO helper method.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = serverLevel.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            int bronzeCoins = wallet.get(bronzeCoin);
+            // STEP 2: Get money from player coin field.
+            int bronzeCoins = player.getCoins();
             LOGGER.info("DEBUG: Player info bronze coins: " + bronzeCoins);
             source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
 
@@ -174,6 +172,73 @@ public class PlayerCommand {
         return 0;
     }
 
+    /** /player info <name> — admin command to look up any player's data by name. */
+    public static int showPlayerInfoByName(CommandSourceStack source, String targetName) {
+        try {
+            ServerLevel serverLevel = source.getLevel();
+
+            // Find UUID by checking online players first, then the full player database.
+            UUID targetUUID = null;
+            net.minecraft.server.level.ServerPlayer online = source.getServer().getPlayerList()
+                    .getPlayerByName(targetName);
+            if (online != null) {
+                targetUUID = online.getUUID();
+            } else {
+                // Scan all known player records for a name match.
+                DataBase<UUID, PlayerData> db = ModEvents.getPlayerDatabase();
+                for (UUID uuid : db.getKeys()) {
+                    PlayerData pd = db.getData(uuid);
+                    if (pd != null) {
+                        String recordedName = pd.getNameForPlayer(serverLevel, uuid);
+                        if (recordedName.equalsIgnoreCase(targetName)) {
+                            targetUUID = uuid;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (targetUUID == null) {
+                source.sendFailure(Component.literal("No player data found for '" + targetName + "'."));
+                return 0;
+            }
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(targetUUID);
+            if (player == null) {
+                source.sendFailure(Component.literal("Player data not found for '" + targetName + "'."));
+                return 0;
+            }
+
+            source.sendSuccess(() -> Component
+                    .literal("---------- Player: " + targetName + " ----------")
+                    .withStyle(ChatFormatting.YELLOW), false);
+
+            // Coins
+            int bronzeCoins = player.getCoins();
+            source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
+
+            // Village
+            if (player.getHomeVillageUUID() == null) {
+                source.sendSuccess(() -> Component.literal("No home village."), false);
+            } else {
+                VillageData village = ModEvents.getVillageDatabase(serverLevel).getData(player.getHomeVillageUUID());
+                String villageName = village != null ? village.getName()
+                        : "(unknown uuid: " + player.getHomeVillageUUID() + ")";
+                source.sendSuccess(() -> Component.literal("Home village: " + villageName), false);
+            }
+
+            // Online status
+            boolean isOnline = online != null;
+            source.sendSuccess(() -> Component.literal("Online: " + (isOnline ? "Yes" : "No"))
+                    .withStyle(isOnline ? ChatFormatting.GREEN : ChatFormatting.GRAY), false);
+
+        } catch (Exception ex) {
+            LOGGER.error("showPlayerInfoByName error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("Error: " + ex.getMessage()));
+        }
+        return 0;
+    }
+
     // Give player coins method.
     public static int givePlayerCoins(CommandSourceStack source, int amount) {
         try {
@@ -181,17 +246,13 @@ public class PlayerCommand {
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             PlayerData player = getPlayer(source);
 
-            // Add money to wallet.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = playerSource.level().registryAccess()
-                    .registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            wallet.add(bronzeCoin, amount);
+            // Add money to player coin field.
+            player.addCoins(amount);
 
             // TODO THIS IS ALL THATS NEEDED? save is not quite working.
             savePlayer(playerSource.getUUID(), player);
 
-            int bronzeCoins = wallet.get(bronzeCoin);
+            int bronzeCoins = player.getCoins();
             NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Player: "
                     + playerSource.getScoreboardName() + " given " + numberFormat.format(amount) + " coins. Total: "
@@ -221,7 +282,7 @@ public class PlayerCommand {
                     ModEvents.getVillageDatabase().putData(oldVillage.getUUID(), oldVillage);
                 }
             }
-            player.setHomeVillageId(null);
+            player.setHomeVillageId(new UUID(0L, 0L)); // zero-UUID = no village
             savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
             LOGGER.error("leaveVillage error: " + ex.getMessage(), ex);
@@ -302,26 +363,22 @@ public class PlayerCommand {
                 return 0;
             }
 
-            // STEP 2: Check enough money in wallet.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!player.getWallet().hasEnough(bronzeCoin, amount)) {
+            // STEP 2: Check enough money in player coins.
+            if (player.getCoins() < amount) {
                 source.sendFailure(
-                        Component.literal("Not enough coins in wallet, only have " + wallet.get(bronzeCoin)));
+                        Component.literal("Not enough coins, only have " + player.getCoins()));
                 return 0;
             }
 
             // STEP 3: Subtract coins from player.
-            // TODO use helper method.
-            wallet.remove(bronzeCoin, amount);
+            player.removeCoins(amount);
             savePlayer(playerSource.getUUID(), player);
 
             // STEP 4: Add to village coins.
             village.addCoins(amount);
             villageDatabase.putData(village.getUUID(), village);
 
-            int bronzeCoins = wallet.get(bronzeCoin);
+            int bronzeCoins = player.getCoins();
             NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
                     + village.getName() + " given " + numberFormat.format(amount) + " coins. Total: "
@@ -361,10 +418,7 @@ public class PlayerCommand {
             villageDatabase.putData(village.getUUID(), village);
 
             // STEP 4: Add to player coins.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            wallet.add(bronzeCoin, amount);
+            player.addCoins(amount);
 
             // TODO remove almost all playerDatabase calls within this file, use helpers.
             // TODO remove almost all playerDatabase calls within this file, use helpers.
@@ -377,7 +431,7 @@ public class PlayerCommand {
             // DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             savePlayer(playerSource.getUUID(), player);
 
-            int bronzeCoins = wallet.get(bronzeCoin);
+            int bronzeCoins = player.getCoins();
             NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
                     + village.getName() + " taken " + numberFormat.format(amount) + " coins. Total: "

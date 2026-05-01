@@ -74,7 +74,7 @@ public class HighlightChunkPacket {
                 .setStrokeOpacity(1.0f)
                 .setStrokeWidth(2.0f)
                 .setFillColor(msg.color)
-                .setFillOpacity(0.25f);
+                .setFillOpacity(0.05f);
 
         String overlayId = "chunk_" + msg.chunkX + "_" + msg.chunkZ + "_" + msg.label;
         PolygonOverlay overlay = new PolygonOverlay(FarmUpCraft.MODID, overlayId, dim, shape, polygon);

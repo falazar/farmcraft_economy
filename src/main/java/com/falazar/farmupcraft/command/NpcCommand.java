@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.AIManager;
 import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.NpcData;
@@ -10,18 +11,22 @@ import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.NpcDataLoader;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.Registry;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
@@ -30,12 +35,14 @@ import net.minecraft.world.entity.monster.Skeleton;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.entity.npc.VillagerData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -101,13 +108,20 @@ public class NpcCommand {
                         }));
         builder.then(createCowBuilder);
 
+        // initvillagers — scan village, create AI profiles for all that lack one (admin
+        // only)
+        LiteralArgumentBuilder<CommandSourceStack> initVillagersBuilder = Commands.literal("initvillagers")
+                .requires(source -> source.hasPermission(2))
+                .executes(context -> initVillagers(context.getSource()));
+        builder.then(initVillagersBuilder);
+
         // Register the main "npc" command with the dispatcher
         pDispatcher.register(builder);
     }
 
     // TODO move setname from testecommands.
     // as setvillagername
-    // another for npc, or just merge?  hmmm.
+    // another for npc, or just merge? hmmm.
 
     public static int showNpcInfo(CommandSourceStack source, String name) {
         try {
@@ -118,14 +132,15 @@ public class NpcCommand {
                 return 0;
             }
 
-
             LOGGER.info("DEBUG showNpcInfo command executed by " + summoner.getName().getString());
 
-
-//[15:54:02] [Server thread/WARN] [co.fa.fa.da.DataBaseManager/]: DataBaseAccess for database 'farmupcraft:npc_database' not found
-//            15:54:02.733
-//            game
-//            java.lang.NullPointerException: Cannot invoke "com.falazar.farmupcraft.database.DataBaseAccess.get(net.minecraft.world.level.Level)" because "dataBaseAccess" is null
+            // [15:54:02] [Server thread/WARN] [co.fa.fa.da.DataBaseManager/]:
+            // DataBaseAccess for database 'farmupcraft:npc_database' not found
+            // 15:54:02.733
+            // game
+            // java.lang.NullPointerException: Cannot invoke
+            // "com.falazar.farmupcraft.database.DataBaseAccess.get(net.minecraft.world.level.Level)"
+            // because "dataBaseAccess" is null
 
             // Load the npc data from the database.
             DataBase<UUID, NpcData> npcDataDB = ModEvents.getNpcDatabase();
@@ -168,13 +183,11 @@ public class NpcCommand {
             double radius = 64.0;
             AABB searchBox = new AABB(
                     summoner.getX() - radius, summoner.getY() - radius, summoner.getZ() - radius,
-                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius
-            );
+                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius);
             List<Villager> nearVillagers = summoner.level().getEntitiesOfClass(
                     Villager.class,
                     searchBox,
-                    villager -> villager.getName().getString().equals(name)
-            );
+                    villager -> villager.getName().getString().equals(name));
             Villager villager = nearVillagers.stream().findFirst().orElse(null);
             if (villager == null) {
                 source.sendFailure(Component.literal("No nearby villager found with that name."));
@@ -253,20 +266,22 @@ public class NpcCommand {
                 skeleton.targetSelector.removeAllGoals(goal -> true);
             }
 
-
             // Add target goal for players only
-//            skeleton.targetSelector.addGoal(1, new net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal<>(
-//                    skeleton,
-//                    net.minecraft.world.entity.player.Player.class,
-//                    true
-//            ));
+            // skeleton.targetSelector.addGoal(1, new
+            // net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal<>(
+            // skeleton,
+            // net.minecraft.world.entity.player.Player.class,
+            // true
+            // ));
 
             // Create a new NPC data object with a random UUID.
-//            NpcData npc = new NpcData(UUID.randomUUID(), name, UUID.randomUUID(), "a skeleton npc");
-//            ModEvents.getNpcDatabase().putData(npc.getUUID(), npc);
+            // NpcData npc = new NpcData(UUID.randomUUID(), name, UUID.randomUUID(), "a
+            // skeleton npc");
+            // ModEvents.getNpcDatabase().putData(npc.getUUID(), npc);
 
             // Send success message to the player.
-//            source.sendSuccess(() -> Component.literal("NPC skeleton created: " + npc.getName()), false);
+            // source.sendSuccess(() -> Component.literal("NPC skeleton created: " +
+            // npc.getName()), false);
             source.sendSuccess(() -> Component.literal("NON NPC skeleton created. "), false);
 
         } catch (Exception ex) {
@@ -303,17 +318,18 @@ public class NpcCommand {
 
             // Set attack damage (e.g., 4.0)
             // Ensure the cow has the ATTACK_DAMAGE attribute before setting it
-//            if (cow.getAttribute(Attributes.ATTACK_DAMAGE) == null) {
-//                cow.getAttributes().addTransientAttribute(Attributes.ATTACK_DAMAGE);
-//            }
-//            cow.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(4.0);
+            // if (cow.getAttribute(Attributes.ATTACK_DAMAGE) == null) {
+            // cow.getAttributes().addTransientAttribute(Attributes.ATTACK_DAMAGE);
+            // }
+            // cow.getAttribute(Attributes.ATTACK_DAMAGE).setBaseValue(4.0);
 
             // Add melee attack goal
             cow.goalSelector.addGoal(1, new MeleeAttackGoal(cow, 1.2D, false));
             // Target players
             cow.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(cow, Player.class, true));
             // Add target goal for villagers
-            //cow.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(cow, Villager.class, true));
+            // cow.targetSelector.addGoal(2, new NearestAttackableTargetGoal<>(cow,
+            // Villager.class, true));
 
             source.sendSuccess(() -> Component.literal("Aggressive cow created."), false);
         } catch (Exception ex) {
@@ -324,22 +340,28 @@ public class NpcCommand {
     }
 
     /*
-
-18:16:30.961
-game
-[18:16:30]   [NpcCommand:288]
-DEBUG createNpcCow command executed by BossPanda96366
-18:16:30.963
-game
-java.lang.NullPointerException:
-Cannot invoke "net.minecraft.world.entity.ai.attributes.AttributeInstance.m_22100_(double)" because the
-return value of "net.minecraft.world.entity.animal.Cow.m_21051_(net.minecraft.world.entity.ai.attributes.Attribute)" is null
-18:16:30.963
-game
-at TRANSFORMER/farmupcraft@1.0.2/com.falazar.farmupcraft.command.NpcCommand.createNpcCow(NpcCommand.java:305)
-18:16:30.963
-game
-at TRANSFORMER/farmupcraft@1.0.2/com.falazar.farmupcraft.command.NpcCommand.lambda$register$8(NpcCommand.java:1
+     * 
+     * 18:16:30.961
+     * game
+     * [18:16:30] [NpcCommand:288]
+     * DEBUG createNpcCow command executed by BossPanda96366
+     * 18:16:30.963
+     * game
+     * java.lang.NullPointerException:
+     * Cannot invoke
+     * "net.minecraft.world.entity.ai.attributes.AttributeInstance.m_22100_(double)"
+     * because the
+     * return value of
+     * "net.minecraft.world.entity.animal.Cow.m_21051_(net.minecraft.world.entity.ai.attributes.Attribute)"
+     * is null
+     * 18:16:30.963
+     * game
+     * at TRANSFORMER/farmupcraft@1.0.2/com.falazar.farmupcraft.command.NpcCommand.
+     * createNpcCow(NpcCommand.java:305)
+     * 18:16:30.963
+     * game
+     * at TRANSFORMER/farmupcraft@1.0.2/com.falazar.farmupcraft.command.NpcCommand.
+     * lambda$register$8(NpcCommand.java:1
      */
 
     public static NpcData getNpc(String name) {
@@ -350,6 +372,105 @@ at TRANSFORMER/farmupcraft@1.0.2/com.falazar.farmupcraft.command.NpcCommand.lamb
                 .filter(npcData -> npcData.getName().equals(name))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * /npc initvillagers — scans all villagers within the player's village radius,
+     * creates an AI-generated personality profile for any that don't already have
+     * one, and saves the profile both to run/npcData/ and the NPC database.
+     */
+    public static int initVillagers(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            PlayerData playerData = getPlayer(source);
+            VillageData village = playerData != null ? playerData.getHomeVillage() : null;
+            if (village == null) {
+                source.sendFailure(Component.literal("You are not a member of any village."));
+                return 0;
+            }
+
+            // Scan villagers within 10-chunk radius of the village center.
+            Level level = summoner.level();
+            List<LivingEntity> villagers = VillageCommand.getVillagersList(summoner.blockPosition(), level, 10);
+            if (villagers.isEmpty()) {
+                source.sendFailure(Component.literal("No villagers found nearby."));
+                return 0;
+            }
+
+            source.sendSuccess(() -> Component.literal("Found " + villagers.size()
+                    + " villager(s). Generating profiles for those without one..."), false);
+
+            int queued = 0;
+            for (LivingEntity entity : villagers) {
+                if (!(entity instanceof Villager villager))
+                    continue;
+                String npcName = villager.getName().getString();
+                UUID npcUUID = villager.getUUID();
+
+                // Skip if a profile file already exists.
+                if (NpcDataLoader.hasProfile(npcName, npcUUID)) {
+                    LOGGER.info("initVillagers: skipping '{}' — profile already exists.", npcName);
+                    source.sendSuccess(() -> Component.literal(
+                            "[NPC] Skipped " + npcName + " — profile already exists.").withStyle(ChatFormatting.GRAY),
+                            false);
+                    continue;
+                }
+
+                String profession = villager.getVillagerData().getProfession().toString();
+                queued++;
+
+                // Fire async AI call — don't block the server thread.
+                MinecraftServer server = source.getServer();
+                AIManager.generateNpcPersonality(npcName, profession)
+                        .thenAccept(personality -> server.execute(() -> {
+                            // Write JSON profile file.
+                            String description = "A " + profession.replace("minecraft:", "")
+                                    + " living in the village.";
+                            boolean wrote = NpcDataLoader.writeProfile(npcName, npcUUID, description, personality);
+                            String filename = npcName + "-" + npcUUID + ".json";
+
+                            // Save to NPC database.
+                            NpcData npcData = new NpcData(npcUUID, npcName, village.getUUID(), description,
+                                    personality);
+                            ModEvents.getNpcDatabase().putData(npcUUID, npcData);
+
+                            if (wrote) {
+                                source.sendSuccess(() -> Component.literal(
+                                        "[NPC] Profile created for " + npcName + " → npcData/" + filename)
+                                        .withStyle(ChatFormatting.GREEN), false);
+                            } else {
+                                source.sendFailure(Component.literal(
+                                        "[NPC] AI done but failed to write file for " + npcName));
+                            }
+                        }))
+                        .exceptionally(err -> {
+                            server.execute(() -> source.sendFailure(Component.literal(
+                                    "[NPC] Failed to generate profile for " + npcName + ": " + err.getMessage())));
+                            return null;
+                        });
+            }
+
+            if (queued == 0) {
+                source.sendSuccess(() -> Component.literal(
+                        "All nearby villagers already have profiles."), false);
+            } else {
+                int finalQueued = queued;
+                source.sendSuccess(() -> Component.literal(
+                        "Queued AI profile generation for " + finalQueued
+                                + " villager(s). Profiles will appear as each finishes."),
+                        false);
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("initVillagers exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
     }
 
 }
