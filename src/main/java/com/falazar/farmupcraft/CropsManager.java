@@ -13,7 +13,6 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderSet;
-import net.minecraft.core.SectionPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -50,7 +49,6 @@ import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.Event;
@@ -61,10 +59,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
-import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
-import static com.falazar.farmupcraft.command.VillageCommand.getVillageBiomes;
 import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
-import static org.apache.commons.lang3.StringUtils.replace;
 
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class CropsManager {
@@ -91,6 +86,7 @@ public class CropsManager {
         Level level = event.getLevel();
         BlockPos clickedPos = event.getPos();
         BlockState clickedState = level.getBlockState(clickedPos);
+        ItemStack stack = event.getItemStack();
 
         // Return if clicked block is not farmland
         boolean isFarmBelow = false;
@@ -110,7 +106,6 @@ public class CropsManager {
         // STEP 3: If sugarcane or sweetberries, make sure they are on a farm plot only.
         // Must happen BEFORE the farmland check since these are planted on
         // dirt/sand/grass, not farmland.
-        ItemStack stack = event.getItemStack();
         if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
             if (!ChunkManager.getPlotType(clickedPos, level).equals("farm")) {
                 event.setCanceled(true);
@@ -858,169 +853,5 @@ public class CropsManager {
 
     // Moved to WoodManager.java
     // @SubscribeEvent onBreakLogs
-
-    // Make a method that lowers event that causes saplings to fall from tree leaves
-    // block rate by a lot.
-    @SubscribeEvent
-    public static void onBreakLeaves(BlockEvent.BreakEvent event) {
-        Player playerSource = event.getPlayer();
-        if (playerSource == null) {
-            return;
-        }
-
-        final BlockState blockState = event.getLevel().getBlockState(event.getPos());
-
-        // Only do rule if leaves
-        if (!blockState.is(BlockTags.LEAVES)) {
-            return;
-        }
-
-        if (!CropsManager.allowSaplingDrop(event.getPos(), (ServerLevel) event.getLevel())) {
-            // LOGGER.info("DEBUG: DESTROYING leaves block, no drops...");
-            event.getLevel().destroyBlock(event.getPos(), false);
-            event.setCanceled(true);
-            return;
-        }
-
-    }
-
-    public static boolean allowSaplingDrop(BlockPos pos, ServerLevel level) {
-        // STEP 1: Set base rate for success.
-        int successRate = 20; // 20% chance to get drops at start.
-
-        // LOGGER.info("DEBUG: allowSapling LEAVES BREAK successRate = " + successRate);
-
-        // STEP 2: If in a nursery plot, add bonus.
-        if (ChunkManager.getPlotType(pos, level).equals("nursery")) {
-            // LOGGER.info("DEBUG3: allowSapling target leaves block is in a nursery plot,
-            // adding bonus. ");
-            successRate += 30;
-        }
-
-        // STEP 3: Roll for success now.
-        Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
-        // LOGGER.info("DEBUG: allowSapling rand leaves block, r=" + randomNum);
-        if (randomNum >= successRate) {
-            // LOGGER.info("DEBUG: allowSapling DESTROYING leaves block, no drops..." +
-            // successRate);
-            return false;
-        }
-        return true;
-    }
-
-    // When trying to saplings, check our biome rules to see what is allowed there.
-    @SubscribeEvent
-    public static void onRightClickSaplingPlant(PlayerInteractEvent.RightClickBlock event) {
-        // Step 1: If in creative mode, skip all rules and allow planting all.
-        Player playerSource = (Player) event.getEntity();
-        if (playerSource.getUsedItemHand() != InteractionHand.MAIN_HAND)
-            return;
-        if (playerSource.isCreative()) {
-            // LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
-            return;
-        }
-
-        // Skip if client side
-        if (event.getLevel().isClientSide) {
-            // LOGGER.info("DEBUG: sapling Skipping if client.");
-            return;
-        }
-
-        Level level = event.getLevel();
-        BlockPos clickedPos = event.getPos();
-
-        // STEP 2: Test if holding a sapling item, if not leave.
-        ItemStack stack = event.getItemStack();
-        String stackName = stack.getDescriptionId();
-        if (!stackName.contains("sapling")) {
-            return;
-        }
-
-        // STEP 3: Only apply rules if actually planting on a dirt surface.
-        // Without this, right-clicking chests/doors while holding a sapling would
-        // trigger the random failure roll and shrink the stack.
-        // BlockTags.DIRT covers: dirt, coarse_dirt, rooted_dirt, podzol, mycelium,
-        // grass_block.
-        BlockState clickedState = level.getBlockState(clickedPos);
-        if (!clickedState.is(BlockTags.DIRT)) {
-            return;
-        }
-
-        // STEP 4: Check if the sapling is allowed in this biome.
-        // block.minecraft.dark_oak_sapling remove first parts and sapling both.
-        String shortName = stackName.replace("block.", "").replace("_sapling", "").replace("minecraft.", "")
-                .replace("biomesoplenty.", "");
-        LOGGER.info("DEBUG: onRightClickSaplingPlant shortName = " + shortName);
-        // Get current biome the block is in.
-        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
-        String biomeName = biome.unwrapKey().orElse(UKNOWN_RK).location().toString();
-        LOGGER.info("DEBUG: onRightClickSaplingPlant biome = " + biomeName);
-        // TODO dark oak, redwood, mystic what others? cherry lavender? jungle
-        // jacaranda?
-        // Create map with list of saplings and list of biomes allowed in.
-        Map<String, ArrayList<String>> saplingsLimited = new HashMap<>();
-        saplingsLimited.put("dark_oak",
-                new ArrayList<>(Arrays.asList("minecraft:dark_forest", "minecraft:dark_forest_hills")));
-        saplingsLimited.put("redwood",
-                new ArrayList<>(Arrays.asList("minecraft:giant_tree_taiga", "biomesoplenty:redwood_forest")));
-        saplingsLimited.put("magic", new ArrayList<>(Arrays.asList("biomesoplenty:mystic_grove")));
-        saplingsLimited.put("jungle", new ArrayList<>(Arrays.asList("minecraft:jungle", "minecraft:jungle_hills"))); // couple
-                                                                                                                     // more
-                                                                                                                     // here?
-                                                                                                                     // sparse
-                                                                                                                     // edge?
-        saplingsLimited.put("cherry", new ArrayList<>(Arrays.asList("minecraft:cherry_grove"))); // check old one?
-        saplingsLimited.put("umbran", new ArrayList<>(Arrays.asList("biomesoplenty:ominous_woods")));
-        // saplingsLimited.put("lavender", new
-        // ArrayList<>(Arrays.asList("minecraft:flower_forest",
-        // "minecraft:flower_forest_hills")));
-
-        // todo remove hills off all names?
-
-        // this not working yet.
-        if (saplingsLimited.containsKey(shortName) && !saplingsLimited.get(shortName).contains(biomeName)) {
-            // Send notice to player.
-            MutableComponent component = Component
-                    .translatable("§eYou cannot plant " + stack.getHoverName().getString() + " in this biome.");
-            playerSource.displayClientMessage(component, false);
-
-            // Cancel event and return now.
-            event.setCanceled(true);
-        }
-
-        int goodChance = 10;
-
-        // STEP 5: Roll random chance of failure, if not in a nursery.
-        String plotType = ChunkManager.getPlotType(clickedPos, level);
-        if (plotType.equals("nursery")) {
-            LOGGER.info("DEBUG: allowSapling target block is in a nursery plot, adding bonus. ");
-            goodChance = 65;
-        }
-
-        // STEP 6: If a fruit tree always allow, expensive those.
-        // Check item mod name fom pam
-        if (stackName.contains("pamhc2trees")) {
-            LOGGER.info("DEBUG: allowSapling target block is a fruit tree sapling, adding bonus. ");
-            goodChance = 100;
-        }
-
-        // STEP X: add in players level.
-        goodChance += playerSource.experienceLevel / 2;
-
-        // STEP 6: Roll to see if allowed.
-        Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= goodChance) {
-            LOGGER.info("DEBUG: NOT allowing sapling plant " + goodChance);
-            // Remove one of the item from hands.
-            stack.shrink(1);
-            event.setCanceled(true);
-            // TODO send a failure message on occasion if havnt since logged in.
-            return;
-        }
-        LOGGER.info("DEBUG: allowing sapling plant " + goodChance);
-
-    }
 
 }

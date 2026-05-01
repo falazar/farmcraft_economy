@@ -228,7 +228,7 @@ public class ChunkManager {
         return data;
     }
 
-    private static final int PLOT_PROTECTION_MIN_Y = 60;
+    private static final int DEFAULT_PLOT_PROTECTION_MIN_Y = 60;
 
     // Prevent non-owners from opening doors, trapdoors, and chests in owned house
     // plots.
@@ -241,10 +241,7 @@ public class ChunkManager {
         if (!(source instanceof Player player))
             return;
 
-        // Only check at Y >= 60 (above ground, not underground).
         BlockPos pos = event.getPos();
-        if (pos.getY() < PLOT_PROTECTION_MIN_Y)
-            return;
 
         // Only check protected block types.
         BlockState state = event.getLevel().getBlockState(pos);
@@ -260,6 +257,11 @@ public class ChunkManager {
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
         ChunkData chunkData = dataBase.getData(chunkPos.toLong());
         if (chunkData == null)
+            return;
+
+        // Only check at/above the stored purchase Y to avoid underground interference.
+        int protectionMinY = chunkData.getBoughtY() > 0 ? chunkData.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+        if (pos.getY() < protectionMinY)
             return;
 
         // Creative/admin players are exempt from all restrictions.
@@ -287,12 +289,27 @@ public class ChunkManager {
         // may open doors and chests on a house plot.
         if (chunkData.getType().equalsIgnoreCase("house")) {
             java.util.UUID ownerUUID = chunkData.getOwnerUUID();
+
+            // Legacy migration: older house plots may not have owner_uuid saved.
+            if (ownerUUID == null && chunkData.getPlayerId() == player.getId()) {
+                chunkData.setOwnerUUID(player.getUUID());
+                dataBase.putData(chunkPos.toLong(), chunkData);
+                ownerUUID = player.getUUID();
+            }
+
             if (ownerUUID != null
                     && !ownerUUID.equals(player.getUUID())
                     && !chunkData.isVisitor(player.getName().getString())) {
                 event.setCanceled(true);
                 player.displayClientMessage(
                         Component.literal("This plot is owned by someone else.")
+                                .withStyle(ChatFormatting.RED),
+                        true);
+            } else if (ownerUUID == null && !chunkData.isVisitor(player.getName().getString())) {
+                // Fail safe: if no owner is known, default to deny for non-visitors.
+                event.setCanceled(true);
+                player.displayClientMessage(
+                        Component.literal("This house plot has no owner set yet.")
                                 .withStyle(ChatFormatting.RED),
                         true);
             }

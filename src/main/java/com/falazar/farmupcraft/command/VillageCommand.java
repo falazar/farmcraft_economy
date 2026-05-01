@@ -35,6 +35,11 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.Chicken;
+import net.minecraft.world.entity.animal.Cow;
+import net.minecraft.world.entity.animal.Pig;
+import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
@@ -45,6 +50,7 @@ import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.ai.targeting.TargetingConditions;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.npc.VillagerData;
+import net.minecraft.world.phys.AABB;
 
 import java.text.NumberFormat;
 import java.util.*;
@@ -53,6 +59,7 @@ import static com.falazar.farmupcraft.command.PlotCommand.getCropsPlanted;
 
 public class VillageCommand {
     public static final CustomLogger LOGGER = new CustomLogger(VillageCommand.class.getSimpleName());
+    private static final String NBT_LAST_BRED = "farmupcraft_last_bred";
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command for "village"
@@ -222,6 +229,28 @@ public class VillageCommand {
         LiteralArgumentBuilder<CommandSourceStack> animalsBuilder = Commands.literal("animals")
                 .executes(context -> showVillageAnimals(context.getSource()));
         builder.then(animalsBuilder);
+
+        // Define admin utility subcommands.
+        LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
+                .requires(s -> s.hasPermission(2))
+                .then(Commands.literal("regenanimalgrains")
+                        .executes(context -> regenerateVillageAnimalGrains(context.getSource(), null))
+                        .then(Commands.argument("villageName", StringArgumentType.string())
+                                .executes(context -> regenerateVillageAnimalGrains(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "villageName")))))
+            .then(Commands.literal("setfounder")
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                    .executes(context -> setVillageFounder(
+                        context.getSource(),
+                        StringArgumentType.getString(context, "playerName")))))
+                .then(Commands.literal("clearbreeding")
+                        .executes(context -> clearVillageBreedingCooldown(context.getSource(), null))
+                        .then(Commands.argument("villageName", StringArgumentType.string())
+                                .executes(context -> clearVillageBreedingCooldown(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "villageName")))));
+        builder.then(adminBuilder);
 
         // Define the "map" sub-command — show/clear village chunk overlays on
         // JourneyMap.
@@ -434,6 +463,110 @@ public class VillageCommand {
         if (s == null || s.isEmpty())
             return s;
         return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    // Admin utility: regenerate animal grain requirements for current or named
+    // village.
+    public static int regenerateVillageAnimalGrains(CommandSourceStack source, String villageName) {
+        try {
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village;
+
+            if (villageName != null && !villageName.isBlank()) {
+                village = findVillageByName(villageName);
+                if (village == null) {
+                    source.sendFailure(Component.literal("Village not found: " + villageName));
+                    return 0;
+                }
+            } else {
+                Entity nullableSummoner = source.getEntity();
+                Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+                if (playerSource == null) {
+                    source.sendFailure(Component.literal(
+                            "From console, provide a village name: /village admin regenanimalgrains <villageName>"));
+                    return 0;
+                }
+
+                PlayerData playerData = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+                if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                    source.sendFailure(Component.literal("You don't belong to a village."));
+                    return 0;
+                }
+
+                village = villageDb.getData(playerData.getHomeVillageUUID());
+                if (village == null) {
+                    source.sendFailure(Component.literal("Village data not found."));
+                    return 0;
+                }
+            }
+
+            AnimalGrainAssigner.assignGrains(village);
+            villageDb.putData(village.getUUID(), village);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Regenerated animal grain requirements for village '" + village.getName() + "'."), true);
+            LOGGER.info("Admin regenerated animal grains for village {} ({})", village.getName(), village.getUUID());
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in regenerateVillageAnimalGrains: {}", e.getMessage(), e);
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // Admin utility: clear breeding cooldown NBT for farm animals in a local
+    // 5x5 chunk area around the command source chunk (+-2).
+    public static int clearVillageBreedingCooldown(CommandSourceStack source, String villageName) {
+        try {
+            ServerLevel level = source.getLevel();
+            BlockPos sourcePos = BlockPos.containing(source.getPosition());
+            ChunkPos center = new ChunkPos(sourcePos);
+            Set<UUID> seen = new HashSet<>();
+            int clearedCount = 0;
+
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    ChunkPos cp = new ChunkPos(center.x + dx, center.z + dz);
+                    double minX = cp.getMinBlockX();
+                    double minZ = cp.getMinBlockZ();
+                    double maxX = cp.getMaxBlockX() + 1;
+                    double maxZ = cp.getMaxBlockZ() + 1;
+                    double minY = level.getMinBuildHeight();
+                    double maxY = level.getMaxBuildHeight();
+
+                    AABB box = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+                    for (Animal animal : level.getEntitiesOfClass(Animal.class, box)) {
+                        if (!isFarmBreedingAnimal(animal) || !seen.add(animal.getUUID())) {
+                            continue;
+                        }
+                        if (animal.getPersistentData().contains(NBT_LAST_BRED)) {
+                            animal.getPersistentData().remove(NBT_LAST_BRED);
+                            clearedCount++;
+                        }
+                    }
+                }
+            }
+
+            int finalClearedCount = clearedCount;
+            source.sendSuccess(() -> Component.literal(
+                    "Cleared breeding cooldown on " + finalClearedCount
+                            + " animals in chunk area +-2 around current position."),
+                    true);
+            LOGGER.info("Admin cleared breeding cooldown on {} animals in 5x5 chunk area around chunk {},{}",
+                    clearedCount, center.x, center.z);
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in clearVillageBreedingCooldown: {}", e.getMessage(), e);
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static boolean isFarmBreedingAnimal(Animal animal) {
+        return animal instanceof Cow
+                || animal instanceof Sheep
+                || animal instanceof Pig
+                || animal instanceof Chicken;
     }
 
     // Show the village that current player has home in.

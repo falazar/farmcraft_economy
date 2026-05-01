@@ -6,6 +6,10 @@
         "/^npx ts-node Rimfog/randomize-chores\\.ts$/": {
             "approve": true,
             "matchCommandLine": true
+        },
+        "/^\\.\\\\gradlew compileJava 2>&1 \\| Select-Object -Last 120$/": {
+            "approve": true,
+            "matchCommandLine": true
         }
     }
 }

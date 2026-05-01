@@ -142,28 +142,7 @@ public class PlayerCommand {
             source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
 
             // STEP 3: Pull home village info if set.
-            if (player.getHomeVillageUUID() == null) {
-                source.sendSuccess(() -> Component.literal("No home village."), false);
-            } else {
-                // todo helper method on player manager or village manager.
-                // todo player.getHomeVillage();
-                DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
-                VillageData villageData = villageDataDB.getData(player.getHomeVillageUUID());
-                if (villageData != null) {
-                    Component villageLink = Component.literal("Home village: ")
-                            .append(Component.literal(villageData.getName())
-                                    .withStyle(style -> style
-                                            .withColor(ChatFormatting.AQUA)
-                                            .withUnderlined(true)
-                                            .withClickEvent(
-                                                    new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/village info"))
-                                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                                    Component.literal("Click to view village info")))));
-                    source.sendSuccess(() -> villageLink, false);
-                } else {
-                    source.sendFailure(Component.literal("Error, Home village not found."));
-                }
-            }
+            sendHomeVillageInfo(source, serverLevel, player);
         } catch (Exception ex) {
             LOGGER.error("Player info error for " + source.getTextName() + ": " + ex.getMessage(), ex);
             source.sendFailure(
@@ -218,14 +197,7 @@ public class PlayerCommand {
             source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
 
             // Village
-            if (player.getHomeVillageUUID() == null) {
-                source.sendSuccess(() -> Component.literal("No home village."), false);
-            } else {
-                VillageData village = ModEvents.getVillageDatabase(serverLevel).getData(player.getHomeVillageUUID());
-                String villageName = village != null ? village.getName()
-                        : "(unknown uuid: " + player.getHomeVillageUUID() + ")";
-                source.sendSuccess(() -> Component.literal("Home village: " + villageName), false);
-            }
+            sendHomeVillageInfo(source, serverLevel, player);
 
             // Online status
             boolean isOnline = online != null;
@@ -237,6 +209,33 @@ public class PlayerCommand {
             source.sendFailure(Component.literal("Error: " + ex.getMessage()));
         }
         return 0;
+    }
+
+    private static void sendHomeVillageInfo(CommandSourceStack source, ServerLevel level, PlayerData player) {
+        if (player.getHomeVillageUUID() == null) {
+            source.sendSuccess(() -> Component.literal("No home village."), false);
+            return;
+        }
+
+        VillageData village = ModEvents.getVillageDatabase(level).getData(player.getHomeVillageUUID());
+        if (village == null) {
+            source.sendSuccess(
+                    () -> Component.literal("Home village: (unknown uuid: " + player.getHomeVillageUUID() + ")"),
+                    false);
+            return;
+        }
+
+        String safeVillageName = village.getName().replace("\"", "\\\"");
+        String cmd = "/village info \"" + safeVillageName + "\"";
+        Component villageLink = Component.literal("Home village: ")
+                .append(Component.literal(village.getName())
+                        .withStyle(style -> style
+                                .withColor(ChatFormatting.AQUA)
+                                .withUnderlined(true)
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                        Component.literal("Click to view village info")))));
+        source.sendSuccess(() -> villageLink, false);
     }
 
     // Give player coins method.

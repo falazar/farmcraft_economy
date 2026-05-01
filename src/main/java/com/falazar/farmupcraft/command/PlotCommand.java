@@ -114,6 +114,15 @@ public class PlotCommand {
                                 })));
         builder.then(visitorBuilder);
 
+                    // Founder utility: transfer ownership of current plot to another online player.
+                    LiteralArgumentBuilder<CommandSourceStack> setOwnerBuilder = Commands.literal("setowner")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                            .executes(context -> {
+                                String name = StringArgumentType.getString(context, "playerName");
+                                return setPlotOwner(context.getSource(), name);
+                            }));
+                    builder.then(setOwnerBuilder);
+
         // TODO do a /plot biomes command also!
 
         // Register the main "plot" command with the dispatcher
@@ -311,12 +320,15 @@ public class PlotCommand {
                 source.sendFailure(Component.literal("Plot is not in a village."));
                 return 0;
             }
-            // TODO TEST
-            if (!Objects.equals(chunk.getType(), "village") && !Objects.equals(chunk.getType(), "plot")) {
-                if (!playerSource.isCreative()) {
-                    source.sendFailure(Component.literal("Plot has already been purchased."));
-                    return 0;
-                }
+            // A plot is considered already purchased if either:
+            // 1) its type is already a non-village/non-plot type, or
+            // 2) it has an owner UUID stamp from a prior purchase.
+            boolean alreadyTypedAsPurchased = !Objects.equals(chunk.getType(), "village")
+                    && !Objects.equals(chunk.getType(), "plot");
+            boolean alreadyOwned = chunk.getOwnerUUID() != null;
+            if (!playerSource.isCreative() && (alreadyTypedAsPurchased || alreadyOwned)) {
+                source.sendFailure(Component.literal("Plot has already been purchased."));
+                return 0;
             }
 
             // STEP 2: Check if the player is in the village that matches the chunk.
@@ -377,7 +389,7 @@ public class PlotCommand {
                     if (existing >= limit) {
                         source.sendFailure(Component.literal(
                                 "Village limit reached for type '" + plotType + "': "
-                                + existing + "/" + limit + " (village level " + village.getLevel() + ")."));
+                                        + existing + "/" + limit + " (village level " + village.getLevel() + ")."));
                         return 0;
                     }
                 }
@@ -394,10 +406,9 @@ public class PlotCommand {
 
             // STEP 4: Buy plot and mark to db, and village.
             chunk.setType(plotType);
-            // For house plots, record the owner UUID so access can be restricted.
-            if (plotType.equalsIgnoreCase("house")) {
-                chunk.setOwnerUUID(playerSource.getUUID());
-            }
+            chunk.setBoughtY(playerSource.blockPosition().getY());
+            // Record owner UUID for all purchased plot types so re-buy checks are reliable.
+            chunk.setOwnerUUID(playerSource.getUUID());
             chunkDataDatabase.putData(chunkPos.toLong(), chunk);
 
             // Update structure claim flags for this chunk
@@ -482,6 +493,58 @@ public class PlotCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    // Founder-only: set owner UUID of the current claimed plot.
+    public static int setPlotOwner(CommandSourceStack source, String playerName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player actor = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (actor == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            ChunkPos chunkPos = new ChunkPos(actor.blockPosition());
+            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+            ChunkData chunk = chunkDb.getData(chunkPos.toLong());
+            if (chunk == null || chunk.getVillageId() == null) {
+                source.sendFailure(Component.literal("You are not standing on a claimed village plot."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = villageDb.getData(chunk.getVillageId());
+            if (village == null) {
+                source.sendFailure(Component.literal("Village data not found for this plot."));
+                return 0;
+            }
+
+            // Founder-only access (name-based, as stored in village founder field).
+            String founder = village.getFounder() == null ? "" : village.getFounder();
+            String actorName = actor.getName().getString();
+            if (!founder.equalsIgnoreCase(actorName)) {
+                source.sendFailure(Component.literal("Only the village founder can use /plot setowner."));
+                return 0;
+            }
+
+            net.minecraft.server.level.ServerPlayer target = source.getServer().getPlayerList().getPlayerByName(playerName);
+            if (target == null) {
+                source.sendFailure(Component.literal("Player '" + playerName + "' must be online."));
+                return 0;
+            }
+
+            chunk.setOwnerUUID(target.getUUID());
+            chunkDb.putData(chunkPos.toLong(), chunk);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Plot owner set to " + target.getName().getString() + " for chunk " + chunkPos + "."), false);
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+            return 0;
+        }
     }
 
     // Delete a chunk sfrom DB right now, admin method.

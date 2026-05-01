@@ -29,7 +29,7 @@ public class AnimalGrainAssigner {
      */
     public static final List<String> GRAIN_POOL = Arrays.asList(
             "pamhc2crops:cornitem",
-            "pamhc2crops:wheatitem",
+            "minecraft:wheat",
             "pamhc2crops:alfalfaitem",
             "pamhc2crops:milletitem",
             "pamhc2crops:ryeitem",

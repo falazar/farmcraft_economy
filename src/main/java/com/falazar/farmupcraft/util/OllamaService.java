@@ -24,8 +24,7 @@ import java.util.concurrent.CompletableFuture;
  * - Install Ollama: https://ollama.com
  * - Start Ollama: Run `ollama serve` in a terminal (on Windows it may start
  * automatically)
- * - Pull model: Run `ollama pull gemini-3-flash-preview:cloud` (or whichever
- * model you want)
+ * - Pull model: Run `ollama pull llama3.2:3b` (or whichever model you want)
  * - Verify: Run `ollama list` to confirm the model is available
  *
  * API reference:
@@ -34,8 +33,9 @@ import java.util.concurrent.CompletableFuture;
 public class OllamaService {
 
     /** The Ollama model to use. Change this to any model shown by `ollama list`. */
-    public static final String DEFAULT_MODEL = "gemini-3-flash-preview:cloud";
-    // todo it wants a subscription now, oops
+    public static final String DEFAULT_MODEL = "llama3.2:3b";
+    // Alternate (cloud-backed, may require account/subscription):
+    // public static final String DEFAULT_MODEL = "gemini-3-flash-preview:cloud";
 
     // Use 127.0.0.1 explicitly — on Windows, "localhost" can resolve to IPv6 (::1)
     // while Ollama only listens on IPv4, causing "Connection refused".
@@ -64,7 +64,7 @@ public class OllamaService {
      * reply.
      *
      * @param prompt The user message to send to the model.
-     * @param model  The Ollama model name (e.g. "gemini-3-flash-preview:cloud").
+     * @param model  The Ollama model name (e.g. "llama3.2:3b").
      * @return A future that resolves to the assistant's reply text, or an error
      *         string on failure.
      */
