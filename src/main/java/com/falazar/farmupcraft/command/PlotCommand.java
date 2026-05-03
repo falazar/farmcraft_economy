@@ -25,6 +25,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -65,6 +66,7 @@ public class PlotCommand {
                             builder2.suggest("trainstation");
                             builder2.suggest("graveyard");
                             builder2.suggest("pasture");
+                            builder2.suggest("refinery");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
@@ -73,7 +75,7 @@ public class PlotCommand {
                                 return buyPlot(context.getSource(), plotType);
                             } else {
                                 context.getSource().sendFailure(Component.literal(
-                                        "Invalid plot type. Must be plot, farm, nursery, kitchen, restaurant, house."));
+                                        "Invalid plot type. Must be one of: " + String.join(", ", VALID_PLOT_TYPES) + "."));
                                 return 0;
                             }
                         }));
@@ -114,14 +116,14 @@ public class PlotCommand {
                                 })));
         builder.then(visitorBuilder);
 
-                    // Founder utility: transfer ownership of current plot to another online player.
-                    LiteralArgumentBuilder<CommandSourceStack> setOwnerBuilder = Commands.literal("setowner")
-                        .then(Commands.argument("playerName", StringArgumentType.word())
-                            .executes(context -> {
-                                String name = StringArgumentType.getString(context, "playerName");
-                                return setPlotOwner(context.getSource(), name);
-                            }));
-                    builder.then(setOwnerBuilder);
+        // Founder utility: transfer ownership of current plot to another online player.
+        LiteralArgumentBuilder<CommandSourceStack> setOwnerBuilder = Commands.literal("setowner")
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "playerName");
+                            return setPlotOwner(context.getSource(), name);
+                        }));
+        builder.then(setOwnerBuilder);
 
         // TODO do a /plot biomes command also!
 
@@ -303,7 +305,8 @@ public class PlotCommand {
                 return 0;
             }
             if (!VALID_PLOT_TYPES.contains(plotType)) {
-                source.sendFailure(Component.literal("Invalid plot type. Must be plot, farm, or nursery."));
+                source.sendFailure(Component.literal(
+                        "Invalid plot type. Must be one of: " + String.join(", ", VALID_PLOT_TYPES) + "."));
                 return 0;
             }
 
@@ -429,6 +432,10 @@ public class PlotCommand {
             }
             LOGGER.info("Plot bought at " + playerSource.blockPosition().toShortString());
 
+            if (playerSource instanceof ServerPlayer serverPlayer) {
+                FarmCraftCommand.refreshVillageChunksOverlay(serverPlayer);
+            }
+
             // STEP 5: Subtract money out of player. TODO helper method hide this???
             if (!playerSource.isCreative()) {
                 player.removeCoins(cost);
@@ -528,7 +535,8 @@ public class PlotCommand {
                 return 0;
             }
 
-            net.minecraft.server.level.ServerPlayer target = source.getServer().getPlayerList().getPlayerByName(playerName);
+            net.minecraft.server.level.ServerPlayer target = source.getServer().getPlayerList()
+                    .getPlayerByName(playerName);
             if (target == null) {
                 source.sendFailure(Component.literal("Player '" + playerName + "' must be online."));
                 return 0;
@@ -573,6 +581,10 @@ public class PlotCommand {
             MutableComponent response = Component.literal("Plot deleted at " + chunkPos);
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+
+            if (player instanceof ServerPlayer serverPlayer) {
+                FarmCraftCommand.refreshVillageChunksOverlay(serverPlayer);
+            }
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -610,6 +622,10 @@ public class PlotCommand {
             MutableComponent response = Component.literal("Chunk added at " + chunkPos);
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+
+            if (playerSource instanceof ServerPlayer serverPlayer) {
+                FarmCraftCommand.refreshVillageChunksOverlay(serverPlayer);
+            }
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();

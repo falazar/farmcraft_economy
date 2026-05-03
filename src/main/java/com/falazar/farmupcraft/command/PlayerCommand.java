@@ -18,6 +18,7 @@ import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
@@ -25,6 +26,8 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
 import java.text.NumberFormat;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
@@ -269,19 +272,53 @@ public class PlayerCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Only a player can use this command."));
+                return 0;
+            }
+
             PlayerData player = getPlayer(source);
+            if (player == null) {
+                return 0;
+            }
+
+            UUID homeVillageId = player.getHomeVillageUUID();
+            if (homeVillageId == null) {
+                source.sendFailure(Component.literal("You are not currently in a village."));
+                return 0;
+            }
+
+            ServerLevel level = source.getLevel();
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase(level);
 
             // TODO make helper method for this.
             source.sendSuccess(() -> Component.literal("Leaving home village now"), false);
+
             // Remove from village member list before clearing.
-            if (player.getHomeVillageUUID() != null) {
-                VillageData oldVillage = ModEvents.getVillageDatabase().getData(player.getHomeVillageUUID());
-                if (oldVillage != null) {
-                    oldVillage.removeMember(playerSource.getUUID());
-                    ModEvents.getVillageDatabase().putData(oldVillage.getUUID(), oldVillage);
+            VillageData oldVillage = villageDb.getData(homeVillageId);
+            if (oldVillage != null) {
+                List<UUID> members = oldVillage.getMemberUUIDs();
+                members.removeIf(uuid -> uuid == null || uuid.equals(new UUID(0L, 0L)));
+                oldVillage.removeMember(playerSource.getUUID());
+                villageDb.putData(oldVillage.getUUID(), oldVillage);
+
+                // Notify remaining online members, but never let message dispatch crash the
+                // command flow.
+                for (UUID memberUUID : new ArrayList<>(oldVillage.getMemberUUIDs())) {
+                    if (memberUUID == null || memberUUID.equals(playerSource.getUUID())) {
+                        continue;
+                    }
+                    ServerPlayer member = source.getServer().getPlayerList().getPlayer(memberUUID);
+                    if (member != null) {
+                        member.sendSystemMessage(
+                                Component.literal(playerSource.getScoreboardName() + " left the village.")
+                                        .withStyle(ChatFormatting.YELLOW));
+                    }
                 }
             }
-            player.setHomeVillageId(new UUID(0L, 0L)); // zero-UUID = no village
+
+            // null is serialized as zero-UUID by PlayerData codec.
+            player.setHomeVillageId(null);
             savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
             LOGGER.error("leaveVillage error: " + ex.getMessage(), ex);

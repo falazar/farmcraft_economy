@@ -19,7 +19,6 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
@@ -225,6 +224,11 @@ public class VillageCommand {
                 .executes(context -> acceptVillageInvite(context.getSource()));
         builder.then(acceptBuilder);
 
+        // Define the "decline" sub-command — decline a pending village invite.
+        LiteralArgumentBuilder<CommandSourceStack> declineBuilder = Commands.literal("decline")
+                .executes(context -> declineVillageInvite(context.getSource()));
+        builder.then(declineBuilder);
+
         // Define the "animals" sub-command — show grain requirements per animal type.
         LiteralArgumentBuilder<CommandSourceStack> animalsBuilder = Commands.literal("animals")
                 .executes(context -> showVillageAnimals(context.getSource()));
@@ -239,11 +243,11 @@ public class VillageCommand {
                                 .executes(context -> regenerateVillageAnimalGrains(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "villageName")))))
-            .then(Commands.literal("setfounder")
-                .then(Commands.argument("playerName", StringArgumentType.word())
-                    .executes(context -> setVillageFounder(
-                        context.getSource(),
-                        StringArgumentType.getString(context, "playerName")))))
+                .then(Commands.literal("setfounder")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .executes(context -> setVillageFounder(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "playerName")))))
                 .then(Commands.literal("clearbreeding")
                         .executes(context -> clearVillageBreedingCooldown(context.getSource(), null))
                         .then(Commands.argument("villageName", StringArgumentType.string())
@@ -1038,14 +1042,20 @@ public class VillageCommand {
                             + "'. It expires in 10 minutes."),
                     false);
 
-            // Notify the invited player — both in chat and above the hotbar so it is hard
-            // to miss.
+            // Notify invited player in chat with clickable accept/decline actions.
             Component inviteMsg = Component.literal(
-                    "[Village] " + inviter.getName().getString() + " invited you to '" + village.getName()
-                            + "'! Type /village accept to join!")
-                    .withStyle(ChatFormatting.GREEN);
+                    "[Village] " + inviter.getName().getString() + " invited you to '" + village.getName() + "'. ")
+                    .append(Component.literal("[Yes]")
+                            .withStyle(style -> style.withColor(ChatFormatting.GREEN)
+                                    .withBold(true)
+                                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/village accept"))))
+                    .append(Component.literal(" "))
+                    .append(Component.literal("[No]")
+                            .withStyle(style -> style.withColor(ChatFormatting.RED)
+                                    .withBold(true)
+                                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/village decline"))))
+                    .append(Component.literal(" (expires in 10m)").withStyle(ChatFormatting.GRAY));
             target.sendSystemMessage(inviteMsg);
-            target.displayClientMessage(inviteMsg, false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -1107,6 +1117,48 @@ public class VillageCommand {
                 PlayerData onlineData = playerDb.getData(online.getUUID());
                 if (onlineData != null && invite.villageId().equals(onlineData.getHomeVillageUUID())) {
                     online.sendSystemMessage(joinMsg);
+                }
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static int declineVillageInvite(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            cleanExpiredInvites();
+            PendingInvite removed = PENDING_INVITES.remove(player.getUUID());
+            if (removed == null) {
+                source.sendFailure(Component.literal("You have no pending village invite."));
+                return 0;
+            }
+
+            source.sendSuccess(() -> Component.literal("Village invite declined.").withStyle(ChatFormatting.YELLOW),
+                    false);
+
+            VillageData village = ModEvents.getVillageDatabase().getData(removed.villageId());
+            if (village != null) {
+                Component declineMsg = Component.literal("[Village] " + player.getName().getString()
+                        + " declined an invite to join '")
+                        .append(Component.literal(village.getName()))
+                        .append(Component.literal("'."))
+                        .withStyle(ChatFormatting.RED);
+
+                DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+                for (net.minecraft.server.level.ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+                    PlayerData onlineData = playerDb.getData(online.getUUID());
+                    if (onlineData != null && removed.villageId().equals(onlineData.getHomeVillageUUID())) {
+                        online.sendSystemMessage(declineMsg);
+                    }
                 }
             }
         } catch (Exception ex) {
@@ -1581,7 +1633,7 @@ public class VillageCommand {
             VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
 
             // Get the list of biomes in the village.
-            Map<String, Integer> biomes = getVillageBiomes(villageData);
+            Map<String, Integer> biomes = getVillageBiomes(villageData, source.getLevel());
 
             // Show the list of biomes.
             // TODO first line yellow.
@@ -1603,12 +1655,15 @@ public class VillageCommand {
         return 0;
     }
 
-    public static Map<String, Integer> getVillageBiomes(VillageData villageData) {
+    public static Map<String, Integer> getVillageBiomes(VillageData villageData, Level level) {
         if (villageData == null) {
             LOGGER.error("Village data is null, cannot get biomes.");
             return Collections.emptyMap();
         }
-        Level level = Minecraft.getInstance().level;
+        if (level == null) {
+            LOGGER.error("Level is null, cannot get village biomes.");
+            return Collections.emptyMap();
+        }
 
         // Loop over each chunk in territory.
         // Get the biome for each chunk.

@@ -204,7 +204,8 @@ public class FarmCraftCommand {
     }
 
     /**
-     * /farmcraft map village — draws a colored overlay on every claimed village chunk in JourneyMap.
+     * /farmcraft map village — draws a colored overlay on every claimed village
+     * chunk in JourneyMap.
      * Blue (0x0055FF) = chunk has a plot type (farm, house, pasture, etc.)
      * Green (0x00E000) = chunk is claimed but has no plot ("village" type)
      */
@@ -214,16 +215,40 @@ public class FarmCraftCommand {
             source.sendFailure(Component.literal("Must be a player."));
             return 0;
         }
-        DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
-        PlayerData playerData = playerDb.getData(player.getUUID());
-        if (playerData == null || playerData.getHomeVillageUUID() == null) {
+        List<int[]> chunks = buildVillageChunkOverlayData(player);
+        if (chunks == null) {
             source.sendFailure(Component.literal("You are not a member of any village."));
             return 0;
         }
+        String dimId = player.level().dimension().location().toString();
+        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(chunks, true, dimId), player);
+        source.sendSuccess(() -> Component.literal(
+                "Showing " + chunks.size() + " village chunks on map. Use /village map clear to remove.")
+                .withStyle(ChatFormatting.GREEN), false);
+        return 1;
+    }
+
+    // Rebuild and redraw all village chunk overlays for this player.
+    // This clears stale colors first, then re-renders from current DB data.
+    public static void refreshVillageChunksOverlay(ServerPlayer player) {
+        List<int[]> chunks = buildVillageChunkOverlayData(player);
+        if (chunks == null) {
+            return;
+        }
+        String dimId = player.level().dimension().location().toString();
+        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimId), player);
+        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(chunks, true, dimId), player);
+    }
+
+    private static List<int[]> buildVillageChunkOverlayData(ServerPlayer player) {
+        DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+        PlayerData playerData = playerDb.getData(player.getUUID());
+        if (playerData == null || playerData.getHomeVillageUUID() == null) {
+            return null;
+        }
         VillageData village = ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID());
         if (village == null) {
-            source.sendFailure(Component.literal("Village data not found."));
-            return 0;
+            return null;
         }
         DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
         List<int[]> chunks = new ArrayList<>();
@@ -234,16 +259,12 @@ public class FarmCraftCommand {
             int color = hasPlot ? 0x0055FF : 0x00E000; // blue = plot, green = village-only
             chunks.add(new int[] { cp.x, cp.z, color });
         }
-        String dimId = player.level().dimension().location().toString();
-        EDBMessages.sendToPlayer(new ShowVillageChunksPacket(chunks, true, dimId), player);
-        source.sendSuccess(() -> Component.literal(
-                "Showing " + chunks.size() + " village chunks on map. Use /village map clear to remove.")
-                .withStyle(ChatFormatting.GREEN), false);
-        return 1;
+        return chunks;
     }
 
     /**
-     * /farmcraft map village clear — removes all village chunk overlays from JourneyMap.
+     * /farmcraft map village clear — removes all village chunk overlays from
+     * JourneyMap.
      */
     public static int clearVillageChunks(CommandSourceStack source) {
         Entity entity = source.getEntity();

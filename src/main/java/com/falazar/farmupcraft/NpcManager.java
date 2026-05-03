@@ -48,48 +48,52 @@ public class NpcManager {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickNpc(PlayerInteractEvent.EntityInteract event) {
-        if (event.getLevel().isClientSide())
-            return;
-        if (event.getHand() != InteractionHand.MAIN_HAND)
-            return;
+        try {
+            if (event.getLevel().isClientSide())
+                return;
+            if (event.getHand() != InteractionHand.MAIN_HAND)
+                return;
 
-        Entity source = event.getEntity();
-        if (!(source instanceof Player player))
-            return;
+            Entity source = event.getEntity();
+            if (!(source instanceof Player player))
+                return;
 
-        Entity target = event.getTarget();
-        if (!(target instanceof Villager villager))
-            return;
+            Entity target = event.getTarget();
+            if (!(target instanceof Villager villager))
+                return;
 
-        String npcName = villager.getName().getString();
-        UUID npcUUID = villager.getUUID();
+            String npcName = villager.getName().getString();
+            UUID npcUUID = villager.getUUID();
 
-        LOGGER.info("Right-click on villager: {} ({})", npcName, npcUUID);
+            LOGGER.info("Right-click on villager: {} ({})", npcName, npcUUID);
 
-        // Always say hello.
-        MutableComponent greeting = Component.literal("Hello, I am ")
-                .append(Component.literal(npcName).withStyle(ChatFormatting.GOLD))
-                .append(Component.literal("!"))
-                .withStyle(ChatFormatting.GREEN);
-        player.displayClientMessage(greeting, false);
+            // Always say hello.
+            MutableComponent greeting = Component.literal("Hello, I am ")
+                    .append(Component.literal(npcName).withStyle(ChatFormatting.GOLD))
+                    .append(Component.literal("!"))
+                    .withStyle(ChatFormatting.GREEN);
+            player.displayClientMessage(greeting, false);
 
-        // Check if this villager has an AI profile on disk.
-        if (!NpcDataLoader.hasProfile(npcName, npcUUID)) {
+            // Check if this villager has an AI profile on disk.
+            if (!hasProfileSafely(npcName, npcUUID)) {
+                player.displayClientMessage(
+                        Component.literal("(This villager has no profile and cannot be spoken to.)")
+                                .withStyle(ChatFormatting.GREEN),
+                        false);
+                return;
+            }
+
+            // Open conversation window for 2 minutes.
+            ACTIVE_CONVERSATIONS.put(player.getUUID(),
+                    new ActiveConversation(npcUUID, npcName, villager, System.currentTimeMillis()));
+
             player.displayClientMessage(
-                    Component.literal("(This villager has no profile and cannot be spoken to.)")
+                    Component.literal("[NPC] " + npcName + " is listening. Say something in chat within 2 minutes!")
                             .withStyle(ChatFormatting.GREEN),
                     false);
-            return;
+        } catch (Throwable t) {
+            LOGGER.error("Unhandled NPC right-click error: {}", t.getMessage(), t);
         }
-
-        // Open conversation window for 2 minutes.
-        ACTIVE_CONVERSATIONS.put(player.getUUID(),
-                new ActiveConversation(npcUUID, npcName, villager, System.currentTimeMillis()));
-
-        player.displayClientMessage(
-                Component.literal("[NPC] " + npcName + " is listening. Say something in chat within 2 minutes!")
-                        .withStyle(ChatFormatting.GREEN),
-                false);
     }
 
     // -------------------------------------------------------------------------
@@ -98,84 +102,90 @@ public class NpcManager {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onPlayerChat(ServerChatEvent event) {
-        Player player = event.getPlayer();
-        UUID playerUUID = player.getUUID();
+        try {
+            Player player = event.getPlayer();
+            UUID playerUUID = player.getUUID();
 
-        ActiveConversation conv = ACTIVE_CONVERSATIONS.get(playerUUID);
-        if (conv == null)
-            return;
+            ActiveConversation conv = ACTIVE_CONVERSATIONS.get(playerUUID);
+            if (conv == null)
+                return;
 
-        // Check timer.
-        if (System.currentTimeMillis() - conv.startedAt > CONVERSATION_TIMEOUT_MS) {
-            ACTIVE_CONVERSATIONS.remove(playerUUID);
-            player.displayClientMessage(
-                    Component.literal("[NPC] Your conversation with " + conv.npcName + " has timed out.")
-                            .withStyle(ChatFormatting.GREEN),
+            // Check timer.
+            if (System.currentTimeMillis() - conv.startedAt > CONVERSATION_TIMEOUT_MS) {
+                ACTIVE_CONVERSATIONS.remove(playerUUID);
+                player.displayClientMessage(
+                        Component.literal("[NPC] Your conversation with " + conv.npcName + " has timed out.")
+                                .withStyle(ChatFormatting.GREEN),
+                        false);
+                return;
+            }
+
+            // Check distance — villager must still be nearby.
+            double dist = player.distanceTo(conv.villager);
+            if (dist > MAX_TALK_DISTANCE) {
+                ACTIVE_CONVERSATIONS.remove(playerUUID);
+                player.displayClientMessage(
+                        Component.literal("[NPC] You moved too far from " + conv.npcName + ".")
+                                .withStyle(ChatFormatting.GREEN),
+                        false);
+                return;
+            }
+
+            // Load profile from disk (cheap — only reads one file).
+            NpcData profile = findProfileSafely(conv.npcName, conv.npcUUID);
+            if (profile == null) {
+                ACTIVE_CONVERSATIONS.remove(playerUUID);
+                return;
+            }
+
+            // Log and broadcast the player's message publicly before canceling.
+            // WHITE matches normal vanilla player chat color.
+            String playerMessage = event.getMessage().getString();
+            player.getServer().getPlayerList().broadcastSystemMessage(
+                    Component.literal("<" + player.getName().getString() + "> " + playerMessage)
+                            .withStyle(ChatFormatting.WHITE),
                     false);
-            return;
-        }
 
-        // Check distance — villager must still be nearby.
-        double dist = player.distanceTo(conv.villager);
-        if (dist > MAX_TALK_DISTANCE) {
-            ACTIVE_CONVERSATIONS.remove(playerUUID);
+            // Append to logs/<playerName>/<YY-MM-DD>/NPC.txt
+            NpcConversationLogger.log(player.getName().getString(), player.getName().getString(), playerMessage);
+            LOGGER.info("[NPC Conversation] <{}> to {}: {}", player.getName().getString(), conv.npcName, playerMessage);
+
+            // Cancel so the vanilla chat handler doesn't also send it.
+            event.setCanceled(true);
+
+            // Build a system prompt that gives the AI the NPC's personality.
+            String systemPrompt = AIManager.buildNpcSystemPrompt(profile, player.getName().getString(), playerMessage);
+
             player.displayClientMessage(
-                    Component.literal("[NPC] You moved too far from " + conv.npcName + ".")
-                            .withStyle(ChatFormatting.GREEN),
+                    Component.literal("[NPC] " + conv.npcName + " is thinking...").withStyle(ChatFormatting.GREEN),
                     false);
-            return;
+
+            MinecraftServer server = player.getServer();
+            OllamaService.chat(systemPrompt)
+                    .thenAccept(reply -> server.execute(() -> {
+                        // Append NPC reply to logs/<playerName>/<YY-MM-DD>/NPC.txt
+                        NpcConversationLogger.log(player.getName().getString(), conv.npcName, reply);
+                        LOGGER.info("[NPC Conversation] <{}> to {}: {}", conv.npcName, player.getName().getString(),
+                                reply);
+                        player.displayClientMessage(
+                                Component.literal("[NPC] " + conv.npcName + ": " + reply)
+                                        .withStyle(ChatFormatting.GREEN),
+                                false);
+                    }))
+                    .exceptionally(err -> {
+                        server.execute(() -> player.displayClientMessage(
+                                Component.literal("[NPC Error] " + err.getMessage())
+                                        .withStyle(ChatFormatting.GREEN),
+                                false));
+                        return null;
+                    });
+        } catch (Throwable t) {
+            LOGGER.error("Unhandled NPC chat error: {}", t.getMessage(), t);
+            try {
+                event.setCanceled(true);
+            } catch (Throwable ignored) {
+            }
         }
-
-        // Load profile from disk (cheap — only reads one file).
-        NpcData profile = NpcDataLoader.findProfile(conv.npcName, conv.npcUUID);
-        if (profile == null) {
-            ACTIVE_CONVERSATIONS.remove(playerUUID);
-            return;
-        }
-
-        // Log and broadcast the player's message publicly before canceling.
-        // WHITE matches normal vanilla player chat color.
-        String playerMessage = event.getMessage().getString();
-        player.getServer().getPlayerList().broadcastSystemMessage(
-                Component.literal("<" + player.getName().getString() + "> " + playerMessage)
-                        .withStyle(ChatFormatting.WHITE),
-                false);
-
-        // Append to logs/<playerName>/<YY-MM-DD>/NPC.txt
-        NpcConversationLogger.log(player.getName().getString(), player.getName().getString(), playerMessage);
-        LOGGER.info("[NPC Conversation] <{}> to {}: {}", player.getName().getString(), conv.npcName, playerMessage);
-
-        // Cancel so the vanilla chat handler doesn't also send it.
-        event.setCanceled(true);
-
-        // TODO: Send the full conversation history to the AI instead of just the latest
-        // message. Track a List<ChatMessage> in ActiveConversation (alternating
-        // user/assistant turns) and pass the whole list to OllamaService.chat().
-
-        // Build a system prompt that gives the AI the NPC's personality.
-        String systemPrompt = AIManager.buildNpcSystemPrompt(profile, player.getName().getString(), playerMessage);
-
-        player.displayClientMessage(
-                Component.literal("[NPC] " + conv.npcName + " is thinking...").withStyle(ChatFormatting.GREEN), false);
-
-        MinecraftServer server = player.getServer();
-        OllamaService.chat(systemPrompt)
-                .thenAccept(reply -> server.execute(() -> {
-                    // Append NPC reply to logs/<playerName>/<YY-MM-DD>/NPC.txt
-                    NpcConversationLogger.log(player.getName().getString(), conv.npcName, reply);
-                    LOGGER.info("[NPC Conversation] <{}> to {}: {}", conv.npcName, player.getName().getString(), reply);
-                    player.displayClientMessage(
-                            Component.literal("[NPC] " + conv.npcName + ": " + reply)
-                                    .withStyle(ChatFormatting.GREEN),
-                            false);
-                }))
-                .exceptionally(err -> {
-                    server.execute(() -> player.displayClientMessage(
-                            Component.literal("[NPC Error] " + err.getMessage())
-                                    .withStyle(ChatFormatting.GREEN),
-                            false));
-                    return null;
-                });
     }
 
     // -------------------------------------------------------------------------
@@ -184,7 +194,29 @@ public class NpcManager {
 
     /** Clears a conversation if one is active for the given player. */
     public static void clearConversation(UUID playerUUID) {
-        ACTIVE_CONVERSATIONS.remove(playerUUID);
+        try {
+            ACTIVE_CONVERSATIONS.remove(playerUUID);
+        } catch (Throwable t) {
+            LOGGER.error("Failed to clear NPC conversation for {}: {}", playerUUID, t.getMessage(), t);
+        }
+    }
+
+    private static boolean hasProfileSafely(String npcName, UUID npcUUID) {
+        try {
+            return NpcDataLoader.hasProfile(npcName, npcUUID);
+        } catch (Throwable t) {
+            LOGGER.error("NpcDataLoader.hasProfile failed for {} ({}): {}", npcName, npcUUID, t.getMessage(), t);
+            return false;
+        }
+    }
+
+    private static NpcData findProfileSafely(String npcName, UUID npcUUID) {
+        try {
+            return NpcDataLoader.findProfile(npcName, npcUUID);
+        } catch (Throwable t) {
+            LOGGER.error("NpcDataLoader.findProfile failed for {} ({}): {}", npcName, npcUUID, t.getMessage(), t);
+            return null;
+        }
     }
 
     // -------------------------------------------------------------------------

@@ -159,11 +159,11 @@ public class ShowBiomesCommand {
         if (playerSource == null)
             return Collections.emptySet();
         try {
-            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(playerSource.level());
             PlayerData playerData = ModEvents.getPlayerDatabase(playerSource.level()).getData(playerSource.getUUID());
             VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
             if (villageData != null) {
-                return new HashSet<>(getVillageBiomes(villageData).keySet());
+                return new HashSet<>(getVillageBiomes(villageData, playerSource.level()).keySet());
             }
         } catch (Exception ex) {
             LOGGER.warn("Could not load village biomes: " + ex.getMessage());

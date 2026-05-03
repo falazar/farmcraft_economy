@@ -26,6 +26,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
@@ -46,6 +47,62 @@ public class AnimalsManager {
     private static final int MAX_ANIMALS_PER_PASTURE = 30;
     private static final String NBT_LAST_MILKED = "farmupcraft_last_milked";
     private static final String NBT_LAST_BRED = "farmupcraft_last_bred";
+    private static final String NBT_LAST_SHEARED_TICK = "farmupcraft_last_sheared_tick";
+    // 7 in-game days at 20 TPS: 168000 ticks ~= 140 real-time minutes.
+    private static final long WOOL_REGROWTH_COOLDOWN_TICKS = 7L * 24000L;
+
+    @SubscribeEvent
+    public static void onRightClickSheepShearing(PlayerInteractEvent.EntityInteract event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        Entity source = event.getEntity();
+        if (!(source instanceof Player player))
+            return;
+
+        Entity target = event.getTarget();
+        if (!(target instanceof Sheep sheep))
+            return;
+
+        ItemStack usedStack = player.getItemInHand(event.getHand());
+        if (!usedStack.is(Items.SHEARS))
+            return;
+
+        if (sheep.isBaby() || sheep.isSheared())
+            return;
+
+        long gameTime = sheep.level().getGameTime();
+        sheep.getPersistentData().putLong(NBT_LAST_SHEARED_TICK, gameTime);
+        LOGGER.info("Sheep {} sheared by {} at gameTick={}", sheep.getUUID(), player.getName().getString(), gameTime);
+    }
+
+    @SubscribeEvent
+    public static void onSheepTick(LivingEvent.LivingTickEvent event) {
+        if (!(event.getEntity() instanceof Sheep sheep))
+            return;
+
+        if (sheep.level().isClientSide())
+            return;
+
+        if (!sheep.getPersistentData().contains(NBT_LAST_SHEARED_TICK))
+            return;
+
+        long lastShearedTick = sheep.getPersistentData().getLong(NBT_LAST_SHEARED_TICK);
+        long elapsed = sheep.level().getGameTime() - lastShearedTick;
+
+        // Keep sheep visually/functionally sheared until cooldown expires.
+        if (elapsed < WOOL_REGROWTH_COOLDOWN_TICKS) {
+            if (!sheep.isSheared()) {
+                sheep.setSheared(true);
+            }
+            return;
+        }
+
+        if (!sheep.isSheared()) {
+            sheep.getPersistentData().remove(NBT_LAST_SHEARED_TICK);
+            LOGGER.info("Sheep {} regrew wool after {} ticks", sheep.getUUID(), elapsed);
+        }
+    }
 
     // Limit milking cows to once per real-time day.
     // Uses persistent NBT on the cow so it survives server restarts.

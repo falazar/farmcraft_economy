@@ -90,9 +90,7 @@ public class CropsManager {
 
         // Return if clicked block is not farmland
         boolean isFarmBelow = false;
-
         // Notice allowing some planting in non farm plot areas, if already plowed.
-
         // Return if the placement would be on top of farmland (if face is known)
         if (event.getFace() != null) {
             BlockPos placementPos = clickedPos.relative(event.getFace());

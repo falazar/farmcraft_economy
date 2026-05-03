@@ -18,6 +18,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.entity.EntityEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -245,11 +246,7 @@ public class ChunkManager {
 
         // Only check protected block types.
         BlockState state = event.getLevel().getBlockState(pos);
-        boolean isDoor = state.is(BlockTags.DOORS)
-                || state.is(BlockTags.TRAPDOORS);
-        boolean isContainer = state.is(BlockTags.SHULKER_BOXES)
-                || isChestOrBarrel(state);
-        if (!isDoor && !isContainer)
+        if (!isProtectedAccessBlock(state))
             return;
 
         // Get chunk data for this plot.
@@ -270,55 +267,170 @@ public class ChunkManager {
 
         // Village membership check: block anyone not in this village from using
         // doors/chests.
-        java.util.UUID chunkVillageId = chunkData.getVillageId();
-        if (chunkVillageId != null) {
-            PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
-            boolean inVillage = playerData != null && chunkVillageId.equals(playerData.getHomeVillageUUID());
-            if (!inVillage) {
-                event.setCanceled(true);
-                player.displayClientMessage(
-                        Component.literal("You are not a member of this village.")
-                                .withStyle(ChatFormatting.RED),
-                        true);
-                return;
-            }
+        if (!isPlayerVillageMember(player, chunkData)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You are not a member of this village.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return;
         }
 
         // House plot owner/visitor check: within the village, only the owner and named
         // visitors
         // may open doors and chests on a house plot.
-        if (chunkData.getType().equalsIgnoreCase("house")) {
-            java.util.UUID ownerUUID = chunkData.getOwnerUUID();
-
-            // Legacy migration: older house plots may not have owner_uuid saved.
-            if (ownerUUID == null && chunkData.getPlayerId() == player.getId()) {
-                chunkData.setOwnerUUID(player.getUUID());
-                dataBase.putData(chunkPos.toLong(), chunkData);
-                ownerUUID = player.getUUID();
-            }
-
-            if (ownerUUID != null
-                    && !ownerUUID.equals(player.getUUID())
-                    && !chunkData.isVisitor(player.getName().getString())) {
-                event.setCanceled(true);
-                player.displayClientMessage(
-                        Component.literal("This plot is owned by someone else.")
-                                .withStyle(ChatFormatting.RED),
-                        true);
-            } else if (ownerUUID == null && !chunkData.isVisitor(player.getName().getString())) {
-                // Fail safe: if no owner is known, default to deny for non-visitors.
-                event.setCanceled(true);
-                player.displayClientMessage(
-                        Component.literal("This house plot has no owner set yet.")
-                                .withStyle(ChatFormatting.RED),
-                        true);
-            }
+        if (chunkData.getType().equalsIgnoreCase("house") && !hasHouseAccess(player, chunkData, dataBase, chunkPos)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You do not have permission on this house plot.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
         }
+    }
+
+    // Prevent non-members from placing blocks in village plots, and enforce house
+    // owner/visitor permissions on house plots.
+    @SubscribeEvent
+    public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        Entity source = event.getEntity();
+        if (!(source instanceof Player player))
+            return;
+
+        if (player.isCreative())
+            return;
+
+        BlockPos pos = event.getPos();
+
+        // Prevent stacked rock paths (placing a rock path on top of another rock path).
+        BlockState placedState = event.getLevel().getBlockState(pos);
+        BlockState belowState = event.getLevel().getBlockState(pos.below());
+        if (isRockPathBlock(placedState) && isRockPathBlock(belowState)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You cannot stack rock paths.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return;
+        }
+
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+        if (chunkData == null)
+            return;
+
+        int protectionMinY = chunkData.getBoughtY() > 0 ? chunkData.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+        if (pos.getY() < protectionMinY)
+            return;
+
+        if (!isPlayerVillageMember(player, chunkData)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You are not a member of this village.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return;
+        }
+
+        if (chunkData.getType().equalsIgnoreCase("house") && !hasHouseAccess(player, chunkData, dataBase, chunkPos)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You do not have permission to place blocks on this house plot.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+        }
+    }
+
+    // Prevent non-members from breaking doors/chests, and enforce house
+    // owner/visitor permissions for these blocks on house plots.
+    @SubscribeEvent
+    public static void onBlockBreak(BlockEvent.BreakEvent event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        Player player = event.getPlayer();
+        if (player == null || player.isCreative())
+            return;
+
+        BlockState state = event.getState();
+        if (!isProtectedAccessBlock(state))
+            return;
+
+        BlockPos pos = event.getPos();
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+        if (chunkData == null)
+            return;
+
+        int protectionMinY = chunkData.getBoughtY() > 0 ? chunkData.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+        if (pos.getY() < protectionMinY)
+            return;
+
+        if (!isPlayerVillageMember(player, chunkData)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You are not a member of this village.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return;
+        }
+
+        if (chunkData.getType().equalsIgnoreCase("house") && !hasHouseAccess(player, chunkData, dataBase, chunkPos)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You do not have permission to break protected blocks on this house plot.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+        }
+    }
+
+    private static boolean isProtectedAccessBlock(BlockState state) {
+        boolean isDoor = state.is(BlockTags.DOORS) || state.is(BlockTags.TRAPDOORS);
+        boolean isContainer = state.is(BlockTags.SHULKER_BOXES) || isChestOrBarrel(state);
+        return isDoor || isContainer;
+    }
+
+    private static boolean isPlayerVillageMember(Player player, ChunkData chunkData) {
+        java.util.UUID chunkVillageId = chunkData.getVillageId();
+        if (chunkVillageId == null)
+            return true;
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        return playerData != null && chunkVillageId.equals(playerData.getHomeVillageUUID());
+    }
+
+    private static boolean hasHouseAccess(Player player, ChunkData chunkData, DataBase<Long, ChunkData> dataBase,
+            ChunkPos chunkPos) {
+        java.util.UUID ownerUUID = chunkData.getOwnerUUID();
+
+        // Legacy migration: older house plots may not have owner_uuid saved.
+        if (ownerUUID == null && chunkData.getPlayerId() == player.getId()) {
+            chunkData.setOwnerUUID(player.getUUID());
+            dataBase.putData(chunkPos.toLong(), chunkData);
+            ownerUUID = player.getUUID();
+        }
+
+        if (ownerUUID == null) {
+            return chunkData.isVisitor(player.getName().getString());
+        }
+        if (ownerUUID.equals(player.getUUID())) {
+            return true;
+        }
+        return chunkData.isVisitor(player.getName().getString());
     }
 
     private static boolean isChestOrBarrel(BlockState state) {
         String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
                 .getKey(state.getBlock()).toString();
         return id.contains("chest") || id.contains("barrel");
+    }
+
+    private static boolean isRockPathBlock(BlockState state) {
+        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                .getKey(state.getBlock()).toString();
+        return id.contains("rock") && id.contains("path");
     }
 }

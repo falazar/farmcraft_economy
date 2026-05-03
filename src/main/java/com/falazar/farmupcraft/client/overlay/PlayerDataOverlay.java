@@ -9,6 +9,7 @@ import com.falazar.farmupcraft.util.ClientUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
@@ -40,6 +41,14 @@ public class PlayerDataOverlay {
         if (chunkData != null) {
             if (chunkData.getType() != null)
                 currentPlotType = chunkData.getType();
+
+            if ("house".equalsIgnoreCase(currentPlotType)) {
+                String ownerName = resolveHouseOwnerName(level, chunkData);
+                if (ownerName != null && !ownerName.isBlank()) {
+                    currentPlotType = ownerName + " house";
+                }
+            }
+
             UUID villageId = chunkData.getVillageId();
             if (villageId != null) {
                 VillageData standingVillage = ModEvents.getVillageDatabase(level).getData(villageId);
@@ -83,4 +92,18 @@ public class PlayerDataOverlay {
         guiGraphics.drawString(mc.font, Component.literal("Coins: " + playerData.getCoins()), paddingLeft, currentY,
                 0xFFD700, true);
     };
+
+    private static String resolveHouseOwnerName(net.minecraft.client.multiplayer.ClientLevel level, ChunkData chunkData) {
+        UUID ownerUUID = chunkData.getOwnerUUID();
+        if (ownerUUID == null)
+            return null;
+
+        for (Player onlinePlayer : level.players()) {
+            if (ownerUUID.equals(onlinePlayer.getUUID())) {
+                return onlinePlayer.getName().getString();
+            }
+        }
+
+        return null;
+    }
 }

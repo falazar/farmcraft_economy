@@ -42,7 +42,7 @@ public class BorderRenderer {
 
         boolean showBorders = player.getItemInHand(InteractionHand.MAIN_HAND).is(Items.DIAMOND);
         if (!showBorders) {
-            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase(player.level());
             if (playerDb != null) {
                 PlayerData playerData = playerDb.getData(player.getUUID());
                 if (playerData != null) {
@@ -187,7 +187,12 @@ public class BorderRenderer {
         DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase(level);
         if (!playerDataDataBase.containsKey(playerUUID))
             return false;
-        UUID villageId = playerDataDataBase.getData(playerUUID).getHomeVillageUUID();
+        PlayerData playerData = playerDataDataBase.getData(playerUUID);
+        if (playerData == null)
+            return false;
+        UUID villageId = playerData.getHomeVillageUUID();
+        if (villageId == null)
+            return false;
 
         DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(level);
         if (!villageDataDB.containsKey(villageId))
@@ -236,7 +241,12 @@ public class BorderRenderer {
         DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase(level);
         if (!playerDataDataBase.containsKey(playerUUID))
             return false;
-        UUID villageId = playerDataDataBase.getData(playerUUID).getHomeVillageUUID();
+        PlayerData playerData = playerDataDataBase.getData(playerUUID);
+        if (playerData == null)
+            return false;
+        UUID villageId = playerData.getHomeVillageUUID();
+        if (villageId == null)
+            return false;
 
         DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(level);
 
@@ -244,6 +254,8 @@ public class BorderRenderer {
             return false;
 
         VillageData village = villageDataDB.getData(villageId);
+        if (village == null)
+            return false;
         return village.getClaimedChunkSet().contains(ChunkPos.asLong(chunkX, chunkZ));
     }
 
@@ -251,8 +263,9 @@ public class BorderRenderer {
     private static float[] getClaimColor() { // border not claim plot?
         Player player = ClientUtils.getClientPlayer();
         String colorName = "blue";
-        if (player != null) {
-            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+        Level level = Minecraft.getInstance().level;
+        if (player != null && level != null) {
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase(level);
             if (playerDb != null) {
                 PlayerData playerData = playerDb.getData(player.getUUID());
                 if (playerData != null) {
