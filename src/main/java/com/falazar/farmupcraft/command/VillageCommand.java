@@ -248,6 +248,11 @@ public class VillageCommand {
                                 .executes(context -> setVillageFounder(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "playerName")))))
+                .then(Commands.literal("addmember")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .executes(context -> addMemberToVillage(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "playerName")))))
                 .then(Commands.literal("clearbreeding")
                         .executes(context -> clearVillageBreedingCooldown(context.getSource(), null))
                         .then(Commands.argument("villageName", StringArgumentType.string())
@@ -778,7 +783,7 @@ public class VillageCommand {
     }
 
     public static int getDailyCost(VillageData village) {
-        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
+        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 20;
 
         return dailyCost;
     }
@@ -1172,8 +1177,8 @@ public class VillageCommand {
 
     private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken");
 
-    // Sets the village's allowed breeding animal type. Can only be changed once per
-    // week.
+    // Sets the village's allowed breeding animal type. Can only be changed once
+    // every two weeks.
     public static int setVillageAnimalType(CommandSourceStack source, String animalType) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -1196,10 +1201,10 @@ public class VillageCommand {
                 return 0;
             }
 
-            // Enforce once-per-week limit (skip for creative/admin).
+            // Enforce once-per-two-weeks limit (skip for creative/admin).
             if (!playerSource.isCreative() && !villageData.canChangeAnimalType()) {
                 source.sendFailure(Component.literal(
-                        "Village animal type was recently changed. You can change it again after 7 days. Last changed: "
+                        "Village animal type was recently changed. You can change it again after 14 days. Last changed: "
                                 + villageData.getLastAnimalTypeChange()));
                 return 0;
             }
@@ -1237,9 +1242,122 @@ public class VillageCommand {
                 return 0;
             }
 
-            villageData.setFounder(playerName);
+            UUID targetUuid = null;
+            String normalizedFounderName = playerName;
+
+            ServerPlayer onlineTarget = source.getServer().getPlayerList().getPlayerByName(playerName);
+            if (onlineTarget != null) {
+                targetUuid = onlineTarget.getUUID();
+                normalizedFounderName = onlineTarget.getName().getString();
+            } else {
+                Optional<com.mojang.authlib.GameProfile> profile = source.getServer().getProfileCache().get(playerName);
+                if (profile.isPresent()) {
+                    targetUuid = profile.get().getId();
+                    normalizedFounderName = profile.get().getName();
+                }
+            }
+
+            if (targetUuid == null) {
+                source.sendFailure(Component.literal("Could not resolve player '" + playerName + "'."));
+                return 0;
+            }
+
+            boolean inMemberList = villageData.isMember(targetUuid);
+            PlayerData targetPlayerData = ModEvents.getPlayerDatabase().getData(targetUuid);
+            boolean hasMatchingHomeVillage = targetPlayerData != null
+                    && villageData.getUUID().equals(targetPlayerData.getHomeVillageUUID());
+            if (!inMemberList && !hasMatchingHomeVillage) {
+                source.sendFailure(Component.literal(
+                        "Player '" + normalizedFounderName + "' is not in village '" + villageData.getName() + "'."));
+                return 0;
+            }
+
+            villageData.setFounder(normalizedFounderName);
             villageDatabase.putData(villageData.getUUID(), villageData);
-            source.sendSuccess(() -> Component.literal("Village founder set to: " + playerName), false);
+            final String founderNameFinal = normalizedFounderName;
+            source.sendSuccess(() -> Component.literal("Village founder set to: " + founderNameFinal), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Admin: force-add a player to the command user's village.
+    public static int addMemberToVillage(CommandSourceStack source, String playerName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player actor = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (actor == null) {
+                source.sendFailure(Component.literal("Only a player can use this command."));
+                return 0;
+            }
+
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            PlayerData actorData = playerDb.getData(actor.getUUID());
+            if (actorData == null || actorData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not in a village."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = villageDb.getData(actorData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Could not find your village data."));
+                return 0;
+            }
+
+            UUID targetUuid = null;
+            String normalizedName = playerName;
+            ServerPlayer onlineTarget = source.getServer().getPlayerList().getPlayerByName(playerName);
+            if (onlineTarget != null) {
+                targetUuid = onlineTarget.getUUID();
+                normalizedName = onlineTarget.getName().getString();
+            } else {
+                Optional<com.mojang.authlib.GameProfile> profile = source.getServer().getProfileCache().get(playerName);
+                if (profile.isPresent()) {
+                    targetUuid = profile.get().getId();
+                    normalizedName = profile.get().getName();
+                }
+            }
+
+            if (targetUuid == null) {
+                source.sendFailure(Component.literal("Could not resolve player '" + playerName + "'."));
+                return 0;
+            }
+
+            PlayerData targetData = playerDb.getData(targetUuid);
+            if (targetData == null) {
+                if (onlineTarget != null) {
+                    targetData = new PlayerData(onlineTarget.getId(), targetUuid, null, 0);
+                } else {
+                    source.sendFailure(Component.literal(
+                            "Player data for '" + normalizedName + "' was not found. Have them join first."));
+                    return 0;
+                }
+            }
+
+            UUID targetVillageId = targetData.getHomeVillageUUID();
+            if (targetVillageId != null && !targetVillageId.equals(village.getUUID())) {
+                VillageData targetVillage = villageDb.getData(targetVillageId);
+                String targetVillageName = targetVillage != null ? targetVillage.getName() : targetVillageId.toString();
+                source.sendFailure(Component.literal(
+                        normalizedName + " is already in village '" + targetVillageName + "'."));
+                return 0;
+            }
+
+            targetData.setHomeVillageId(village.getUUID());
+            playerDb.putData(targetUuid, targetData);
+
+            village.addMember(targetUuid);
+            villageDb.putData(village.getUUID(), village);
+
+            PENDING_INVITES.remove(targetUuid);
+
+            final String targetNameFinal = normalizedName;
+            source.sendSuccess(
+                    () -> Component.literal("Added " + targetNameFinal + " to village '" + village.getName() + "'."),
+                    false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();

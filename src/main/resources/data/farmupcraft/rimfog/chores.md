@@ -60,3 +60,4 @@ Breed Villagers
 Find new farm animals
 Find/Do Iron Veins
 Make Furniture
+Make a boat

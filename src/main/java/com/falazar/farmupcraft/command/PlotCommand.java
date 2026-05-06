@@ -75,7 +75,8 @@ public class PlotCommand {
                                 return buyPlot(context.getSource(), plotType);
                             } else {
                                 context.getSource().sendFailure(Component.literal(
-                                        "Invalid plot type. Must be one of: " + String.join(", ", VALID_PLOT_TYPES) + "."));
+                                        "Invalid plot type. Must be one of: " + String.join(", ", VALID_PLOT_TYPES)
+                                                + "."));
                                 return 0;
                             }
                         }));
@@ -124,6 +125,22 @@ public class PlotCommand {
                             return setPlotOwner(context.getSource(), name);
                         }));
         builder.then(setOwnerBuilder);
+
+        // Founder utility: change current claimed plot type (including back to plain
+        // "plot").
+        LiteralArgumentBuilder<CommandSourceStack> setTypeBuilder = Commands.literal("settype")
+                .then(Commands.argument("type", StringArgumentType.word())
+                        .suggests((context, builder2) -> {
+                            for (String type : VALID_PLOT_TYPES) {
+                                builder2.suggest(type);
+                            }
+                            return builder2.buildFuture();
+                        })
+                        .executes(context -> {
+                            String type = StringArgumentType.getString(context, "type");
+                            return setPlotType(context.getSource(), type);
+                        }));
+        builder.then(setTypeBuilder);
 
         // TODO do a /plot biomes command also!
 
@@ -205,6 +222,14 @@ public class PlotCommand {
                         .withStyle(ChatFormatting.WHITE));
             } else {
                 response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.WHITE));
+            }
+
+            // If pasture plot show animal count.
+            if (chunkData.getType().equalsIgnoreCase("pasture")) {
+                int animalCount = com.falazar.farmupcraft.AnimalsManager.countAnimalsInChunk(serverLevel,
+                        playerSource.blockPosition());
+                response.append(Component.literal("Animals: " + animalCount + " / 30\n")
+                        .withStyle(ChatFormatting.GREEN));
             }
 
             // If farm plot show all crops planted.
@@ -527,10 +552,10 @@ public class PlotCommand {
                 return 0;
             }
 
-            // Founder-only access (name-based, as stored in village founder field).
+            // Founder-only access, with creative bypass.
             String founder = village.getFounder() == null ? "" : village.getFounder();
             String actorName = actor.getName().getString();
-            if (!founder.equalsIgnoreCase(actorName)) {
+            if (!actor.isCreative() && !founder.equalsIgnoreCase(actorName)) {
                 source.sendFailure(Component.literal("Only the village founder can use /plot setowner."));
                 return 0;
             }
@@ -547,6 +572,104 @@ public class PlotCommand {
 
             source.sendSuccess(() -> Component.literal(
                     "Plot owner set to " + target.getName().getString() + " for chunk " + chunkPos + "."), false);
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+            return 0;
+        }
+    }
+
+    // Founder-only: change current claimed plot type. Costs current plot buy price
+    // each change (creative is free).
+    public static int setPlotType(CommandSourceStack source, String newPlotType) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player actor = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (actor == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            String targetType = newPlotType == null ? "" : newPlotType.trim().toLowerCase(Locale.ROOT);
+            if (!VALID_PLOT_TYPES.contains(targetType)) {
+                source.sendFailure(Component.literal(
+                        "Invalid plot type. Must be one of: " + String.join(", ", VALID_PLOT_TYPES) + "."));
+                return 0;
+            }
+
+            ChunkPos chunkPos = new ChunkPos(actor.blockPosition());
+            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+            ChunkData chunk = chunkDb.getData(chunkPos.toLong());
+            if (chunk == null || chunk.getVillageId() == null) {
+                source.sendFailure(Component.literal("You are not standing on a claimed village plot."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = villageDb.getData(chunk.getVillageId());
+            if (village == null) {
+                source.sendFailure(Component.literal("Village data not found for this plot."));
+                return 0;
+            }
+
+            PlayerData actorData = ModEvents.getPlayerDatabase().getData(actor.getUUID());
+            if (actorData == null || actorData.getHomeVillageUUID() == null
+                    || !actorData.getHomeVillageUUID().equals(village.getUUID())) {
+                source.sendFailure(Component.literal("This plot is not in your village."));
+                return 0;
+            }
+
+            String founder = village.getFounder() == null ? "" : village.getFounder();
+            String actorName = actor.getName().getString();
+            if (!founder.equalsIgnoreCase(actorName)) {
+                source.sendFailure(Component.literal("Only the village founder can use /plot settype."));
+                return 0;
+            }
+
+            String oldType = chunk.getType() == null ? "village" : chunk.getType().toLowerCase(Locale.ROOT);
+            if (oldType.equals(targetType)) {
+                source.sendSuccess(() -> Component.literal("This plot is already type '" + targetType + "'."), false);
+                return 1;
+            }
+
+            // Apply same type-cap logic used by /plot buy.
+            if (!actor.isCreative() && !targetType.equals("plot")) {
+                int existing = countPlotType(village, targetType);
+                int limit = targetType.equals("house") ? village.getLevel() * 2 : village.getLevel();
+                if (existing >= limit) {
+                    source.sendFailure(Component.literal(
+                            "Village limit reached for type '" + targetType + "': "
+                                    + existing + "/" + limit + " (village level " + village.getLevel() + ")."));
+                    return 0;
+                }
+            }
+
+            int cost = actor.isCreative() ? 0 : calculatePlotCost(village, "plot");
+            if (!actor.isCreative() && actorData.getCoins() < cost) {
+                source.sendFailure(Component.literal("Player does not have enough money."));
+                source.sendFailure(Component.literal("Cost: " + cost));
+                source.sendFailure(Component.literal("Player Coins: " + actorData.getCoins()));
+                return 0;
+            }
+
+            chunk.setType(targetType);
+            chunkDb.putData(chunkPos.toLong(), chunk);
+
+            if (!actor.isCreative()) {
+                actorData.removeCoins(cost);
+                ModEvents.getPlayerDatabase().putData(actor.getUUID(), actorData);
+            }
+
+            if (actor instanceof ServerPlayer serverPlayer) {
+                FarmCraftCommand.refreshVillageChunksOverlay(serverPlayer);
+            }
+
+            int finalCost = cost;
+            source.sendSuccess(
+                    () -> Component.literal("Plot type changed from '" + oldType + "' to '" + targetType
+                            + "' for " + finalCost + " coins."),
+                    false);
             return 1;
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));

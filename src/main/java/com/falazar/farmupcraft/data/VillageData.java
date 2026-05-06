@@ -214,11 +214,11 @@ public class VillageData {
         this.lastAnimalTypeChange = date;
     }
 
-    // Returns true if it has been at least 7 days since the animal type was last
+    // Returns true if it has been at least 14 days since the animal type was last
     // changed.
     public boolean canChangeAnimalType() {
         java.time.LocalDate last = java.time.LocalDate.parse(getLastAnimalTypeChange());
-        return java.time.LocalDate.now().isAfter(last.plusDays(6));
+        return java.time.LocalDate.now().isAfter(last.plusDays(13));
     }
 
     public String getFounder() {

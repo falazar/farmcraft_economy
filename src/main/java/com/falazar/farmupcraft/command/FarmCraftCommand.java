@@ -89,6 +89,24 @@ public class FarmCraftCommand {
 
         pDispatcher.register(builder);
 
+        // /farmcraft admin settings - view/toggle world settings (admin only)
+        pDispatcher.register(Commands.literal("farmcraft")
+                .then(Commands.literal("admin")
+                        .requires(source -> source.hasPermission(2))
+                        .then(Commands.literal("settings")
+                                // /farmcraft admin settings - show current values
+                                .executes(context -> showAdminSettings(context.getSource()))
+                                // /farmcraft admin settings useFarms <true|false>
+                                .then(Commands.literal("useFarms")
+                                        .then(Commands.argument("value", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                                .executes(context -> setAdminSetting(context.getSource(), "useFarms",
+                                                        com.mojang.brigadier.arguments.BoolArgumentType.getBool(context, "value")))))
+                                // /farmcraft admin settings useBiomeCropRules <true|false>
+                                .then(Commands.literal("useBiomeCropRules")
+                                        .then(Commands.argument("value", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                                .executes(context -> setAdminSetting(context.getSource(), "useBiomeCropRules",
+                                                        com.mojang.brigadier.arguments.BoolArgumentType.getBool(context, "value")))))))); 
+
         // /frecipe <itemId> - sends OpenJeiRecipePacket to the player so JEI opens
         // client-side
         pDispatcher.register(Commands.literal("frecipe")
@@ -293,6 +311,38 @@ public class FarmCraftCommand {
         EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimId), player);
         source.sendSuccess(() -> Component.literal("All map overlays cleared.")
                 .withStyle(ChatFormatting.GREEN), false);
+        return 1;
+    }
+
+    public static int showAdminSettings(CommandSourceStack source) {
+        com.falazar.farmupcraft.data.WorldData worldData = ModEvents.getWorldData();
+        MutableComponent response = Component.literal("--- FarmCraft Admin Settings ---\n")
+                .withStyle(ChatFormatting.YELLOW)
+                .append(Component.literal("useFarms: ").withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(String.valueOf(worldData.isUseVillageFarms()) + "\n")
+                        .withStyle(worldData.isUseVillageFarms() ? ChatFormatting.GREEN : ChatFormatting.RED))
+                .append(Component.literal("useBiomeCropRules: ").withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(String.valueOf(worldData.isUseBiomeCropRules()) + "\n")
+                        .withStyle(worldData.isUseBiomeCropRules() ? ChatFormatting.GREEN : ChatFormatting.RED));
+        source.sendSuccess(() -> response, false);
+        return 1;
+    }
+
+    public static int setAdminSetting(CommandSourceStack source, String setting, boolean value) {
+        com.falazar.farmupcraft.database.DataBase<Integer, com.falazar.farmupcraft.data.WorldData> worldDb =
+                ModEvents.getWorldDataDatabase();
+        com.falazar.farmupcraft.data.WorldData worldData = ModEvents.getWorldData();
+        if (setting.equals("useFarms")) {
+            worldData.setUseVillageFarms(value);
+        } else if (setting.equals("useBiomeCropRules")) {
+            worldData.setUseBiomeCropRules(value);
+        } else {
+            source.sendFailure(Component.literal("Unknown setting: " + setting));
+            return 0;
+        }
+        worldDb.putData(0, worldData);
+        source.sendSuccess(() -> Component.literal("Set " + setting + " = " + value)
+                .withStyle(ChatFormatting.GREEN), true);
         return 1;
     }
 }

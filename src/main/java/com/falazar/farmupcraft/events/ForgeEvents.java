@@ -49,6 +49,7 @@ import java.util.concurrent.CompletableFuture;
  */
 @Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ForgeEvents {
+    private static final String NO_CHORES_MSG = "You should make a chores list instead";
 
     /**
      * Called when the server is about to start.
@@ -171,12 +172,13 @@ public class ForgeEvents {
      */
     private static void sendDailyTaskSuggestions(ServerPlayer player) {
         try {
-            // Rimfog/ lives one directory above the game run/ folder.
-            Path todoFile = FMLPaths.GAMEDIR.get().getParent().resolve("Rimfog").resolve("TODO.md");
-            if (!Files.exists(todoFile))
+            Path taskFile = FMLPaths.GAMEDIR.get().resolve("Rimfog").resolve("chores.md");
+            if (!Files.exists(taskFile)) {
+                player.sendSystemMessage(Component.literal(NO_CHORES_MSG).withStyle(ChatFormatting.GRAY));
                 return;
+            }
 
-            List<String> allLines = Files.readAllLines(todoFile);
+            List<String> allLines = Files.readAllLines(taskFile);
 
             // Collect non-empty, non-header lines as tasks.
             List<String> tasks = new ArrayList<>();
@@ -189,16 +191,18 @@ public class ForgeEvents {
                         tasks.add(task);
                 }
             }
-            if (tasks.isEmpty())
+            if (tasks.isEmpty()) {
+                player.sendSystemMessage(Component.literal(NO_CHORES_MSG).withStyle(ChatFormatting.GRAY));
                 return;
+            }
 
             // Shuffle with today's date as seed — same order for everyone all day.
             long seed = LocalDate.now().toEpochDay();
             Collections.shuffle(tasks, new Random(seed));
 
-            // Announce with gold "Have Fun!" header.
+            // Announce with gold header.
             player.sendSystemMessage(
-                    Component.literal("Have Fun and do some of those Tasks:")
+                    Component.literal("Have Fun and do some random chores:")
                             .withStyle(ChatFormatting.GOLD));
 
             int shown = Math.min(4, tasks.size());
@@ -208,7 +212,8 @@ public class ForgeEvents {
                                 .withStyle(ChatFormatting.YELLOW));
             }
         } catch (IOException e) {
-            FarmUpCraft.LOGGER.warn("Could not read Rimfog/TODO.md for daily tasks: " + e.getMessage());
+            FarmUpCraft.LOGGER.warn("Could not read chores file for daily tasks: " + e.getMessage());
+            player.sendSystemMessage(Component.literal(NO_CHORES_MSG).withStyle(ChatFormatting.GRAY));
         }
     }
 

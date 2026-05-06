@@ -105,6 +105,13 @@ public final class TreeManager {
             return false;
         }
 
+        // Only apply when right-clicking a log block (cocoa only attaches to logs).
+        // This prevents triggering when opening chests, barrels, etc.
+        BlockState clickedBlockState = event.getLevel().getBlockState(event.getPos());
+        if (!clickedBlockState.is(BlockTags.LOGS)) {
+            return false;
+        }
+
         Player player = (Player) event.getEntity();
         Level level = event.getLevel();
         BlockPos clickedPos = event.getPos();

@@ -1,27 +1,14 @@
 
 BUGS LIST:   
-    TODO CHECK - make a proper invite accept to join a village
-
-    TODO CHECK /village farms shows farms but says nothing is planted, hmmm checking wrong levels?
 END BUGS AREA
 
-
-TODO TEST:
-  TODO CHECK - Add a point to JourneyMap, waypoint and colored chunk area!
-
+\
 GENERAL SOON:
+    TODO CHECK - Charge coins to enchant tools at enchanting table: base cost 100/200/300 for enchant levels 1/2/3, plus 100 per village level.
+
     TODO CHECK - Make lava be gathered from a cauldron to a hopper.   
 
-    TODO CHECK - limit number of each type to 1 per village level, 2 for houses, no limits on regular plots
-    - farm worked, test others. 
-
-    TODO CHECK - Make decay or uses for the cookware from harvestcraft 2.
-    if not in kitchen, if in kitchen free. 
-    start with 500 uses so it can do about 10 stacks of food before breaking.  
-    
-    TODO CHECK - make breeding animals not allowed except within village.
-        limit breeding type of animal to 1 per village, stored on village object.
-        once per day on breeding and milking
+    TODO CHECK - make breeding animals changeable once every two weeks only, if htey change it is locked for two weeks
 
     TODO CHECK - flag that says every 5 min if im not in hard mode, if only one player on, and it has my name!!!!!!!
     
@@ -29,37 +16,7 @@ GENERAL SOON:
 
     TODO CHECK: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
 
-    TODO CHECK - When logging in shuffle sort the todo list file in Rimfog dir, keyed to todays date  so it doesnt change. 
-    Then suggest to the player to Have Fun and do some of those Tasks: and list first four. 
-didnt show this any??
-
-    TODO CHECK - when a /market show command is run, make sure the initial stuff has been run and setup. 
-      if no items in market we need to call the method to add 5 wood items, 5 stone, 10 general and 15 food
-
-    TODO CHECK - add a commmand to initialize all villagers in the village, grab that list, and create a json npcData file (only if not existing) for them giving a wide variety of personality types and habits and likes and dislikes. 
-
 CURRENT SECTION:
-    TODO CHECK BUG - added a waypoint with /farmcraft map waypoint -2305 65 1885 TASTERY!
-    But then we couldnt edit or remove it, ack...
-    make a remove method also, but try and make sure its created as a normal one so we can edit?
-    It did show up on the map though, yay!  is it a temp one?
-
-    TODO CHECK - can we make the chunk color more transparent, just barely visible maybe 10% 15%
-    and command to turn it off on that chunk
-
-    TODO CHECK - make a map command that will draw the squares on every claimed chunk in your Village
-    And one to toggle them off again. 
-
-TODO CHECK BUG - Tested the grinder, it returned one too our inventory with an NBT tag but cant tell any uses, 
-and then it returned the original, so lets find another way to do this. 
-Similar to picks and shovels and a fish knife from other mod. 
-
-TODO CHECK - Make each breed of farm animals require 2 different types of grain, keyed off the xz combo value
-so sheep might be corn and wheat and chickens might be alfalfa and millet
-Include all grains and hays, they should be set and saved to village on creation. 
-if village loaded and they are not set, go ahead and call the function then.
-/village animals  should show that list
-
 
 
 

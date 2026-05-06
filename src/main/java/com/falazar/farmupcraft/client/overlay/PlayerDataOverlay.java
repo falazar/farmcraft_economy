@@ -13,6 +13,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
+import java.text.NumberFormat;
 import java.util.UUID;
 
 public class PlayerDataOverlay {
@@ -89,7 +90,7 @@ public class PlayerDataOverlay {
         guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFFFFF, true);
         currentY += lineSpacing;
 
-        guiGraphics.drawString(mc.font, Component.literal("Coins: " + playerData.getCoins()), paddingLeft, currentY,
+        guiGraphics.drawString(mc.font, Component.literal("Coins: " + NumberFormat.getInstance().format(playerData.getCoins())), paddingLeft, currentY,
                 0xFFD700, true);
     };
 

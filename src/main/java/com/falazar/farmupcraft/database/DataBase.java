@@ -211,6 +211,8 @@ public class DataBase<M, V> extends SavedData {
     }
 
     public V getData(M key) {
+        if (key == null)
+            return null;
         readWriteLock.readLock().lock();
         try {
             V value = cache.get(key);
@@ -226,6 +228,8 @@ public class DataBase<M, V> extends SavedData {
     }
 
     public boolean containsKey(M key) {
+        if (key == null)
+            return false;
         readWriteLock.readLock().lock();
         try {
             return data.containsKey(key);

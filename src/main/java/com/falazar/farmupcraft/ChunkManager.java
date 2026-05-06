@@ -15,6 +15,8 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
@@ -244,15 +246,27 @@ public class ChunkManager {
 
         BlockPos pos = event.getPos();
 
+        ChunkPos chunkPos = new ChunkPos(pos);
+        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+
+        // Prevent water/lava bucket griefing in villages the player does not belong to.
+        if (chunkData != null && isRestrictedBucket(event.getItemStack())
+                && !isPlayerVillageMember(player, chunkData)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You are not a member of this village.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return;
+        }
+
         // Only check protected block types.
         BlockState state = event.getLevel().getBlockState(pos);
         if (!isProtectedAccessBlock(state))
             return;
 
         // Get chunk data for this plot.
-        ChunkPos chunkPos = new ChunkPos(pos);
-        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData chunkData = dataBase.getData(chunkPos.toLong());
         if (chunkData == null)
             return;
 
@@ -316,6 +330,20 @@ public class ChunkManager {
             return;
         }
 
+        // Prevent placing logs in nursery plots to avoid double bonuses.
+        BlockState placingState = event.getPlacedBlock();
+        if (placingState.is(BlockTags.LOGS)) {
+            Level level = player.getCommandSenderWorld();
+            if (getPlotType(pos, level).equals("nursery")) {
+                event.setCanceled(true);
+                player.displayClientMessage(
+                        Component.literal("You cannot place logs in a nursery plot.")
+                                .withStyle(ChatFormatting.RED),
+                        true);
+                return;
+            }
+        }
+
         ChunkPos chunkPos = new ChunkPos(pos);
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
         ChunkData chunkData = dataBase.getData(chunkPos.toLong());
@@ -344,8 +372,8 @@ public class ChunkManager {
         }
     }
 
-    // Prevent non-members from breaking doors/chests, and enforce house
-    // owner/visitor permissions for these blocks on house plots.
+    // Prevent non-members from breaking blocks in village plots, and enforce house
+    // owner/visitor permissions on house plots.
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
         if (event.getLevel().isClientSide())
@@ -353,10 +381,6 @@ public class ChunkManager {
 
         Player player = event.getPlayer();
         if (player == null || player.isCreative())
-            return;
-
-        BlockState state = event.getState();
-        if (!isProtectedAccessBlock(state))
             return;
 
         BlockPos pos = event.getPos();
@@ -382,7 +406,7 @@ public class ChunkManager {
         if (chunkData.getType().equalsIgnoreCase("house") && !hasHouseAccess(player, chunkData, dataBase, chunkPos)) {
             event.setCanceled(true);
             player.displayClientMessage(
-                    Component.literal("You do not have permission to break protected blocks on this house plot.")
+                Component.literal("You do not have permission to break blocks on this house plot.")
                             .withStyle(ChatFormatting.RED),
                     true);
         }
@@ -390,8 +414,20 @@ public class ChunkManager {
 
     private static boolean isProtectedAccessBlock(BlockState state) {
         boolean isDoor = state.is(BlockTags.DOORS) || state.is(BlockTags.TRAPDOORS);
+        boolean isGate = isGateBlock(state);
         boolean isContainer = state.is(BlockTags.SHULKER_BOXES) || isChestOrBarrel(state);
-        return isDoor || isContainer;
+        return isDoor || isGate || isContainer;
+    }
+
+    private static boolean isGateBlock(BlockState state) {
+        if (state.is(BlockTags.FENCE_GATES))
+            return true;
+
+        String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
+                .getKey(state.getBlock()).toString();
+        return id.contains("fence_gate")
+                || id.contains("upgrade_gate")
+                || id.contains("picket_gate");
     }
 
     private static boolean isPlayerVillageMember(Player player, ChunkData chunkData) {
@@ -432,5 +468,9 @@ public class ChunkManager {
         String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
                 .getKey(state.getBlock()).toString();
         return id.contains("rock") && id.contains("path");
+    }
+
+    private static boolean isRestrictedBucket(ItemStack stack) {
+        return stack != null && (stack.is(Items.WATER_BUCKET) || stack.is(Items.LAVA_BUCKET));
     }
 }

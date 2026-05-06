@@ -243,7 +243,7 @@ public class AnimalsManager {
     }
 
     // Count all Animal entities in the chunk containing blockPos.
-    private static int countAnimalsInChunk(Level level, net.minecraft.core.BlockPos pos) {
+    public static int countAnimalsInChunk(Level level, net.minecraft.core.BlockPos pos) {
         ChunkPos chunkPos = new ChunkPos(pos);
         double minX = chunkPos.getMinBlockX();
         double minZ = chunkPos.getMinBlockZ();
@@ -300,7 +300,7 @@ public class AnimalsManager {
                 if (!allowed.equals(animalSpecies)) {
                     return cancelWithError(event, player,
                             "Your village only breeds " + allowed
-                                    + "s. Use /village setanimal to change (once per week).");
+                                + "s. Use /village setanimal to change (once every 2 weeks).");
                 }
             }
 

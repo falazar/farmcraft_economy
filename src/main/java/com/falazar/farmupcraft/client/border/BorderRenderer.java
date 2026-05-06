@@ -185,16 +185,20 @@ public class BorderRenderer {
         UUID playerUUID = player.getUUID();
 
         DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase(level);
+        if (playerDataDataBase == null)
+            return false;
         if (!playerDataDataBase.containsKey(playerUUID))
             return false;
         PlayerData playerData = playerDataDataBase.getData(playerUUID);
         if (playerData == null)
             return false;
         UUID villageId = playerData.getHomeVillageUUID();
-        if (villageId == null)
+        if (villageId == null || villageId.equals(new UUID(0L, 0L)))
             return false;
 
         DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(level);
+        if (villageDataDB == null)
+            return false;
         if (!villageDataDB.containsKey(villageId))
             return false;
         boolean nearClaim = false;
@@ -239,16 +243,20 @@ public class BorderRenderer {
         UUID playerUUID = player.getUUID();
 
         DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase(level);
+        if (playerDataDataBase == null)
+            return false;
         if (!playerDataDataBase.containsKey(playerUUID))
             return false;
         PlayerData playerData = playerDataDataBase.getData(playerUUID);
         if (playerData == null)
             return false;
         UUID villageId = playerData.getHomeVillageUUID();
-        if (villageId == null)
+        if (villageId == null || villageId.equals(new UUID(0L, 0L)))
             return false;
 
         DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(level);
+        if (villageDataDB == null)
+            return false;
 
         if (!villageDataDB.containsKey(villageId))
             return false;

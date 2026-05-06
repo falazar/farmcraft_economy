@@ -311,12 +311,10 @@ public class MarketCommand {
             }
         }
 
-        // STEP 3: Sort by dateAddedToMarket newest to oldest.
-        // goodsData.sort(Comparator.comparing(GoodsData::getDateAddedToMarket).reversed());
-        // STEP 3: Sort by dateAddedToMarket newest to oldest, then by cost ascending.
+        // STEP 3: Sort by cost ascending so market displays cheapest -> most expensive.
         goodsData.sort(
-                Comparator.comparing(GoodsData::getDateAddedToMarket).reversed()
-                        .thenComparingInt(GoodsData::getCost));
+                Comparator.comparingInt(GoodsData::getCost)
+                        .thenComparing(GoodsData::getItemId));
         return goodsData;
     }
 

@@ -34,7 +34,7 @@ public class WorldScheduler {
     public static final CustomLogger LOGGER = new CustomLogger(WorldScheduler.class.getSimpleName());
 
     private static final int TICKS_PER_HOUR = 72000; // 20 * 60 * 60
-    private static final int TICKS_PER_5_MIN = 6000;  // 20 * 60 * 5
+    private static final int TICKS_PER_5_MIN = 6000; // 20 * 60 * 5
     private static final String HARD_MODE_PLAYER = "BossPanda96366";
 
     private static int tickCounter = 0;
@@ -110,26 +110,36 @@ public class WorldScheduler {
         LOGGER.info("WorldScheduler: hourly village upkeep ran for {} online player villages.", count);
     }
 
-    // Checks every 5 minutes if the target player is online solo in non-hard mode.
+    // Checks every 5 minutes if the target player is online with others in hard
+    // mode.
     private static void checkHardMode() {
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-        if (server == null) return;
+        if (server == null)
+            return;
 
         List<ServerPlayer> players = server.getPlayerList().getPlayers();
-        if (players.size() != 1) return; // Only fire when exactly one player is online.
+        if (players.size() < 2)
+            return; // Only fire when multiple players are online.
 
-        ServerPlayer player = players.get(0);
-        if (!player.getName().getString().equals(HARD_MODE_PLAYER)) return;
+        ServerPlayer target = null;
+        for (ServerPlayer p : players) {
+            if (p.getName().getString().equals(HARD_MODE_PLAYER)) {
+                target = p;
+                break;
+            }
+        }
+        if (target == null)
+            return;
 
         Difficulty difficulty = server.overworld().getDifficulty();
-        if (difficulty != Difficulty.HARD) {
-            player.displayClientMessage(
-                    Component.literal("⚠ Difficulty is " + difficulty.getKey().toUpperCase()
-                            + " — switch to HARD mode!")
-                            .withStyle(ChatFormatting.RED),
-                    false);
-            LOGGER.warn("Hard mode check: {} is playing on {} difficulty.", HARD_MODE_PLAYER, difficulty.getKey());
-        }
+        if (difficulty != Difficulty.HARD)
+            return;
+
+        target.displayClientMessage(
+                Component.literal("Hard mode is ON with multiple players online.")
+                        .withStyle(ChatFormatting.GREEN),
+                false);
+        LOGGER.info("Hard mode check: {} online with {} players on HARD.", HARD_MODE_PLAYER, players.size());
     }
 
     // Export village and player databases as human-readable JSON whenever the

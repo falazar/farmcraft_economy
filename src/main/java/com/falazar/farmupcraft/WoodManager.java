@@ -7,12 +7,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.Random;
 
@@ -90,7 +90,7 @@ public class WoodManager {
         if (randomNum <= successRate / 6) {
             // Give bonus wood.
             int bonusWood = 1;
-            ItemStack stack = new ItemStack(Items.OAK_LOG, bonusWood);
+            ItemStack stack = new ItemStack(blockState.getBlock().asItem(), bonusWood);
             player.addItem(stack);
             // Only show this message 1 out of 10 times.
             randomNum = rand.nextInt(10); // 10% 0-9
@@ -98,6 +98,16 @@ public class WoodManager {
                 player.displayClientMessage(Component.literal("You got " + bonusWood + " bonus logs!"), false);
             }
             LOGGER.info("DEBUG: Giving bonus wood: " + bonusWood + " at " + event.getPos());
+        }
+
+        // STEP 8: Bonus extra item for special log types (cinnamon, maple) in nursery.
+        ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(blockState.getBlock());
+        if (blockId != null && ChunkManager.getPlotType(event.getPos(), level).equals("nursery")) {
+            String blockPath = blockId.getPath();
+            if (blockPath.contains("cinnamon") || blockPath.contains("maple")) {
+                player.addItem(new ItemStack(blockState.getBlock().asItem(), 1));
+                LOGGER.info("DEBUG: Giving special bonus log for " + blockId + " at " + event.getPos());
+            }
         }
     }
 }

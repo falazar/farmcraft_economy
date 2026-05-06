@@ -105,11 +105,12 @@ public class CropsManager {
         // Must happen BEFORE the farmland check since these are planted on
         // dirt/sand/grass, not farmland.
         if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
-            if (!ChunkManager.getPlotType(clickedPos, level).equals("farm")) {
+            boolean useFarms = ModEvents.getWorldData().isUseVillageFarms();
+            if (useFarms && !ChunkManager.getPlotType(clickedPos, level).equals("farm")) {
                 event.setCanceled(true);
                 return;
             }
-            // Valid farm plot — allow placement without requiring farmland below.
+            // Valid farm plot (or useFarms is off) — allow placement without requiring farmland below.
             return;
         }
 
@@ -131,6 +132,9 @@ public class CropsManager {
         Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
 
         // The biome has rules defined for what can happen in it or not!
+        if (!ModEvents.getWorldData().isUseBiomeCropRules())
+            return;
+
         BiomeRulesManager manager = BiomeRulesManager.get(event.getLevel());
         if (manager == null || !manager.hasRules())
             return;
@@ -175,7 +179,7 @@ public class CropsManager {
             // TODO see if its our own farm!!!
 
             // STEP 4: See if we are on a farm plot now.
-            if (ChunkManager.getPlotType(event.getPos(), level).equals("farm")) {
+            if (!ModEvents.getWorldData().isUseVillageFarms() || ChunkManager.getPlotType(event.getPos(), level).equals("farm")) {
                 // LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
             } else {
                 // Cancel event and return now.
