@@ -20,8 +20,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.stats.Stats;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.StructureTags;
@@ -44,6 +42,7 @@ import net.minecraft.world.level.StructureManager;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.CropBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
@@ -59,7 +58,6 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.*;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
-import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
 
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class CropsManager {
@@ -108,9 +106,13 @@ public class CropsManager {
             boolean useFarms = ModEvents.getWorldData().isUseVillageFarms();
             if (useFarms && !ChunkManager.getPlotType(clickedPos, level).equals("farm")) {
                 event.setCanceled(true);
+                player.displayClientMessage(Component.literal(
+                        "Sugar cane and sweet berries can only be planted on farm plots. Use /plot buy farm to purchase one.")
+                        .withStyle(ChatFormatting.RED), false);
                 return;
             }
-            // Valid farm plot (or useFarms is off) — allow placement without requiring farmland below.
+            // Valid farm plot (or useFarms is off) — allow placement without requiring
+            // farmland below.
             return;
         }
 
@@ -179,7 +181,8 @@ public class CropsManager {
             // TODO see if its our own farm!!!
 
             // STEP 4: See if we are on a farm plot now.
-            if (!ModEvents.getWorldData().isUseVillageFarms() || ChunkManager.getPlotType(event.getPos(), level).equals("farm")) {
+            if (!ModEvents.getWorldData().isUseVillageFarms()
+                    || ChunkManager.getPlotType(event.getPos(), level).equals("farm")) {
                 // LOGGER.info("DEBUG3: target block is in a farm plot, allowing hoeing. ");
             } else {
                 // Cancel event and return now.
@@ -199,147 +202,59 @@ public class CropsManager {
         }
     }
 
+    /**
+     * When a fully-grown PAM HC2 crop is right-click harvested on a farm plot,
+     * roll for a bonus crop drop based on the farm plot's level.
+     * Level 1 = no bonus, Level 2 = +20%, Level 3 = +40%, Level 4 = +60%.
+     */
     @SubscribeEvent
-    public static void onRightClickHarvestTrees(PlayerInteractEvent.RightClickBlock event) {
-        // Check if the event is on client side, then skip.
-        if (event.getEntity().level().isClientSide) {
-            return;
-        }
-        // Ensure the event is only processed for the main hand
-        if (event.getHand() != InteractionHand.MAIN_HAND) {
-            return;
-        }
-        // triggering multiple times?? once with air?
-        // LOGGER.info("\n TRIGGERED: onRightHarvestTrees event. ");
+    public static void onRightClickHarvestCrops(PlayerInteractEvent.RightClickBlock event) {
+        if (event.getEntity().level().isClientSide()) return;
+        if (event.getHand() != InteractionHand.MAIN_HAND) return;
 
-        // Step 1: If in creative mode, skip all rules and allow.
         Player player = (Player) event.getEntity();
-        if (player.getUsedItemHand() != InteractionHand.MAIN_HAND)
-            return;
-        if (player.isCreative()) {
-            return;
-        }
+        if (player.isCreative()) return;
 
-        // STEP 2: If holding bone meal skip area also!
-        ItemStack stack = event.getItemStack();
-        if (stack.is(Items.BONE_MEAL)) {
-            return;
-        }
+        // Skip when holding bone meal.
+        if (event.getItemStack().is(Items.BONE_MEAL)) return;
 
-        // STEP 3: Test if target block is tree fruit, else leave.
+        // Only handle PAM HC2 crops.
         Level level = event.getLevel();
         BlockPos clickedPos = event.getPos();
         BlockState blockState = level.getBlockState(clickedPos);
         Block block = blockState.getBlock();
         String blockId = block.getDescriptionId();
-        if (!blockId.contains("pamhc2trees")) {
-            return;
-        }
+        if (!blockId.contains("pamhc2crops")) return;
 
-        // STEP 4: Get age of fruit. TODO test cinnamon
-        int age = blockState.getValue(AGE);
-        if (age < 7) {
-            return;
-        }
+        // Must be fully grown.
+        if (!(block instanceof CropBlock cropBlock)) return;
+        if (!cropBlock.isMaxAge(blockState)) return;
 
-        // Get Item and name.
-        ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
-        // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
-        // TODO MAKE METHOD.
-        // LOGGER.info("DEBUG blockId is " + blockId);
-        String itemName = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";
-        // Special case: Convert apple to old item name.
-        // block.pamhc2trees.pamapple
-        if (blockId.equals("block.pamhc2trees.pamapple")) {
-            itemName = "minecraft:apple";
-        }
-        // Get item from new name.
+        // Must be on a farm plot (quiet type check first).
+        if (!ChunkManager.getPlotType(clickedPos, level).equalsIgnoreCase("farm")) return;
+
+        // Get farm plot level.
+        ChunkData farmChunk = ChunkManager.getPlot(clickedPos);
+        int farmLevel = farmChunk != null ? farmChunk.getPlotLevel() : 1;
+        // Level 1 = no bonus, Level 2 = +20%, Level 3 = +40%, Level 4 = +60%.
+        int bonusChance = farmLevel <= 1 ? 0 : (farmLevel - 1) * 20;
+        if (bonusChance <= 0) return;
+
+        // Derive crop item name from block description ID.
+        // e.g. block.pamhc2crops.pamasparaguscrop -> pamhc2crops:asparagusitem
+        String itemName = "pamhc2crops:" + blockId.replace("block.pamhc2crops.pam", "").replace("crop", "") + "item";
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
-        // LOGGER.info("DEBUG: item is " + item);
-
-        // Our base success rate.
-        int successPercent = 40;
-
-        // STEP 5: Get how many fruits of this kind you have harvested from statistics.
-        int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
-        // get times dropped, subtract the two will be close.
-        int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
-        int timesHarvested = timesPickedUp - timesDropped;
-        // TODO can you hack stats or do they come from multiple servers?
-        successPercent += (timesHarvested / 100) * 2; // 2% per 100 harvested.
-        LOGGER.info("DEBUG: " + itemName + " timesharvested " + timesHarvested + " times. successPercent is "
-                + successPercent);
-
-        // STEP 6: Calc a percent chance of success or failure, and fruit dies.
-        // If age is 7 its ripe, break block fruit!
-        // 75% chance of success, hardcoded for now.
-        successPercent += player.experienceLevel;
-        // TODO and New real player level.
-        LOGGER.info("DEBUG: fruit harvest after player exp successPercent is " + successPercent);
-
-        // STEP 7: Add in percent if they are in a nursery.
-        // TODO cleanup method.
-        // TODO add nursery level.
-        if (ChunkManager.getPlotType(event.getPos(), level).equals("nursery")) {
-            successPercent += 20;
-            LOGGER.info("DEBUG3: target fruit is in a nursery plot, adding bonus. successPercent is " + successPercent);
-        }
-        // TODO make small helper method!!!!!!
-        // TODO make small helper method!!!!!!
-        // TODO make small helper method!!!!!!
-        // TODO make small helper method!!!!!!
-        Biome biome = level.getBiome(event.getPos()).value();
-        ResourceLocation biomeRes = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-        String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
-        if (biomeName.equals("orchard")) {
-            successPercent += 20;
-            LOGGER.info("DEBUG3: target fruit is in a orchard plot, adding bonus. successPercent is " + successPercent);
-        }
-        // todo test working???
-
-        // STEP 8: Roll for success or failure.
-        int finalSuccessPercent = Math.min(successPercent, 98); // max 98 percent.
-        // TODO make short roll method.
-        Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= finalSuccessPercent) {
-            // Cancel event and return now.
-            event.setCanceled(true);
-
-            // Break the fruit block. (set to air)
-            BlockState air = Blocks.AIR.defaultBlockState();
-            level.setBlock(clickedPos, air, 3);
-
-            // Show message to player.
-            player.displayClientMessage(Component.literal("You failed to harvest the fruit!"), false);
+        if (item == null) {
+            LOGGER.info("DEBUG: onRightClickHarvestCrops: no item found for {} -> {}", blockId, itemName);
             return;
         }
 
-        // TODO calc a percent chance of double fruit,
-        // TODO Higher at high nursery and player levels.
-        // STEP 8: Roll for Extra fruit.
-        int doubleSuccessPercent = successPercent / 2;
-        // If over 25 get bonus fruits.
-        if (player.experienceLevel > 25) {
-            LOGGER.info("DEBUG: fruit harvest doubleSuccessPercent is " + doubleSuccessPercent);
-            randomNum = rand.nextInt(100); // 100% 0-99
-            if (randomNum <= doubleSuccessPercent) {
-                int bonusCnt = 1;
-                if (randomNum <= doubleSuccessPercent - 25) {
-                    // Add another!
-                    bonusCnt = 2;
-                }
-
-                // Give player a fruit item.
-                ItemStack itemStack = new ItemStack(item, bonusCnt);
-                player.addItem(itemStack);
-                // Only show this message 1 out of 10 times.
-                randomNum = rand.nextInt(10); // 10% 0-9
-                if (randomNum == 0) {
-                    player.displayClientMessage(Component.literal("You got " + bonusCnt + " bonus fruit!"), false);
-                }
-                LOGGER.info("DEBUG: block got bonus fruit named " + blockId);
-            }
+        // Roll for bonus crop.
+        Random rand = new Random();
+        int roll = rand.nextInt(100);
+        if (roll < bonusChance) {
+            player.addItem(new ItemStack(item, 1));
+            LOGGER.info("DEBUG: Farm level {} crop bonus! item={} roll={}/{}%", farmLevel, itemName, roll, bonusChance);
         }
     }
 
@@ -849,11 +764,5 @@ public class CropsManager {
         // recipe not found.
         return null;
     }
-
-    // Moved to StoneManager.java
-    // @SubscribeEvent onBreakStone
-
-    // Moved to WoodManager.java
-    // @SubscribeEvent onBreakLogs
 
 }

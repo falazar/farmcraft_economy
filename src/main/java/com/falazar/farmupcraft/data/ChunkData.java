@@ -19,9 +19,13 @@ public class ChunkData {
             UUIDUtil.STRING_CODEC.fieldOf("village_id").forGetter(ChunkData::getVillageId),
             UUIDUtil.STRING_CODEC.optionalFieldOf("owner_uuid").forGetter(c -> Optional.ofNullable(c.getOwnerUUID())),
             Codec.STRING.listOf().optionalFieldOf("visitors", List.of()).forGetter(ChunkData::getVisitors),
-            Codec.INT.optionalFieldOf("bought_y", 60).forGetter(ChunkData::getBoughtY))
-            .apply(instance, (type, playerId, villageId, ownerUUID, visitors, boughtY) -> new ChunkData(type, playerId,
-                    villageId, ownerUUID.orElse(null), visitors, boughtY)));
+            Codec.INT.optionalFieldOf("bought_y", 60).forGetter(ChunkData::getBoughtY),
+            Codec.INT.optionalFieldOf("plot_level", 1).forGetter(ChunkData::getPlotLevel))
+            .apply(instance, (type, playerId, villageId, ownerUUID, visitors, boughtY, plotLevel) -> {
+                ChunkData cd = new ChunkData(type, playerId, villageId, ownerUUID.orElse(null), visitors, boughtY);
+                cd.setPlotLevel(plotLevel);
+                return cd;
+            }));
     // TODO remove playerId from chunkdata, not needed only village, should be
     // nullable tho
     private String type;
@@ -30,6 +34,7 @@ public class ChunkData {
     private UUID ownerUUID; // The player UUID who owns this plot (set on plot purchase).
     private List<String> visitors; // Player names allowed to use doors/chests on this plot.
     private int boughtY; // Y level where the plot was purchased.
+    private int plotLevel = 1; // Upgrade level of this plot (starts at 1).
 
     /**
      * Constructs a new ChunkData object.
@@ -158,6 +163,14 @@ public class ChunkData {
 
     public void setBoughtY(int boughtY) {
         this.boughtY = boughtY;
+    }
+
+    public int getPlotLevel() {
+        return plotLevel;
+    }
+
+    public void setPlotLevel(int plotLevel) {
+        this.plotLevel = plotLevel;
     }
 
     /**

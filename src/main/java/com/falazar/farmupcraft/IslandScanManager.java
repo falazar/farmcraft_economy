@@ -1,0 +1,881 @@
+package com.falazar.farmupcraft;
+
+import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.database.message.ScanWaypointsPacket;
+import com.falazar.farmupcraft.util.CustomLogger;
+import com.google.gson.*;
+import java.util.Random;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.BiomeTags;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraftforge.fml.loading.FMLPaths;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+/**
+ * Scans a radius around a player to identify islands and lakes.
+ *
+ * Algorithm summary:
+ * 1. Sparse grid sampling (every 5 blocks, grid-aligned) finds water/land
+ * seeds.
+ * 2. S-erosion: water within ±2 of land is "shallow" and excluded from water
+ * flood-fills.
+ * This pre-splits lake bodies from rivers/oceans through narrow channels.
+ * 3. Water flood-fill (non-shallow only) → classify: river (any IS_RIVER
+ * block),
+ * ocean (size > OCEAN_THRESHOLD), or lake.
+ * 4. Land flood-fill → C-erosion: land within ±2 of water is "coastal".
+ * Interior BFS checks if any non-coastal land escapes the body → peninsula →
+ * skip.
+ * 5. Results saved to findings.json; visited coords cached in scan_cache.json.
+ */
+public class IslandScanManager {
+    public static final CustomLogger LOGGER = new CustomLogger(IslandScanManager.class.getSimpleName());
+
+    // --- Tuning constants ---
+    private static final int GRID_STEP = 5;
+    private static final int EROSION_DIST = 2; // C / S erosion radius (±2 blocks)
+    private static final int OCEAN_THRESHOLD = 1000; // water bodies larger than this = ocean
+    private static final int MIN_FEATURE_SIZE = 10; // ignore tiny features
+    private static final int MAX_BODY_SIZE = 60_000; // bail early if body is mainland/ocean
+
+    // --- XZ packing helpers ---
+    private static long pack(int x, int z) {
+        return ((long) x << 32) | (z & 0xFFFFFFFFL);
+    }
+
+    private static int px(long k) {
+        return (int) (k >> 32);
+    }
+
+    private static int pz(long k) {
+        return (int) (k & 0xFFFFFFFFL);
+    }
+
+    // --- File paths (run/ directory) ---
+    private static Path cacheFile() {
+        return FMLPaths.GAMEDIR.get().resolve("scan_cache.json");
+    }
+
+    private static Path findingsFile() {
+        return FMLPaths.GAMEDIR.get().resolve("findings.json");
+    }
+
+    private static final String[] WP_NAMES = {
+            "Mist", "Storm", "Dawn", "Dusk", "Frost", "Ember", "Tide", "Gale",
+            "Vale", "Cove", "Reef", "Fen", "Briar", "Shoal", "Bluff", "Mere"
+    };
+    private static final Random RNG = new Random();
+
+    private static String randomWpName() {
+        return WP_NAMES[RNG.nextInt(WP_NAMES.length)] + "-" + (100 + RNG.nextInt(900));
+    }
+
+    // --- 4-directional offsets ---
+    private static final int[] DX = { 1, -1, 0, 0 };
+    private static final int[] DZ = { 0, 0, 1, -1 };
+
+    // =========================================================================
+    // Public API
+    // =========================================================================
+
+    /**
+     * Starts the scan asynchronously. Feedback messages are dispatched back to
+     * the server thread so they are safe to send to a player.
+     */
+    public static void runScanAsync(ServerLevel level, int centerX, int centerZ, int radius,
+            Consumer<Component> feedback, ServerPlayer player) {
+        MinecraftServer server = level.getServer();
+        Thread t = new Thread(() -> {
+            try {
+                doScan(level, centerX, centerZ, radius, msg -> server.execute(() -> feedback.accept(msg)), player);
+            } catch (Throwable e) {
+                LOGGER.error("Island scan failed: " + e.getMessage(), e);
+                server.execute(() -> feedback.accept(
+                        Component.literal("Scan error: " + e.getClass().getSimpleName() + " — " + e.getMessage())));
+            }
+        }, "island-scanner");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    /**
+     * Forces a chunk to load on the server thread and waits up to 5s. Returns true
+     * if loaded.
+     */
+    private static boolean forceLoadChunk(ServerLevel level, int chunkX, int chunkZ) {
+        if (level.hasChunk(chunkX, chunkZ))
+            return true;
+        CompletableFuture<Boolean> future = new CompletableFuture<>();
+        level.getServer().execute(() -> {
+            try {
+                level.getChunk(chunkX, chunkZ); // triggers load
+                future.complete(true);
+            } catch (Exception e) {
+                future.complete(false);
+            }
+        });
+        try {
+            return Boolean.TRUE.equals(future.get(5, TimeUnit.SECONDS));
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // Core scan
+    // =========================================================================
+
+    private static void doScan(ServerLevel level, int cx, int cz, int radius,
+            Consumer<Component> feedback, ServerPlayer player) throws IOException {
+        long t0 = System.currentTimeMillis();
+        feedback.accept(Component.literal("Island scan started (radius=" + radius + ")..."));
+
+        Set<Long> visited = loadCache(); // grid seeds from previous scans
+        Set<Long> newVisited = new HashSet<>(); // body blocks, in-memory only for this run
+        Set<Long> processedSeeds = new HashSet<>(); // grid seeds processed this run (saved to cache)
+        List<JsonObject> findings = new ArrayList<>();
+
+        // Grid-aligned scan bounds
+        int x0 = floorGrid(cx - radius), x1 = ceilGrid(cx + radius);
+        int z0 = floorGrid(cz - radius), z1 = ceilGrid(cz + radius);
+
+        int seeds = 0;
+        int skippedUnloaded = 0;
+        int chunksLoaded = 0;
+        int xStepCount = 0;
+        int totalXSteps = (x1 - x0) / GRID_STEP + 1;
+        Set<Long> seenChunks = new HashSet<>();
+        for (int x = x0; x <= x1; x += GRID_STEP) {
+            xStepCount++;
+            String progressMsg = "P: col " + xStepCount + "/" + totalXSteps
+                    + " x=" + x + " found=" + findings.size() + " seeds=" + seeds
+                    + " ffBlocks=" + newVisited.size()
+                    + (skippedUnloaded > 0 ? " skippedChunks=" + skippedUnloaded : "");
+            LOGGER.info(progressMsg);
+            feedback.accept(Component.literal(progressMsg));
+            for (int z = z0; z <= z1; z += GRID_STEP) {
+                if (!inRadius(x, z, cx, cz, radius))
+                    continue;
+                long key = pack(x, z);
+                // Skip if this grid seed was already processed (cache or this run)
+                if (visited.contains(key) || processedSeeds.contains(key))
+                    continue;
+
+                // Force-load chunk if needed (dispatches to server thread)
+                int chunkX = x >> 4, chunkZ = z >> 4;
+                if (!forceLoadChunk(level, chunkX, chunkZ)) {
+                    skippedUnloaded++;
+                    LOGGER.info("Chunk load failed/timed out at ({},{})", x, z);
+                    continue;
+                }
+                long chunkKey = pack(chunkX, chunkZ);
+                if (seenChunks.add(chunkKey))
+                    chunksLoaded++;
+
+                int surfY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) - 1;
+                if (surfY < 0)
+                    continue;
+                BlockPos pos = new BlockPos(x, surfY, z);
+                seeds++;
+                processedSeeds.add(key); // mark this grid seed as done
+
+                boolean water = isWater(level, pos);
+                boolean shallow = water && isShallow(level, x, surfY, z);
+                boolean coastal = !water && isCoastal(level, x, surfY, z);
+                LOGGER.info("SEED ({},{}) y={} -> {}", x, z, surfY,
+                        water ? (shallow ? "SHALLOW" : "WATER") : (coastal ? "COASTAL" : "LAND"));
+
+                if (water) {
+                    JsonObject result = processWaterSeed(level, x, z, surfY, cx, cz, radius, visited, newVisited);
+                    if (result != null) {
+                        findings.add(result);
+                        feedback.accept(formatFeatureMessage(result));
+                        sendScanWaypoints(level, player, result);
+                    }
+                } else {
+                    JsonObject result = processLandSeed(level, x, z, surfY, cx, cz, radius, visited, newVisited);
+                    if (result != null) {
+                        findings.add(result);
+                        feedback.accept(formatFeatureMessage(result));
+                        sendScanWaypoints(level, player, result);
+                    }
+                }
+            }
+        }
+
+        long elapsed = System.currentTimeMillis() - t0;
+        feedback.accept(Component.literal(
+                "Scan done in " + (elapsed / 1000.0) + "s — " + seeds + " seeds, " + chunksLoaded + " chunks, "
+                        + findings.size() + " features found."));
+
+        visited.addAll(processedSeeds); // only persist grid seeds, not body blocks
+        saveCache(visited);
+        appendFindings(findings);
+        feedback.accept(Component.literal("Saved findings.json (" + findings.size() + " new) and scan_cache.json ("
+                + visited.size() + " grid seeds)"));
+    }
+
+    // =========================================================================
+    // Water body processing
+    // =========================================================================
+
+    /**
+     * From a water seed, flood-fill non-shallow water.
+     * If the seed itself is shallow, BFS outward through shallow water to find
+     * the nearest non-shallow entry point; if none found, mark cluster visited.
+     */
+    private static JsonObject processWaterSeed(ServerLevel level, int sx, int sz, int sy,
+            int cx, int cz, int radius,
+            Set<Long> visited, Set<Long> newVisited) {
+        if (isShallow(level, sx, sy, sz)) {
+            // Shallow seed — flood-fill connected shallow to mark visited,
+            // and check if any deep water is adjacent.
+            int[] deepEntry = findDeepFromShallow(level, sx, sy, sz, visited, newVisited);
+            if (deepEntry == null)
+                return null; // pure shallow cluster, no deep entry
+            // Delegate to deep BFS from the entry point
+            return floodFillWaterBody(level, deepEntry[0], deepEntry[2], deepEntry[1], cx, cz, radius, visited,
+                    newVisited);
+        }
+        return floodFillWaterBody(level, sx, sz, sy, cx, cz, radius, visited, newVisited);
+    }
+
+    /**
+     * BFS from a shallow seed through connected shallow water to find the nearest
+     * non-shallow neighbor.
+     */
+    private static int[] findDeepFromShallow(ServerLevel level, int sx, int sy, int sz,
+            Set<Long> visited, Set<Long> newVisited) {
+        Set<Long> shallowCluster = new HashSet<>();
+        Deque<int[]> queue = new ArrayDeque<>();
+        queue.add(new int[] { sx, sy, sz });
+        shallowCluster.add(pack(sx, sz));
+
+        while (!queue.isEmpty()) {
+            int[] cur = queue.poll();
+            int x = cur[0], y = cur[1], z = cur[2];
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (shallowCluster.contains(nkey) || visited.contains(nkey) || newVisited.contains(nkey))
+                    continue;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                BlockPos npos = new BlockPos(nx, ny, nz);
+                if (!isWater(level, npos))
+                    continue;
+                if (!isShallow(level, nx, ny, nz)) {
+                    // Found a deep water block — return it
+                    newVisited.addAll(shallowCluster);
+                    return new int[] { nx, ny, nz };
+                }
+                shallowCluster.add(nkey);
+                queue.add(new int[] { nx, ny, nz });
+            }
+        }
+        // No deep water found — mark cluster visited
+        newVisited.addAll(shallowCluster);
+        return null;
+    }
+
+    /** Core water body BFS — only expands through non-shallow water. */
+    private static JsonObject floodFillWaterBody(ServerLevel level, int sx, int sz, int sy,
+            int cx, int cz, int radius,
+            Set<Long> visited, Set<Long> newVisited) {
+        long seedKey = pack(sx, sz);
+        if (newVisited.contains(seedKey) || visited.contains(seedKey))
+            return null;
+
+        Set<Long> deepCoords = new HashSet<>();
+        boolean isRiver = false;
+        boolean tooBig = false;
+
+        Deque<int[]> queue = new ArrayDeque<>();
+        queue.add(new int[] { sx, sy, sz });
+        deepCoords.add(seedKey);
+
+        outer: while (!queue.isEmpty()) {
+            int[] cur = queue.poll();
+            int x = cur[0], y = cur[1], z = cur[2];
+
+            if (!tooBig) {
+                BlockPos pos = new BlockPos(x, y, z);
+                if (level.getBiome(pos).is(BiomeTags.IS_RIVER))
+                    isRiver = true;
+                if (deepCoords.size() > MAX_BODY_SIZE)
+                    tooBig = true;
+            }
+
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (deepCoords.contains(nkey) || visited.contains(nkey) || newVisited.contains(nkey))
+                    continue;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                BlockPos npos = new BlockPos(nx, ny, nz);
+                if (!isWater(level, npos))
+                    continue;
+                if (isShallow(level, nx, ny, nz))
+                    continue; // S-erosion: skip shallow
+                if (tooBig) {
+                    // Body is too big — just mark as visited so later seeds don't pick up orphaned
+                    // pockets
+                    newVisited.add(nkey);
+                } else {
+                    deepCoords.add(nkey);
+                }
+                queue.add(new int[] { nx, ny, nz });
+            }
+        }
+
+        // Also expand one step into adjacent shallow water to mark it visited
+        Set<Long> shallowEdge = gatherShallowEdge(level, deepCoords, visited, newVisited);
+        newVisited.addAll(deepCoords);
+        newVisited.addAll(shallowEdge);
+
+        if (isRiver) {
+            LOGGER.info("Water body at ({},{}) skipped: RIVER ({} blocks)", sx, sz, deepCoords.size());
+            return null; // river — skip
+        }
+        if (tooBig || deepCoords.size() > OCEAN_THRESHOLD) {
+            LOGGER.info("Water body at ({},{}) skipped: OCEAN/TOO BIG ({} blocks)", sx, sz, deepCoords.size());
+            return null; // ocean — skip
+        }
+        if (deepCoords.size() < MIN_FEATURE_SIZE) {
+            LOGGER.info("Water body at ({},{}) skipped: TOO SMALL ({} blocks)", sx, sz, deepCoords.size());
+            return null; // too small
+        }
+
+        LOGGER.info("Water body at ({},{}) → LAKE ({} blocks)", sx, sz, deepCoords.size());
+        return buildResult("lake", deepCoords);
+    }
+
+    /**
+     * Expands one BFS step through shallow water adjacent to a confirmed deep body,
+     * so that nearby grid seeds don't re-process the same body's edges.
+     */
+    private static Set<Long> gatherShallowEdge(ServerLevel level, Set<Long> deepCoords,
+            Set<Long> visited, Set<Long> newVisited) {
+        Set<Long> edge = new HashSet<>();
+        Deque<Long> queue = new ArrayDeque<>();
+        for (long key : deepCoords) {
+            int x = px(key), z = pz(key);
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (deepCoords.contains(nkey) || edge.contains(nkey)
+                        || visited.contains(nkey) || newVisited.contains(nkey))
+                    continue;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                BlockPos npos = new BlockPos(nx, ny, nz);
+                if (!isWater(level, npos))
+                    continue;
+                if (!isShallow(level, nx, ny, nz))
+                    continue; // only collect shallow
+                edge.add(nkey);
+                queue.add(nkey);
+            }
+        }
+        // Flood-fill shallow reachable from edge
+        while (!queue.isEmpty()) {
+            long key = queue.poll();
+            int x = px(key), z = pz(key);
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (deepCoords.contains(nkey) || edge.contains(nkey)
+                        || visited.contains(nkey) || newVisited.contains(nkey))
+                    continue;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                BlockPos npos = new BlockPos(nx, ny, nz);
+                if (!isWater(level, npos) || !isShallow(level, nx, ny, nz))
+                    continue;
+                edge.add(nkey);
+                queue.add(nkey);
+            }
+        }
+        return edge;
+    }
+
+    // =========================================================================
+    // Land body processing (island detection)
+    // =========================================================================
+
+    private static JsonObject processLandSeed(ServerLevel level, int sx, int sz, int sy,
+            int cx, int cz, int radius,
+            Set<Long> visited, Set<Long> newVisited) {
+        long seedKey = pack(sx, sz);
+        if (newVisited.contains(seedKey) || visited.contains(seedKey))
+            return null;
+
+        // Step 1: flood-fill all connected land
+        Set<Long> body = new HashSet<>();
+        Map<Long, Integer> yMap = new HashMap<>();
+        boolean tooBig = false;
+
+        Deque<int[]> queue = new ArrayDeque<>();
+        queue.add(new int[] { sx, sy, sz });
+        body.add(seedKey);
+        yMap.put(seedKey, sy);
+
+        while (!queue.isEmpty()) {
+            int[] cur = queue.poll();
+            int x = cur[0], y = cur[1], z = cur[2];
+
+            if (body.size() > MAX_BODY_SIZE) {
+                tooBig = true;
+                break;
+            }
+
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (body.contains(nkey) || visited.contains(nkey) || newVisited.contains(nkey))
+                    continue;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                BlockPos npos = new BlockPos(nx, ny, nz);
+                if (isWater(level, npos))
+                    continue; // water = boundary, don't cross
+                body.add(nkey);
+                yMap.put(nkey, ny);
+                queue.add(new int[] { nx, ny, nz });
+            }
+        }
+
+        newVisited.addAll(body);
+
+        // Definitely mainland — not an island
+        if (tooBig || body.size() < MIN_FEATURE_SIZE) {
+            LOGGER.info("Land body at ({},{}) skipped: {} ({} blocks)",
+                    sx, sz, tooBig ? "MAINLAND" : "TOO SMALL", body.size());
+            return null;
+        }
+
+        // Step 2: C-erosion — mark land within ±EROSION_DIST of water as coastal
+        Set<Long> coastal = new HashSet<>();
+        for (long key : body) {
+            int x = px(key), z = pz(key);
+            Integer y = yMap.get(key);
+            if (y == null)
+                continue;
+            if (isCoastal(level, x, y, z))
+                coastal.add(key);
+        }
+
+        Set<Long> interior = new HashSet<>(body);
+        interior.removeAll(coastal);
+
+        // Step 3a: Small island — entire body is coastal (no interior)
+        if (interior.isEmpty()) {
+            // Confirm: no non-body land neighbor on any perimeter block
+            if (!hasExternalLandNeighbor(level, body, yMap)) {
+                LOGGER.info("Land body at ({},{}) → SMALL ISLAND ({} blocks, all coastal)", sx, sz, body.size());
+                return buildResult("island", body);
+            }
+            LOGGER.info("Land body at ({},{}) skipped: CONNECTS TO MAINLAND via coastal ({} blocks)", sx, sz,
+                    body.size());
+            return null; // connects to mainland
+        }
+
+        // Step 3b: Interior exists — BFS through interior only.
+        // If any neighbor outside body is non-water land → peninsula → skip.
+        if (interiorConnectsToExternalLand(level, body, interior)) {
+            LOGGER.info("Land body at ({},{}) skipped: PENINSULA ({} blocks, {} interior)", sx, sz, body.size(),
+                    interior.size());
+            return null;
+        }
+
+        LOGGER.info("Land body at ({},{}) → ISLAND ({} blocks, {} interior)", sx, sz, body.size(), interior.size());
+        return buildResult("island", body);
+    }
+
+    /**
+     * Returns true if any interior block's BFS (through interior only) can reach
+     * a non-body, non-water block — meaning this landmass is a peninsula.
+     */
+    private static boolean interiorConnectsToExternalLand(ServerLevel level,
+            Set<Long> body, Set<Long> interior) {
+        Set<Long> seen = new HashSet<>();
+        Deque<Long> queue = new ArrayDeque<>();
+        Long first = interior.iterator().next();
+        queue.add(first);
+        seen.add(first);
+
+        while (!queue.isEmpty()) {
+            long key = queue.poll();
+            int x = px(key), z = pz(key);
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (seen.contains(nkey))
+                    continue;
+                seen.add(nkey);
+
+                if (!body.contains(nkey)) {
+                    // Outside this body — check if it's land
+                    if (!level.hasChunk(nx >> 4, nz >> 4))
+                        continue;
+                    int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                    if (ny < 0)
+                        continue;
+                    BlockPos npos = new BlockPos(nx, ny, nz);
+                    if (!isWater(level, npos))
+                        return true; // external land → peninsula
+                } else if (interior.contains(nkey)) {
+                    queue.add(nkey); // only expand through interior (non-coastal)
+                }
+                // coastal neighbor inside body: stop expanding (don't add to queue)
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Returns true if any perimeter block of body has a 4-directional land neighbor
+     * not in body.
+     */
+    private static boolean hasExternalLandNeighbor(ServerLevel level, Set<Long> body, Map<Long, Integer> yMap) {
+        for (long key : body) {
+            int x = px(key), z = pz(key);
+            for (int d = 0; d < 4; d++) {
+                int nx = x + DX[d], nz = z + DZ[d];
+                long nkey = pack(nx, nz);
+                if (body.contains(nkey))
+                    continue;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                BlockPos npos = new BlockPos(nx, ny, nz);
+                if (!isWater(level, npos))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    // =========================================================================
+    // Erosion helpers
+    // =========================================================================
+
+    /**
+     * Water block is "shallow" (S) if it has a land neighbor within EROSION_DIST.
+     */
+    private static boolean isShallow(ServerLevel level, int x, int y, int z) {
+        // Water within EROSION_DIST of land surface is shallow (S-erosion)
+        for (int dx = -EROSION_DIST; dx <= EROSION_DIST; dx++) {
+            for (int dz = -EROSION_DIST; dz <= EROSION_DIST; dz++) {
+                if (dx == 0 && dz == 0)
+                    continue;
+                int nx = x + dx, nz = z + dz;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                if (!isWater(level, new BlockPos(nx, ny, nz)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Land block is "coastal" (C) if it has a water neighbor within EROSION_DIST.
+     */
+    private static boolean isCoastal(ServerLevel level, int x, int y, int z) {
+        for (int dx = -EROSION_DIST; dx <= EROSION_DIST; dx++) {
+            for (int dz = -EROSION_DIST; dz <= EROSION_DIST; dz++) {
+                if (dx == 0 && dz == 0)
+                    continue;
+                int nx = x + dx, nz = z + dz;
+                if (!level.hasChunk(nx >> 4, nz >> 4))
+                    continue;
+                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
+                if (ny < 0)
+                    continue;
+                if (isWater(level, new BlockPos(nx, ny, nz)))
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isWater(ServerLevel level, BlockPos pos) {
+        return level.getFluidState(pos).is(FluidTags.WATER);
+    }
+
+    // =========================================================================
+    // Result building
+    // =========================================================================
+
+    private static JsonObject buildResult(String type, Set<Long> coords) {
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        long sumX = 0, sumZ = 0;
+        for (long key : coords) {
+            int x = px(key), z = pz(key);
+            sumX += x;
+            sumZ += z;
+            if (x < minX)
+                minX = x;
+            if (x > maxX)
+                maxX = x;
+            if (z < minZ)
+                minZ = z;
+            if (z > maxZ)
+                maxZ = z;
+        }
+        int n = coords.size();
+        JsonObject obj = new JsonObject();
+        obj.addProperty("type", type);
+        JsonObject center = new JsonObject();
+        center.addProperty("x", (int) (sumX / n));
+        center.addProperty("z", (int) (sumZ / n));
+        obj.add("center", center);
+        JsonObject bb = new JsonObject();
+        bb.addProperty("min_x", minX);
+        bb.addProperty("min_z", minZ);
+        bb.addProperty("max_x", maxX);
+        bb.addProperty("max_z", maxZ);
+        obj.add("bounding_box", bb);
+        obj.addProperty("block_count", n);
+        obj.addProperty("partial", false);
+        return obj;
+    }
+
+    private static Component formatFeatureMessage(JsonObject result) {
+        String type = result.get("type").getAsString();
+        JsonObject center = result.getAsJsonObject("center");
+        JsonObject bb = result.getAsJsonObject("bounding_box");
+        int cx = center.get("x").getAsInt();
+        int cz = center.get("z").getAsInt();
+        int blocks = result.get("block_count").getAsInt();
+        int sizeX = bb.get("max_x").getAsInt() - bb.get("min_x").getAsInt();
+        int sizeZ = bb.get("max_z").getAsInt() - bb.get("min_z").getAsInt();
+        String text = "Found " + type + " at (" + cx + ", " + cz + ")  size: "
+                + sizeX + "x" + sizeZ + "  blocks: " + blocks;
+        Style style = type.equals("lake")
+                ? Style.EMPTY.withColor(ChatFormatting.AQUA)
+                : Style.EMPTY.withColor(TextColor.fromRgb(0xD2B48C)); // tan
+        Style coordStyle = style.withClickEvent(
+                new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tp @s " + cx + " ~ " + cz));
+        return Component.empty()
+                .append(Component.literal("Found " + type + " at ").withStyle(style))
+                .append(Component.literal("(" + cx + ", " + cz + ")").withStyle(coordStyle))
+                .append(Component.literal("  size: " + sizeX + "x" + sizeZ + "  blocks: " + blocks).withStyle(style));
+    }
+
+    // =========================================================================
+    // Point debug scan
+    // =========================================================================
+
+    public static void scanPointAsync(ServerLevel level, int px, int pz, Consumer<Component> feedback,
+            ServerPlayer player) {
+        MinecraftServer server = level.getServer();
+        Thread t = new Thread(() -> {
+            try {
+                doScanPoint(level, px, pz, msg -> server.execute(() -> feedback.accept(msg)), player);
+            } catch (Throwable e) {
+                LOGGER.error("scanPoint failed: " + e.getMessage(), e);
+                server.execute(() -> feedback.accept(
+                        Component.literal("scanPoint error: " + e.getMessage())));
+            }
+        }, "island-scanner-point");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private static void doScanPoint(ServerLevel level, int sx, int sz, Consumer<Component> feedback,
+            ServerPlayer player) {
+        feedback.accept(Component.literal("=== scanPoint (" + sx + "," + sz + ") ==="));
+        forceLoadChunk(level, sx >> 4, sz >> 4);
+        int surfY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz) - 1;
+        if (surfY < 0) {
+            feedback.accept(Component.literal("No surface block."));
+            return;
+        }
+
+        BlockPos pos = new BlockPos(sx, surfY, sz);
+        boolean water = isWater(level, pos);
+        boolean shallow = water && isShallow(level, sx, surfY, sz);
+        boolean coastal = !water && isCoastal(level, sx, surfY, sz);
+        feedback.accept(Component.literal(
+                "y=" + surfY + " block=" + level.getBlockState(pos).getBlock()
+                        + "  " + (water ? (shallow ? "SHALLOW" : "WATER") : (coastal ? "COASTAL" : "LAND"))));
+
+        // Run the real flood-fill from this seed
+        Set<Long> visited = loadCache();
+        Set<Long> newVisited = new HashSet<>();
+        JsonObject result;
+        if (water) {
+            result = processWaterSeed(level, sx, sz, surfY, sx, sz, Integer.MAX_VALUE, visited, newVisited);
+        } else {
+            result = processLandSeed(level, sx, sz, surfY, sx, sz, Integer.MAX_VALUE, visited, newVisited);
+        }
+
+        if (result == null) {
+            feedback.accept(
+                    Component.literal("No feature found at this seed (skipped/too small/river/ocean — see log)"));
+        } else {
+            feedback.accept(formatFeatureMessage(result));
+            sendScanWaypoints(level, player, result);
+        }
+        feedback.accept(Component.literal("=== done ==="));
+    }
+
+    // =========================================================================
+    // Cache I/O
+    // =========================================================================
+
+    public static String clearCache(ServerLevel level, ServerPlayer player) {
+        String cacheMsg = clearCache();
+        level.getServer().execute(() -> EDBMessages.sendToPlayer(new ScanWaypointsPacket(), player));
+        return cacheMsg + " Scan waypoints cleared.";
+    }
+
+    public static String clearCache() {
+        try {
+            Files.deleteIfExists(cacheFile());
+            LOGGER.info("scan_cache.json deleted.");
+            return "Cache cleared. Next scan will start fresh.";
+        } catch (IOException e) {
+            LOGGER.error("Failed to delete scan_cache.json: " + e.getMessage());
+            return "Failed to clear cache — see server log.";
+        }
+    }
+
+    private static void sendScanWaypoints(ServerLevel level, ServerPlayer player, JsonObject result) {
+        JsonObject bb = result.getAsJsonObject("bounding_box");
+        int minX = bb.get("min_x").getAsInt(), maxX = bb.get("max_x").getAsInt();
+        int minZ = bb.get("min_z").getAsInt(), maxZ = bb.get("max_z").getAsInt();
+        int color = (RNG.nextInt(256) << 16) | (RNG.nextInt(256) << 8) | RNG.nextInt(256);
+        String groupName = randomWpName();
+        int[][] corners = { { minX, minZ }, { minX, maxZ }, { maxX, minZ }, { maxX, maxZ } };
+        String[] labels = { "NW", "NE", "SW", "SE" };
+        List<ScanWaypointsPacket.Entry> entries = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            entries.add(new ScanWaypointsPacket.Entry(
+                    groupName + "-" + labels[i], corners[i][0], 64, corners[i][1], color));
+        }
+        level.getServer().execute(() -> EDBMessages.sendToPlayer(new ScanWaypointsPacket(entries), player));
+    }
+
+    private static Set<Long> loadCache() {
+        Set<Long> set = new HashSet<>();
+        Path path = cacheFile();
+        if (!Files.exists(path))
+            return set;
+        try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            JsonObject root = JsonParser.parseReader(r).getAsJsonObject();
+            JsonArray arr = root.getAsJsonArray("visited");
+            for (JsonElement e : arr) {
+                JsonObject o = e.getAsJsonObject();
+                set.add(pack(o.get("x").getAsInt(), o.get("z").getAsInt()));
+            }
+            LOGGER.info("Loaded " + set.size() + " cached coords from scan_cache.json");
+        } catch (Exception e) {
+            LOGGER.error("Failed to load scan_cache.json: " + e.getMessage());
+        }
+        return set;
+    }
+
+    private static void saveCache(Set<Long> visited) throws IOException {
+        JsonArray arr = new JsonArray();
+        for (long key : visited) {
+            JsonObject o = new JsonObject();
+            o.addProperty("x", px(key));
+            o.addProperty("z", pz(key));
+            arr.add(o);
+        }
+        JsonObject root = new JsonObject();
+        root.add("visited", arr);
+        Files.writeString(cacheFile(), new GsonBuilder().setPrettyPrinting().create().toJson(root),
+                StandardCharsets.UTF_8);
+    }
+
+    private static void appendFindings(List<JsonObject> newResults) throws IOException {
+        List<JsonObject> all = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Path path = findingsFile();
+        if (Files.exists(path)) {
+            try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+                JsonArray arr = JsonParser.parseReader(r).getAsJsonArray();
+                for (JsonElement e : arr) {
+                    JsonObject obj = e.getAsJsonObject();
+                    if (seen.add(findingDedupeKey(obj)))
+                        all.add(obj);
+                }
+            } catch (Exception ignored) {
+            }
+        }
+        for (JsonObject obj : newResults) {
+            if (seen.add(findingDedupeKey(obj)))
+                all.add(obj);
+        }
+        JsonArray arr = new JsonArray();
+        all.forEach(arr::add);
+        Files.writeString(path, new GsonBuilder().setPrettyPrinting().create().toJson(arr),
+                StandardCharsets.UTF_8);
+    }
+
+    private static String findingDedupeKey(JsonObject obj) {
+        String type = obj.get("type").getAsString();
+        JsonObject center = obj.getAsJsonObject("center");
+        return type + ":" + center.get("x").getAsInt() + ":" + center.get("z").getAsInt();
+    }
+
+    // =========================================================================
+    // Geometry helpers
+    // =========================================================================
+
+    private static boolean inRadius(int x, int z, int cx, int cz, int radius) {
+        long dx = x - cx, dz = z - cz;
+        return dx * dx + dz * dz <= (long) radius * radius;
+    }
+
+    private static int floorGrid(int v) {
+        return (int) Math.floor((double) v / GRID_STEP) * GRID_STEP;
+    }
+
+    private static int ceilGrid(int v) {
+        return (int) Math.ceil((double) v / GRID_STEP) * GRID_STEP;
+    }
+}

@@ -100,14 +100,5 @@ public class WoodManager {
             LOGGER.info("DEBUG: Giving bonus wood: " + bonusWood + " at " + event.getPos());
         }
 
-        // STEP 8: Bonus extra item for special log types (cinnamon, maple) in nursery.
-        ResourceLocation blockId = ForgeRegistries.BLOCKS.getKey(blockState.getBlock());
-        if (blockId != null && ChunkManager.getPlotType(event.getPos(), level).equals("nursery")) {
-            String blockPath = blockId.getPath();
-            if (blockPath.contains("cinnamon") || blockPath.contains("maple")) {
-                player.addItem(new ItemStack(blockState.getBlock().asItem(), 1));
-                LOGGER.info("DEBUG: Giving special bonus log for " + blockId + " at " + event.getPos());
-            }
-        }
     }
 }

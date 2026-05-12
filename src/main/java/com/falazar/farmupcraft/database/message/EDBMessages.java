@@ -13,6 +13,7 @@ public class EDBMessages {
     private static SimpleChannel INSTANCE;
 
     private static int packetId = 0;
+
     private static int id() {
         return packetId++;
     }
@@ -69,15 +70,21 @@ public class EDBMessages {
                 .consumerMainThread(ShowVillageChunksPacket::handle)
                 .add();
 
-        //net.registerMessage(id(), DataBaseEntryS2CO.class,
-        //        DataBaseEntryS2CO::encode,
-        //        DataBaseEntryS2CO::decode,
-        //        DataBaseEntryS2CO::onPacketReceived);
-//
-        //net.registerMessage(id(), DataBaseFullS2C.class,
-        //        DataBaseFullS2C::encode,
-        //        DataBaseFullS2C::decode,
-        //        DataBaseFullS2C::onPacketReceived);
+        net.messageBuilder(ScanWaypointsPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(ScanWaypointsPacket::new)
+                .encoder(ScanWaypointsPacket::toBytes)
+                .consumerMainThread(ScanWaypointsPacket::handle)
+                .add();
+
+        // net.registerMessage(id(), DataBaseEntryS2CO.class,
+        // DataBaseEntryS2CO::encode,
+        // DataBaseEntryS2CO::decode,
+        // DataBaseEntryS2CO::onPacketReceived);
+        //
+        // net.registerMessage(id(), DataBaseFullS2C.class,
+        // DataBaseFullS2C::encode,
+        // DataBaseFullS2C::decode,
+        // DataBaseFullS2C::onPacketReceived);
     }
 
     public static <MSG> void sendToServer(MSG message) {
@@ -91,7 +98,6 @@ public class EDBMessages {
     public static <MSG> void sendToClients(MSG message) {
         INSTANCE.send(PacketDistributor.ALL.noArg(), message);
     }
-
 
     public static <MSG> void sendMSGToAll(MSG message) {
         for (ServerPlayer player : ServerLifecycleHooks.getCurrentServer().getPlayerList().getPlayers()) {

@@ -19,6 +19,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -28,11 +29,17 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.ForcedChunksSavedData;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.StandingSignBlock;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.SignText;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.*;
@@ -50,7 +57,11 @@ public class PlotCommand {
 
         // Define the "info" sub-commands
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
-                .executes(PlotCommand::showPlotInfo);
+                .executes(PlotCommand::showPlotInfo)
+                .then(Commands.argument("biome", StringArgumentType.word())
+                        .executes(context -> showPlotBiomeMap(
+                                context.getSource(),
+                                StringArgumentType.getString(context, "biome"))));
         builder.then(infoBuilder);
 
         // Define the "buy" sub-command
@@ -142,6 +153,12 @@ public class PlotCommand {
                         }));
         builder.then(setTypeBuilder);
 
+        // Define the "upgrade" sub-command - increase plot level (costs same as buying
+        // a new plot).
+        LiteralArgumentBuilder<CommandSourceStack> upgradeBuilder = Commands.literal("upgrade")
+                .executes(context -> upgradePlot(context.getSource()));
+        builder.then(upgradeBuilder);
+
         // TODO do a /plot biomes command also!
 
         // Register the main "plot" command with the dispatcher
@@ -204,13 +221,18 @@ public class PlotCommand {
                     + ", hasAnyForcedChunksInLevel=" + hasAnyForcedChunksInLevel);
 
             // Build a response message
-            MutableComponent response = Component.literal("---------- Plot info for " + chunkPos + ": ----------\n")
+            int playerY = playerSource.blockPosition().getY();
+            MutableComponent response = Component
+                    .literal("---------- Plot info for " + chunkPos + " (y=" + playerY + "): ----------\n")
                     .withStyle(ChatFormatting.YELLOW)
                     // .append(Component.literal("Owned by: " +
                     // chunkData.getNameForPlayer(serverLevel) + ", "))
                     .append(Component.literal("Village: " + villageData.getName() + "\n")
                             .withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal("Type: " + chunkData.getType() + "\n").withStyle(ChatFormatting.WHITE));
+                    .append(Component.literal("Type: " + chunkData.getType() + "\n").withStyle(ChatFormatting.WHITE))
+                    .append(Component.literal("Plot Level: " + chunkData.getPlotLevel()
+                            + " (village level: " + villageData.getLevel() + ", max upgrade: "
+                            + (villageData.getLevel() / 2) + ")\n").withStyle(ChatFormatting.WHITE));
             // todo if village show village unclaimed...
 
             // TODO get counts of biomes also.
@@ -290,25 +312,111 @@ public class PlotCommand {
             cropsString.append(cropName).append(" (").append(count).append(")");
         }
 
+        // Count total planted blocks (summing per-column hits, capped at 1 per x/z
+        // column).
+        // We tracked per crop across a y-range; dedupe by x/z for unplanted count.
+        int plantedColumns = 0;
+        ChunkPos chunkPos2 = new ChunkPos(blockPos);
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                int worldX = chunkPos2.x * 16 + x;
+                int worldZ = chunkPos2.z * 16 + z;
+                boolean found = false;
+                for (int dy = -1; dy <= 2; dy++) {
+                    BlockPos bp = new BlockPos(worldX, blockPos.getY() + dy, worldZ);
+                    if (serverLevel.getBlockState(bp).getBlock().asItem().getDefaultInstance()
+                            .is(FUCTags.VANILLA_AND_MODDED_CROPS)) {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found)
+                    plantedColumns++;
+            }
+        }
+        int unplanted = 256 - plantedColumns;
+
         // Return the crops string.
         if (cropsString.length() == 0) {
-            return "No crops planted.";
+            return "No crops planted. (" + unplanted + " unplanted)";
         } else {
-            return cropsString.toString();
+            return cropsString.toString() + " | " + unplanted + " unplanted";
         }
+    }
+
+    // Show a 16x16 ASCII map of the current chunk highlighting blocks where the
+    // given biome name matches (case-insensitive, substring). Matching blocks show
+    // the first letter of the biome; everything else shows '.'.
+    public static int showPlotBiomeMap(CommandSourceStack source, String biomeName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+            ServerLevel serverLevel = source.getLevel();
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            // Use farmland level: one block below player's feet (block under the plant).
+            int playerY = playerSource.blockPosition().getY();
+            int biomeY = playerY - 1;
+            LOGGER.info("DEBUGGER showPlotBiomeMap using biomeY=" + biomeY + " (playerY=" + playerY + ")");
+            String search = biomeName.toLowerCase();
+
+            int matchCount = 0;
+            // Build 16 rows (z) × 16 cols (x) [north=top, south=bottom, west=left,
+            // east=right]
+            // Matching biome = first letter in GREEN, others = first letter in YELLOW
+            source.sendSuccess(() -> Component.literal(
+                    "--- Biome map for '" + biomeName + "' in chunk " + chunkPos + " (y=" + biomeY + ") ---")
+                    .withStyle(ChatFormatting.YELLOW), false);
+
+            for (int z = 0; z < 16; z++) {
+                MutableComponent row = Component.empty();
+                for (int x = 0; x < 16; x++) {
+                    int worldX = chunkPos.x * 16 + x;
+                    int worldZ = chunkPos.z * 16 + z;
+                    BlockPos bp = new BlockPos(worldX, biomeY, worldZ);
+                    ResourceLocation biomeRes = serverLevel.registryAccess()
+                            .registryOrThrow(Registries.BIOME)
+                            .getKey(serverLevel.getBiome(bp).value());
+                    String biomeId = biomeRes != null ? biomeRes.getPath() : "unknown";
+                    char c = biomeId.isEmpty() ? '?' : biomeId.charAt(0);
+                    if (biomeId.contains(search)) {
+                        row.append(Component.literal(String.valueOf(c)).withStyle(ChatFormatting.GREEN));
+                        matchCount++;
+                    } else {
+                        row.append(Component.literal(String.valueOf(c)).withStyle(ChatFormatting.YELLOW));
+                    }
+                }
+                final MutableComponent finalRow = row;
+                source.sendSuccess(() -> finalRow, false);
+            }
+            final int finalCount = matchCount;
+            source.sendSuccess(() -> Component.literal(
+                    "Total '" + biomeName + "' blocks: " + finalCount + " / 256")
+                    .withStyle(ChatFormatting.AQUA), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
     }
 
     // Given current block position, get all biomes in the chunk at this y level
     // with counts.
     public static Map<String, Integer> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
         ChunkPos chunkPos = new ChunkPos(blockPos);
+        // Use farmland level: one block below player's feet (block under the plant).
+        int biomeY = blockPos.getY() - 1;
+        LOGGER.info("DEBUGGER getChunkBiomes using biomeY=" + biomeY + " (playerY=" + blockPos.getY() + ")");
 
         Map<String, Integer> biomeCounts = new LinkedHashMap<>();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 int biomeX = chunkPos.x * 16 + x;
                 int biomeZ = chunkPos.z * 16 + z;
-                BlockPos blockPos2 = new BlockPos(biomeX, 100, biomeZ);
+                BlockPos blockPos2 = new BlockPos(biomeX, biomeY, biomeZ);
                 Biome biome = serverLevel.getBiome(blockPos2).value();
                 ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME)
                         .getKey(biome);
@@ -374,6 +482,14 @@ public class PlotCommand {
             // TODO make a method.
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
             VillageData village = villageDataDB.getData(player.getHomeVillageUUID());
+
+            // STEP 2.4: Block plot buy if village is in debt.
+            if (!playerSource.isCreative() && village.getCoins() < 0) {
+                source.sendFailure(Component.literal("Your village is in debt (balance: " + village.getCoins() + " coins). Pay off the debt before buying more plots.")
+                        .withStyle(ChatFormatting.RED));
+                return 0;
+            }
+
             // Get all four adjacent chunks.
             ChunkPos[] adjacentChunks = {
                     new ChunkPos(chunkPos.x + 1, chunkPos.z),
@@ -472,6 +588,9 @@ public class PlotCommand {
                     + playerSource.blockPosition().toShortString() + " as " + plotType + " for " + cost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+
+            // Place a sign one block in front of the player to label the plot.
+            placePlotSign(playerSource, level, plotType, village.getName());
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -767,6 +886,73 @@ public class PlotCommand {
         return count;
     }
 
+    public static int upgradePlot(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            ChunkPos chunkPos = new ChunkPos(playerSource.blockPosition());
+            DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
+            ChunkData chunk = chunkDataDatabase.getData(chunkPos.toLong());
+            if (chunk == null || Objects.equals(chunk.getType(), "village")
+                    || Objects.equals(chunk.getType(), "plot")) {
+                source.sendFailure(Component.literal("No purchased plot here to upgrade."));
+                return 0;
+            }
+
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+            VillageData village = villageDataDB.getData(chunk.getVillageId());
+            if (village == null) {
+                source.sendFailure(Component.literal("Village not found."));
+                return 0;
+            }
+
+            // Check: plot level must be < villageLevel / 2 before upgrading, hard cap at 4.
+            int currentPlotLevel = chunk.getPlotLevel();
+            int villageLevel = village.getLevel();
+            int maxAllowed = Math.min(4, villageLevel / 2);
+            if (currentPlotLevel >= maxAllowed) {
+                source.sendFailure(Component.literal(
+                        "Cannot upgrade: plot level " + currentPlotLevel
+                                + " has reached the limit for village level " + villageLevel
+                                + " (max plot level: " + maxAllowed + ")."));
+                return 0;
+            }
+
+            int cost = calculatePlotCost(village, chunk.getType());
+            if (!playerSource.isCreative() && playerData.getCoins() < cost) {
+                source.sendFailure(Component.literal("Not enough coins. Cost: " + cost
+                        + ", you have: " + playerData.getCoins() + "."));
+                return 0;
+            }
+
+            if (!playerSource.isCreative()) {
+                playerData.removeCoins(cost);
+                playerDatabase.putData(playerSource.getUUID(), playerData);
+            }
+
+            chunk.setPlotLevel(currentPlotLevel + 1);
+            chunkDataDatabase.putData(chunkPos.toLong(), chunk);
+
+            final int newLevel = chunk.getPlotLevel();
+            source.sendSuccess(() -> Component.literal(
+                    "Plot upgraded to level " + newLevel + "! (cost: " + cost + " coins)")
+                    .withStyle(ChatFormatting.GREEN), false);
+            LOGGER.info("DEBUG: upgradePlot " + chunkPos + " -> level " + newLevel
+                    + " by " + playerSource.getGameProfile().getName());
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
     public static int calculatePlotCost(VillageData villageData, String plotType) {
         // TODO get from village Object.
         // TODO MAKE METHOD
@@ -781,13 +967,13 @@ public class PlotCommand {
             }
         }
 
-        int baseCost = 100;
+        int baseCost = 200;
 
-        // Plot Cost: 100 + 100 * plots TODO test
-        // Plot Cost: 100 + 30 * plots TODO testing lower cost.
-        // Lowering from 30 to 25 Cost at our level was 730 a plot
-        // 730 / 30 = 24 plots
-        int totalCost = baseCost + 25 * plotCnt;
+        // Plot Cost history:
+        // 100 + 25 * plots (original)
+        // 100 + 20 * plots (first reduction)
+        // 200 + 15 * plots (current) — higher base, slower scaling, cheaper at endgame
+        int totalCost = baseCost + 15 * plotCnt;
         // make farm and some cost extra,
 
         return totalCost;
@@ -825,5 +1011,41 @@ public class PlotCommand {
         }
 
         return false;
+    }
+
+    // Returns the StandingSign rotation (0-15) so the sign faces toward the player.
+    private static void placePlotSign(Player player, Level level, String plotType, String villageName) {
+        if (!(level instanceof ServerLevel sl))
+            return;
+        BlockPos signPos = player.blockPosition().relative(player.getDirection());
+        if (!sl.getBlockState(signPos).isAir() && !sl.getBlockState(signPos).canBeReplaced())
+            return;
+        int rotation = getSignRotation(player.getDirection());
+        sl.setBlock(signPos, Blocks.OAK_SIGN.defaultBlockState()
+                .setValue(StandingSignBlock.ROTATION, rotation), 3);
+        if (sl.getBlockEntity(signPos) instanceof SignBlockEntity sign) {
+            Component[] msgs = new Component[] {
+                    Component.literal(plotType + " plot"),
+                    Component.literal(villageName),
+                    Component.empty(),
+                    Component.empty()
+            };
+            sign.setText(new SignText(msgs, msgs, DyeColor.BLACK, false), true);
+            sign.setChanged();
+        }
+    }
+
+    private static int getSignRotation(Direction facing) {
+        // Standing sign rotation: 0=faces south, 4=faces west, 8=faces north, 12=faces
+        // east.
+        // Sign is placed one block in front of player, so it should face back toward
+        // them.
+        return switch (facing) {
+            case NORTH -> 0; // player faces north, sign placed north, sign faces south (back at player)
+            case SOUTH -> 8; // player faces south, sign placed south, sign faces north
+            case EAST -> 4; // player faces east, sign placed east, sign faces west
+            case WEST -> 12; // player faces west, sign placed west, sign faces east
+            default -> 0;
+        };
     }
 }

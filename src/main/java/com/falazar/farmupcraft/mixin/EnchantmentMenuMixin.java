@@ -19,7 +19,7 @@ import java.text.NumberFormat;
 @Mixin(EnchantmentMenu.class)
 public class EnchantmentMenuMixin {
 
-    static final CustomLogger LOGGER = new CustomLogger("EnchantmentMenuMixin");
+    private static final CustomLogger LOGGER = new CustomLogger("EnchantmentMenuMixin");
 
     @Shadow
     private int[] costs;

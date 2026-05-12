@@ -14,14 +14,19 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.monster.Monster;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.entity.EntityEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
+import net.minecraftforge.event.entity.living.LivingDropsEvent;
+import net.minecraftforge.event.entity.living.MobSpawnEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -32,6 +37,38 @@ import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkP
 @Mod.EventBusSubscriber(modid = MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ChunkManager {
     public static final CustomLogger LOGGER = new CustomLogger(ChunkManager.class.getSimpleName());
+
+    // ============================================================
+    // LYCANITES MOB TUNING
+    // Centralised place for spawn/drop rate adjustments.
+    // TODO: Later — replace flat rates with a per-mob named list, e.g.:
+    // private static final Map<String, Double> LYCANITES_MOB_SPAWN_RATES =
+    // Map.of("lycanitesmobs:conba", 0.25, "lycanitesmobs:specter", 0.10);
+    // then look up by entityId.toString() and fall back to the default rate.
+    // ============================================================
+    private static final String LYCANITES_MODID = "lycanitesmobs";
+    /** 50 % of all Lycanites spawns are cancelled globally. */
+    private static final double LYCANITES_SPAWN_RATE = 0.50;
+    /**
+     * Lycanites mobs that are always blocked in village territory regardless of the
+     * 50% roll — typically water/air hostiles that wander onto bought plots.
+     */
+    private static final java.util.Set<String> LYCANITES_ALWAYS_BLOCK = java.util.Set.of(
+            "lycanitesmobs:jengu");
+    /**
+     * Each Lycanites drop stack is multiplied by this and floored (1 -> 0 = no
+     * drop).
+     */
+    private static final double LYCANITES_DROP_RATE = 0.50;
+    private static final java.util.Random LYCANITES_RAND = new java.util.Random();
+    /**
+     * Tracks recent Lycanites mob death positions so item entities spawned by their
+     * custom drop
+     * pipeline can be intercepted in onEntityJoinLevel (Lycanites bypasses
+     * LivingDropsEvent).
+     */
+    private static final java.util.concurrent.ConcurrentLinkedDeque<long[]> LYCANITES_DEATH_POS = new java.util.concurrent.ConcurrentLinkedDeque<>();
+    private static final long DEATH_WINDOW_MS = 3_000L; // 3 seconds
 
     /**
      * Tracks the last time (ms) each player was shown the village-center
@@ -331,16 +368,22 @@ public class ChunkManager {
         }
 
         // Prevent placing logs in nursery plots to avoid double bonuses.
+        // Only block manual placement (player holding a log item in either hand) —
+        // not tree growth from bonemeal, where neither hand holds a log.
         BlockState placingState = event.getPlacedBlock();
         if (placingState.is(BlockTags.LOGS)) {
-            Level level = player.getCommandSenderWorld();
-            if (getPlotType(pos, level).equals("nursery")) {
-                event.setCanceled(true);
-                player.displayClientMessage(
-                        Component.literal("You cannot place logs in a nursery plot.")
-                                .withStyle(ChatFormatting.RED),
-                        true);
-                return;
+            boolean holdingLog = isHoldingLog(player.getMainHandItem())
+                    || isHoldingLog(player.getOffhandItem());
+            if (holdingLog) {
+                Level level = player.getCommandSenderWorld();
+                if (getPlotType(pos, level).equals("nursery")) {
+                    event.setCanceled(true);
+                    player.displayClientMessage(
+                            Component.literal("You cannot place logs in a nursery plot.")
+                                    .withStyle(ChatFormatting.RED),
+                            true);
+                    return;
+                }
             }
         }
 
@@ -406,7 +449,7 @@ public class ChunkManager {
         if (chunkData.getType().equalsIgnoreCase("house") && !hasHouseAccess(player, chunkData, dataBase, chunkPos)) {
             event.setCanceled(true);
             player.displayClientMessage(
-                Component.literal("You do not have permission to break blocks on this house plot.")
+                    Component.literal("You do not have permission to break blocks on this house plot.")
                             .withStyle(ChatFormatting.RED),
                     true);
         }
@@ -470,7 +513,324 @@ public class ChunkManager {
         return id.contains("rock") && id.contains("path");
     }
 
+    private static boolean isHoldingLog(ItemStack stack) {
+        if (stack == null || stack.isEmpty())
+            return false;
+        if (!(stack.getItem() instanceof net.minecraft.world.item.BlockItem bi))
+            return false;
+        return bi.getBlock().defaultBlockState().is(BlockTags.LOGS);
+    }
+
     private static boolean isRestrictedBucket(ItemStack stack) {
         return stack != null && (stack.is(Items.WATER_BUCKET) || stack.is(Items.LAVA_BUCKET));
+    }
+
+    /**
+     * Prevent modded hostile mobs (e.g. Lycanites) from spawning naturally in any
+     * claimed village plot chunk, but only above Y=45. Vanilla mobs are not
+     * blocked.
+     */
+    @SubscribeEvent
+    public static void onMobSpawnCheck(MobSpawnEvent.FinalizeSpawn event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        net.minecraft.world.entity.LivingEntity entity = event.getEntity();
+        BlockPos pos = entity.blockPosition();
+
+        // Only apply above Y=45.
+        if (pos.getY() < 45)
+            return;
+
+        // Only block modded mobs — skip anything from the "minecraft" namespace.
+        net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                .getKey(entity.getType());
+        if (entityId == null || "minecraft".equals(entityId.getNamespace()))
+            return;
+
+        // ---- LYCANITES GLOBAL 50 % SPAWN RATE ----
+        // Cancel half of all Lycanites spawns regardless of location or hostility.
+        if (LYCANITES_MODID.equals(entityId.getNamespace())) {
+            if (LYCANITES_RAND.nextDouble() >= LYCANITES_SPAWN_RATE) {
+                event.setSpawnCancelled(true);
+                LOGGER.info("DEBUG: Lycanites 50% spawn suppressed: " + entityId + " at " + pos);
+                return;
+            }
+        }
+
+        // Log all modded mob spawn attempts so we can see what's around.
+        // Use same hostile check as onEntityJoinLevel — some Lycanites mobs (e.g.
+        // jengu)
+        // use CREATURE category but implement Monster/Enemy interface.
+        boolean isHostile = entity.getType().getCategory() == net.minecraft.world.entity.MobCategory.MONSTER
+                || entity instanceof net.minecraft.world.entity.monster.Monster
+                || entity instanceof net.minecraft.world.entity.monster.Enemy;
+        String spawnPlot = getPlotType(pos, (Level) event.getLevel());
+        String spawnPlotLabel = spawnPlot.isEmpty() ? "unclaimed" : spawnPlot;
+        LOGGER.info("DEBUG: Modded mob spawn attempt: " + entityId
+                + " | category=" + entity.getType().getCategory()
+                + " | hostile=" + isHostile
+                + " | plot=" + spawnPlotLabel
+                + " | pos=" + pos);
+
+        // Block modded mobs that are hostile (MONSTER category OR Monster/Enemy
+        // interface).
+        if (!isHostile)
+            return;
+
+        // Allow spawns in dark areas (block light = 0) — players can still have
+        // mob-spawning cellars/caves inside village/plot chunks by leaving them unlit.
+        int blockLight = ((Level) event.getLevel()).getBrightness(LightLayer.BLOCK, pos);
+        if (blockLight == 0)
+            return;
+
+        // getPlotType returns "" for unowned/unclaimed chunks.
+        String plotType = getPlotType(pos, (Level) event.getLevel());
+        if (!plotType.isEmpty()) {
+            // In base village chunks (type "village"), Lycanites monsters get an extra 50%
+            // cancel on top of the global 50% (= ~75% total suppression). In purchased
+            // plot chunks they are blocked entirely.
+            if (plotType.equalsIgnoreCase("village") && LYCANITES_MODID.equals(entityId.getNamespace())) {
+                // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
+                if (LYCANITES_ALWAYS_BLOCK.contains(entityId.toString())) {
+                    event.setSpawnCancelled(true);
+                    LOGGER.info("DEBUG: Lycanites always-block village-chunk suppressed: " + entityId + " at " + pos);
+                } else if (LYCANITES_RAND.nextDouble() < 0.50) {
+                    event.setSpawnCancelled(true);
+                    LOGGER.info("DEBUG: Lycanites 50% village-chunk suppressed: " + entityId + " at " + pos);
+                }
+            } else {
+                event.setSpawnCancelled(true);
+                LOGGER.info("DEBUG: Blocked modded hostile spawn (" + entityId
+                        + ") in " + plotType + " plot at " + pos);
+            }
+        }
+    }
+
+    /**
+     * Secondary guard: catches modded hostile mobs that bypass FinalizeSpawn
+     * (e.g. Lycanites summons, sleep-triggered spawns, or event-based spawning).
+     * If a MONSTER-category modded mob joins the world inside a claimed plot chunk
+     * it is immediately cancelled.
+     */
+    @SubscribeEvent
+    public static void onEntityJoinLevel(net.minecraftforge.event.entity.EntityJoinLevelEvent event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        // ---- LYCANITES DROP INTERCEPTION ----
+        // Lycanites uses its own drop pipeline, bypassing LivingDropsEvent entirely.
+        // When an item entity spawns within 5 blocks of a recent Lycanites death, roll
+        // to cancel it at the configured drop rate.
+        if (event.getEntity() instanceof net.minecraft.world.entity.item.ItemEntity itemEntity) {
+            long now = System.currentTimeMillis();
+            net.minecraft.world.phys.Vec3 ip = itemEntity.position();
+            for (long[] death : LYCANITES_DEATH_POS) {
+                if ((now - death[3]) > DEATH_WINDOW_MS)
+                    continue;
+                double dx = ip.x - death[0];
+                double dy = ip.y - death[1];
+                double dz = ip.z - death[2];
+                if (dx * dx + dy * dy + dz * dz > 25.0)
+                    continue; // 5-block radius
+                if (LYCANITES_RAND.nextDouble() >= LYCANITES_DROP_RATE) {
+                    event.setCanceled(true);
+                    LOGGER.info("DEBUG: Lycanites item drop CANCELLED near death pos: "
+                            + net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(itemEntity.getItem().getItem())
+                            + " x" + itemEntity.getItem().getCount()
+                            + " at " + itemEntity.blockPosition());
+                } else {
+                    LOGGER.info("DEBUG: Lycanites item drop KEPT near death pos: "
+                            + net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(itemEntity.getItem().getItem())
+                            + " x" + itemEntity.getItem().getCount()
+                            + " at " + itemEntity.blockPosition());
+                }
+                return;
+            }
+            return; // not near any Lycanites death — pass through
+        }
+
+        if (!(event.getEntity() instanceof net.minecraft.world.entity.Mob mob))
+            return;
+
+        BlockPos pos = mob.blockPosition();
+        if (pos.getY() < 45)
+            return;
+
+        net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                .getKey(mob.getType());
+        if (entityId == null || "minecraft".equals(entityId.getNamespace()))
+            return;
+
+        // Block mobs that are MONSTER category OR implement the Monster/Enemy interface
+        // (Lycanites mobs like spriggan use CREATURE category but are still hostile).
+        boolean isMobHostile = mob.getType().getCategory() == net.minecraft.world.entity.MobCategory.MONSTER
+                || mob instanceof net.minecraft.world.entity.monster.Monster
+                || mob instanceof net.minecraft.world.entity.monster.Enemy;
+        if (!isMobHostile)
+            return;
+
+        // Allow spawns in completely dark areas (block light = 0).
+        int blockLight = ((Level) event.getLevel()).getBrightness(LightLayer.BLOCK, pos);
+        if (blockLight == 0)
+            return;
+
+        String plotType = getPlotType(pos, (Level) event.getLevel());
+        if (plotType.isEmpty())
+            return;
+
+        if (plotType.equalsIgnoreCase("village") && LYCANITES_MODID.equals(entityId.getNamespace())) {
+            // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
+            if (LYCANITES_ALWAYS_BLOCK.contains(entityId.toString())) {
+                event.setCanceled(true);
+                LOGGER.info("DEBUG: EntityJoin BLOCKED Lycanites village-chunk (always-block list): " + entityId
+                        + " | plot=village | pos=" + pos);
+                return;
+            }
+            // Village chunks: extra 50% Lycanites suppression
+            if (LYCANITES_RAND.nextDouble() < 0.50) {
+                event.setCanceled(true);
+                LOGGER.info("DEBUG: EntityJoin BLOCKED Lycanites village-chunk: " + entityId + " | plot=village | pos="
+                        + pos);
+            } else {
+                LOGGER.info("DEBUG: EntityJoin ALLOWED Lycanites village-chunk (50% roll): " + entityId
+                        + " | plot=village | pos=" + pos);
+            }
+        } else if (!plotType.equalsIgnoreCase("village")) {
+            // Any owned plot chunk (farm, pasture, etc.): block entirely
+            event.setCanceled(true);
+            LOGGER.info(
+                    "DEBUG: EntityJoin BLOCKED modded hostile: " + entityId + " | plot=" + plotType + " | pos=" + pos);
+        } else {
+            // Village chunk, non-Lycanites hostile — log but allow through
+            LOGGER.info(
+                    "DEBUG: EntityJoin ALLOWED non-Lycanites hostile: " + entityId + " | plot=village | pos=" + pos);
+        }
+    }
+
+    /**
+     * Log when any modded mob dies — shows entity ID, hostile category, and killer.
+     */
+    @SubscribeEvent
+    public static void onModdedMobDeath(LivingDeathEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+
+        net.minecraft.world.entity.LivingEntity entity = event.getEntity();
+        net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                .getKey(entity.getType());
+        if (entityId == null || "minecraft".equals(entityId.getNamespace()))
+            return;
+
+        // MobCategory.MONSTER alone misses Lycanites mobs that use CREATURE/AMBIENT
+        // categories.
+        // Also check the Monster interface (net.minecraft.world.entity.monster.Enemy).
+        boolean isHostile = entity.getType().getCategory() == net.minecraft.world.entity.MobCategory.MONSTER
+                || entity instanceof net.minecraft.world.entity.monster.Monster
+                || entity instanceof net.minecraft.world.entity.monster.Enemy;
+        // Only log deaths caused by a player.
+        if (!(event.getSource().getEntity() instanceof Player))
+            return;
+
+        String killerName = event.getSource().getEntity().getName().getString();
+        BlockPos deathPos = entity.blockPosition();
+        String plotType = getPlotType(deathPos, (Level) entity.level());
+        String plotLabel = plotType.isEmpty() ? "unclaimed" : plotType;
+
+        LOGGER.info("DEBUG: Modded mob death: " + entityId
+                + " | hostile=" + isHostile
+                + " | category=" + entity.getType().getCategory()
+                + " | plot=" + plotLabel
+                + " | killedBy=" + killerName
+                + " | pos=" + deathPos);
+    }
+
+    /**
+     * Log when a Player or Villager is killed — shows what entity killed them,
+     * flagging modded killers so we can track dangerous mobs.
+     */
+    @SubscribeEvent
+    public static void onPlayerOrVillagerDeath(LivingDeathEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+
+        net.minecraft.world.entity.LivingEntity victim = event.getEntity();
+        boolean isPlayer = victim instanceof Player;
+        boolean isVillager = victim instanceof net.minecraft.world.entity.npc.Villager;
+        if (!isPlayer && !isVillager)
+            return;
+
+        net.minecraft.world.entity.Entity killer = event.getSource().getEntity();
+        if (killer == null)
+            killer = event.getSource().getDirectEntity();
+
+        String killerDesc;
+        if (killer == null) {
+            killerDesc = "unknown (" + event.getSource().getMsgId() + ")";
+        } else {
+            net.minecraft.resources.ResourceLocation killerId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                    .getKey(killer.getType());
+            String ns = killerId != null ? killerId.getNamespace() : "?";
+            String modTag = "minecraft".equals(ns) ? "" : " [MODDED:" + ns + "]";
+            killerDesc = (killerId != null ? killerId.toString() : killer.getType().toString()) + modTag;
+        }
+
+        String victimType = isPlayer ? "PLAYER" : "VILLAGER";
+        LOGGER.info("KILL: " + victimType + " " + victim.getName().getString()
+                + " was killed by " + killerDesc
+                + " at " + victim.blockPosition());
+    }
+
+    /**
+     * Records the death position of any Lycanites mob so that item entities spawned
+     * by their custom drop pipeline can be intercepted in onEntityJoinLevel.
+     */
+    @SubscribeEvent
+    public static void onLycanitesMobDeath(LivingDeathEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+
+        net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                .getKey(event.getEntity().getType());
+        if (entityId == null || !LYCANITES_MODID.equals(entityId.getNamespace()))
+            return;
+
+        BlockPos pos = event.getEntity().blockPosition();
+        long now = System.currentTimeMillis();
+        LYCANITES_DEATH_POS.removeIf(e -> (now - e[3]) > DEATH_WINDOW_MS);
+        LYCANITES_DEATH_POS.addLast(new long[] { pos.getX(), pos.getY(), pos.getZ(), now });
+        LOGGER.info("DEBUG: Lycanites death recorded for drop interception: "
+                + entityId + " at " + pos + " | tracked=" + LYCANITES_DEATH_POS.size());
+    }
+
+    /**
+     * Fallback: halve drops via LivingDropsEvent if Lycanites ever uses vanilla
+     * drops.
+     * (Most Lycanites mobs bypass this entirely — see onLycanitesMobDeath above.)
+     */
+    @SubscribeEvent
+    public static void onLycanitesDrops(LivingDropsEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+
+        net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                .getKey(event.getEntity().getType());
+        if (entityId == null || !LYCANITES_MODID.equals(entityId.getNamespace()))
+            return;
+
+        LOGGER.info("DEBUG: Lycanites LivingDropsEvent fired: " + entityId
+                + " | dropCount=" + event.getDrops().size());
+        event.getDrops().forEach(itemEntity -> {
+            net.minecraft.world.item.ItemStack stack = itemEntity.getItem();
+            int before = stack.getCount();
+            int halved = (int) Math.floor(before * LYCANITES_DROP_RATE);
+            stack.setCount(halved);
+            LOGGER.info("DEBUG: Lycanites drop: " + entityId
+                    + " | item=" + net.minecraftforge.registries.ForgeRegistries.ITEMS.getKey(stack.getItem())
+                    + " | looting=" + event.getLootingLevel()
+                    + " | before=" + before + " -> after=" + halved);
+        });
+        // Remove any stacks that became 0.
+        event.getDrops().removeIf(itemEntity -> itemEntity.getItem().getCount() <= 0);
     }
 }

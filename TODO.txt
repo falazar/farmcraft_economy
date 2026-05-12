@@ -1,9 +1,41 @@
 
 BUGS LIST:   
+    BUG CHECK - Sheep/cows still follow player holding grain even after being bred today. NoLoveTemptGoal patch is confirmed replacing TemptGoal but blocking logic not visibly stopping follow. Need "delegateWants=true | blocked=true" in logs to confirm fix works.
+    BUG CHECK - Lycanites drop halving (onLycanitesDrops): verify "Lycanites drop:" log lines appear after killing Lycanites mobs, and check before/after counts are halved correctly.
 END BUGS AREA
 
-\
+
 GENERAL SOON:
+
+test minions
+[07:51:04] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] You are now able to summon the Jengu as a temporary minion! You will need a Summoning Item to summon it.
+
+
+    TODO: Add a structuremanager file
+        extend commands to have after /village structures also 
+        /village structures 1 (or 2-100 whatever)
+        That should load the satructure from the structures list at that number
+        Then print out some more debug information about that structure
+        admin command only
+        min max bounding boxes would be good.
+    TODO: possibly a command to scan for chests there.
+        How do we tell if chests have been opened or not before?
+    TODO: Add an extra bad guy in most all underground structures, first time only when discovered.
+    TODO: Add a note, paper or book to a chest in the structure, if no chest add a chest? (only once, when discovered?)
+        make those helper methods?
+
+    TODO: make level 2 farms not destroyo crops when walking on them
+    TODO LATER: make level 3 farms not care about per block planting rules (still has to be any biome the chunk is allowed) 
+
+    TODO Later: Make level 4 farm allow planting of one extra seed, set by owner, they are allowed to plant that extra crop in their farms, set at village level and village command. 
+
+    TODO CHECK - /village info shows net daily coins (earned minus cost), colored green/red.
+    TODO CHECK - Login warns if village treasury can't cover today's upkeep.
+    TODO CHECK - First login shows one-time upkeep explanation message.
+    TODO CHECK - Modded seeds/crops show "Requires: farm plot + biome rules" in tooltip.
+    TODO CHECK - /plot buy places a labeled oak sign one block in front of player.
+    TODO - Add farm plot and nursery plot levels (currently no per-plot levels exist).
+
     TODO CHECK - Charge coins to enchant tools at enchanting table: base cost 100/200/300 for enchant levels 1/2/3, plus 100 per village level.
 
     TODO CHECK - Make lava be gathered from a cauldron to a hopper.   
@@ -16,6 +48,9 @@ GENERAL SOON:
 
     TODO CHECK: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
 
+TODO: bug can break blocks if super fast in other village some break some dont.
+
+Dont spawn bad guys in top level in city and lwer if bought plot?
 CURRENT SECTION:
 
 

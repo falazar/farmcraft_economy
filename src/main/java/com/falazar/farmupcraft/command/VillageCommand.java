@@ -271,6 +271,15 @@ public class VillageCommand {
                         .executes(context -> FarmCraftCommand.clearVillageChunks(context.getSource())));
         builder.then(mapBuilder);
 
+        // /village chores — redisplay the daily chore suggestions.
+        LiteralArgumentBuilder<CommandSourceStack> choresBuilder = Commands.literal("chores")
+                .executes(context -> {
+                    net.minecraft.server.level.ServerPlayer sp = context.getSource().getPlayerOrException();
+                    com.falazar.farmupcraft.events.ForgeEvents.sendDailyTaskSuggestions(sp);
+                    return 1;
+                });
+        builder.then(choresBuilder);
+
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -650,6 +659,11 @@ public class VillageCommand {
             response = response.append(Component.literal(" Unclaimed structures: " + unclaimedStructures + "\n"));
             response = response
                     .append(Component.literal(" Daily coins earned: " + numberFormat.format(dailyCoins) + "\n"));
+            int netDaily = dailyCoins - dailyCost;
+            ChatFormatting netColor = netDaily >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+            response = response.append(Component
+                    .literal(" Net daily: " + (netDaily >= 0 ? "+" : "") + numberFormat.format(netDaily) + " coins\n")
+                    .withStyle(netColor));
 
             // STEP 5: Show villager count
             BlockPos villageCenter = village.getPosition().getWorldPosition();
@@ -783,7 +797,7 @@ public class VillageCommand {
     }
 
     public static int getDailyCost(VillageData village) {
-        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 20;
+        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 15;
 
         return dailyCost;
     }

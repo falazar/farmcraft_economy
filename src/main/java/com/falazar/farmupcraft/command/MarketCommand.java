@@ -1,9 +1,13 @@
 package com.falazar.farmupcraft.command;
 
 import com.falazar.farmupcraft.data.GoodsData;
+import com.falazar.farmupcraft.data.PlayerData;
+import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
+
+import java.util.UUID;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -18,11 +22,14 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.RecipeType;
 
 import java.io.FileNotFoundException;
@@ -179,6 +186,12 @@ public class MarketCommand {
                         .executes(context -> findWoodMarketItems(context.getSource())));
         builder.then(adminBuilder);
 
+        // Define a "buy" sub-command
+        LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
+                .then(Commands.literal("villager")
+                        .executes(context -> buyVillagerEgg(context.getSource())));
+        builder.then(buyBuilder);
+
         // TODO MAKE AN ADD, and COMMAND REMOVE ITEM COMMAND
 
         // Register the main "market" command with the dispatcher
@@ -197,6 +210,73 @@ public class MarketCommand {
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
             context.getSource().sendFailure(Component.literal("Show market info Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * Buy a villager spawn egg from the market.
+     * Cost: village.level * 200 coins (from player wallet).
+     * Cap: village must have fewer than max(4, village.level) villagers.
+     */
+    public static int buyVillagerEgg(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Only players can use this command."));
+                return 0;
+            }
+
+            // STEP 1: Get player data and village.
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            if (player == null || player.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You must have a home village to buy a villager egg."));
+                return 0;
+            }
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase(source.getLevel());
+            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Village not found."));
+                return 0;
+            }
+
+            // STEP 2: Check villager cap — must have fewer than max(4, level) villagers.
+            int villagerCap = Math.max(4, village.getLevel());
+            BlockPos villageCenter = village.getPosition().getWorldPosition();
+            int currentVillagers = VillageCommand.countVillagers(villageCenter, playerSource.level(), 15);
+            if (currentVillagers >= villagerCap) {
+                source.sendFailure(Component.literal(
+                        "Your village already has " + currentVillagers + " villagers (cap: " + villagerCap
+                                + " at level " + village.getLevel() + ")."));
+                return 0;
+            }
+
+            // STEP 3: Check cost.
+            int cost = village.getLevel() * 200;
+            if (player.getCoins() < cost) {
+                source.sendFailure(Component.literal(
+                        "Not enough coins. Villager egg costs " + cost + " coins (you have " + player.getCoins()
+                                + ")."));
+                return 0;
+            }
+
+            // STEP 4: Deduct coins and give egg.
+            player.removeCoins(cost);
+            ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
+
+            ItemStack egg = new ItemStack(Items.VILLAGER_SPAWN_EGG, 1);
+            playerSource.getInventory().add(egg);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Purchased 1 villager egg for " + cost + " coins. (" + currentVillagers + "/" + villagerCap
+                            + " villagers)")
+                    .withStyle(ChatFormatting.GREEN), false);
+            LOGGER.info("Player {} bought villager egg for village {} (cost={}, villagers={}/{})",
+                    playerSource.getName().getString(), village.getName(), cost, currentVillagers, villagerCap);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Buy villager egg exception — see log."));
             ex.printStackTrace();
         }
         return 0;

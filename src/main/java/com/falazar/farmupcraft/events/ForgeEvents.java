@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.command.VillageCommand;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.message.DataBaseChunkS2C;
 import com.falazar.farmupcraft.registry.BiomeRegistryHolder;
@@ -18,7 +19,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.npc.Villager;
 import net.minecraftforge.event.AddReloadListenerEvent;
+import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
@@ -26,6 +30,7 @@ import net.minecraftforge.event.server.ServerStoppedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraft.world.Difficulty;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.IOException;
@@ -50,6 +55,9 @@ import java.util.concurrent.CompletableFuture;
 @Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ForgeEvents {
     private static final String NO_CHORES_MSG = "You should make a chores list instead";
+    // 5 minutes at 20 TPS
+    private static final int DIFFICULTY_WARN_INTERVAL = 6000;
+    private static int difficultyWarnTick = 0;
 
     /**
      * Called when the server is about to start.
@@ -160,17 +168,76 @@ public class ForgeEvents {
                 });
             }
 
+            ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
+            boolean isFirstLogin = !playerDatabase.containsKey(uuid);
+
+            // First login: explain the upkeep system once.
+            if (isFirstLogin) {
+                serverPlayer.sendSystemMessage(
+                        Component.literal(
+                                "Welcome! Your village has a daily upkeep cost (village level x100 + plots x20 coins/day). Claim structures to earn income!")
+                                .withStyle(ChatFormatting.GOLD));
+            }
+
+            // Every login: warn if village treasury is too low to cover today's upkeep.
+            PlayerData loginPlayerData = playerDatabase.getData(uuid);
+            if (loginPlayerData != null && loginPlayerData.getHomeVillageUUID() != null) {
+                com.falazar.farmupcraft.data.VillageData loginVillage = ModEvents.getVillageDatabase()
+                        .getData(loginPlayerData.getHomeVillageUUID());
+                if (loginVillage != null) {
+                    int upkeep = VillageCommand.getDailyCost(loginVillage);
+                    if (loginVillage.getCoins() < upkeep) {
+                        serverPlayer.sendSystemMessage(
+                                Component
+                                        .literal("Warning: " + loginVillage.getName() + " treasury ("
+                                                + loginVillage.getCoins() + " coins) cannot cover today's upkeep ("
+                                                + upkeep + " coins)!")
+                                        .withStyle(ChatFormatting.RED));
+                    }
+                }
+            }
+
             // Suggest daily tasks from Rimfog/TODO.md, shuffled with a per-day seed.
-            sendDailyTaskSuggestions((ServerPlayer) event.getEntity());
+            sendDailyTaskSuggestions(serverPlayer);
         }
     }
 
     /**
-     * Reads Rimfog/TODO.md, shuffles task lines with a seed keyed to today's date
+     * Every 5 minutes, if only one player is online and the world difficulty is
+     * NORMAL (not HARD), remind them to switch to Hard mode.
+     */
+    @SubscribeEvent
+    public static void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase != TickEvent.Phase.END)
+            return;
+        difficultyWarnTick++;
+        if (difficultyWarnTick < DIFFICULTY_WARN_INTERVAL)
+            return;
+        difficultyWarnTick = 0;
+
+        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server == null)
+            return;
+        var players = server.getPlayerList().getPlayers();
+        if (players.size() != 1)
+            return;
+
+        ServerPlayer player = players.get(0);
+        Difficulty diff = player.getCommandSenderWorld().getDifficulty();
+        if (diff != Difficulty.HARD) {
+            player.sendSystemMessage(
+                    Component
+                            .literal("⚠ You are playing on " + diff.getKey().toUpperCase()
+                                    + " mode — consider switching to HARD!")
+                            .withStyle(ChatFormatting.RED));
+        }
+    }
+
+    /**
      * (so the order stays consistent all day), then sends a "Have Fun!" message
      * with the first four tasks to the player.
      */
-    private static void sendDailyTaskSuggestions(ServerPlayer player) {
+    public static void sendDailyTaskSuggestions(ServerPlayer player) {
         try {
             Path taskFile = FMLPaths.GAMEDIR.get().resolve("Rimfog").resolve("chores.md");
             if (!Files.exists(taskFile)) {
@@ -214,6 +281,46 @@ public class ForgeEvents {
         } catch (IOException e) {
             FarmUpCraft.LOGGER.warn("Could not read chores file for daily tasks: " + e.getMessage());
             player.sendSystemMessage(Component.literal(NO_CHORES_MSG).withStyle(ChatFormatting.GRAY));
+        }
+    }
+
+    /**
+     * When a villager is killed, broadcast a message to all players with the
+     * villager's name, position, and the mob that killed them.
+     */
+    @SubscribeEvent
+    public static void onVillagerDeath(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof Villager villager))
+            return;
+        if (event.getEntity().level().isClientSide())
+            return;
+
+        // Get villager name (custom name set by Villager Names mod, or fallback).
+        String villagerName = villager.hasCustomName()
+                ? villager.getCustomName().getString()
+                : "A Villager";
+
+        // Get the killer's name.
+        String killerName = "unknown";
+        if (event.getSource().getEntity() != null) {
+            killerName = event.getSource().getEntity().getName().getString();
+        } else if (event.getSource().getDirectEntity() != null) {
+            killerName = event.getSource().getDirectEntity().getName().getString();
+        }
+
+        // Get position.
+        net.minecraft.core.BlockPos pos = villager.blockPosition();
+        String location = "(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
+
+        String msg = "☠ " + villagerName + " was killed by " + killerName + " at " + location;
+        FarmUpCraft.LOGGER.info("Villager death: " + msg);
+
+        // Broadcast to all online players.
+        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+                sp.sendSystemMessage(Component.literal(msg).withStyle(ChatFormatting.DARK_RED));
+            }
         }
     }
 

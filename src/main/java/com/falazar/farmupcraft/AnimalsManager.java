@@ -12,6 +12,9 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ai.goal.Goal;
+import net.minecraft.world.entity.ai.goal.TemptGoal;
+import net.minecraft.world.entity.ai.goal.WrappedGoal;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.animal.Chicken;
 import net.minecraft.world.entity.animal.Cow;
@@ -20,11 +23,13 @@ import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.entity.animal.goat.Goat;
 import net.minecraft.world.entity.animal.horse.Horse;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.registries.ForgeRegistries;
@@ -32,6 +37,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
@@ -47,6 +53,7 @@ public class AnimalsManager {
     private static final int MAX_ANIMALS_PER_PASTURE = 30;
     private static final String NBT_LAST_MILKED = "farmupcraft_last_milked";
     private static final String NBT_LAST_BRED = "farmupcraft_last_bred";
+    private static final String NBT_LAST_FED = "farmupcraft_last_fed";
     private static final String NBT_LAST_SHEARED_TICK = "farmupcraft_last_sheared_tick";
     // 7 in-game days at 20 TPS: 168000 ticks ~= 140 real-time minutes.
     private static final long WOOL_REGROWTH_COOLDOWN_TICKS = 7L * 24000L;
@@ -300,7 +307,7 @@ public class AnimalsManager {
                 if (!allowed.equals(animalSpecies)) {
                     return cancelWithError(event, player,
                             "Your village only breeds " + allowed
-                                + "s. Use /village setanimal to change (once every 2 weeks).");
+                                    + "s. Use /village setanimal to change (once every 2 weeks).");
                 }
             }
 
@@ -372,6 +379,15 @@ public class AnimalsManager {
         return true;
     }
 
+    /**
+     * Returns true if this sheep is blue or purple — used to gate verbose debug
+     * logs.
+     */
+    private static boolean isDebugSheep(Sheep sheep) {
+        DyeColor color = sheep.getColor();
+        return color == DyeColor.BLUE || color == DyeColor.PURPLE;
+    }
+
     private static String getItemId(ItemStack stack) {
         ResourceLocation id = ForgeRegistries.ITEMS.getKey(stack.getItem());
         return id == null ? null : id.toString();
@@ -389,5 +405,129 @@ public class AnimalsManager {
         event.setCanceled(true);
         player.displayClientMessage(Component.literal(message).withStyle(ChatFormatting.RED), false);
         return true;
+    }
+
+    /**
+     * When any Animal joins the level, replace all of its TemptGoals with a
+     * subclass that skips tempting while the animal is in love mode (already fed
+     * and waiting to breed). This stops sheep/cows/etc. from chasing the food
+     * item in the player's hand after they have been fed.
+     * <p>
+     * LOWEST priority so we run after all other mods (e.g. PAM HC2) have finished
+     * adding their own TemptGoals — otherwise we miss wrapping them.
+     */
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
+        if (event.getLevel().isClientSide())
+            return;
+        if (!(event.getEntity() instanceof Animal animal))
+            return;
+
+        // Log all goals for blue/purple sheep so we can see what's actually registered.
+        if (animal instanceof Sheep sheep && isDebugSheep(sheep)) {
+            StringBuilder goalList = new StringBuilder();
+            for (WrappedGoal wrapped : animal.goalSelector.getAvailableGoals()) {
+                goalList.append("[p=").append(wrapped.getPriority())
+                        .append(" ").append(wrapped.getGoal().getClass().getSimpleName()).append("] ");
+            }
+            LOGGER.info("Sheep {} ({}) goals: {}", animal.getUUID(), sheep.getColor(), goalList);
+        }
+
+        // Collect all TemptGoal-backed WrappedGoals, then swap them out.
+        List<WrappedGoal> toReplace = new ArrayList<>();
+        for (WrappedGoal wrapped : animal.goalSelector.getAvailableGoals()) {
+            if (wrapped.getGoal() instanceof TemptGoal) {
+                toReplace.add(wrapped);
+            }
+        }
+        boolean isDebugSheep = animal instanceof Sheep && isDebugSheep((Sheep) animal);
+        if (isDebugSheep && toReplace.isEmpty()) {
+            LOGGER.info("TemptGoal patch: no TemptGoals found for {} (type={})",
+                    animal.getUUID(),
+                    net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(animal.getType()));
+        }
+        for (WrappedGoal wrapped : toReplace) {
+            TemptGoal original = (TemptGoal) wrapped.getGoal();
+            int priority = wrapped.getPriority();
+            animal.goalSelector.removeGoal(original);
+            animal.goalSelector.addGoal(priority, new NoLoveTemptGoal(animal, original));
+            if (isDebugSheep) {
+                LOGGER.info("TemptGoal patch: replaced TemptGoal[priority={}] on {} (type={})",
+                        priority, animal.getUUID(),
+                        net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(animal.getType()));
+            }
+        }
+    }
+
+    /**
+     * A TemptGoal wrapper that prevents the animal from following food when it is
+     * already in love mode (i.e. has been fed and is ready to breed).
+     */
+    private static class NoLoveTemptGoal extends Goal {
+        private final Animal animal;
+        private final TemptGoal delegate;
+
+        NoLoveTemptGoal(Animal animal, TemptGoal delegate) {
+            this.animal = animal;
+            this.delegate = delegate;
+            this.setFlags(delegate.getFlags());
+        }
+
+        @Override
+        public boolean canUse() {
+            boolean blocked = alreadyBredToday();
+            // Call delegate once and cache — TemptGoal.canUse() has side effects
+            // (it finds and stores the nearby player). Calling it twice was a bug.
+            boolean delegateWants = delegate.canUse();
+            boolean debug = animal instanceof Sheep && isDebugSheep((Sheep) animal);
+            if (debug) {
+                String today = LocalDate.now().toString();
+                String lastBred = animal.getPersistentData().getString(NBT_LAST_BRED);
+                // Always log when delegate wants to run (player nearby with food).
+                if (delegateWants) {
+                    LOGGER.info("TemptGoal[{}]: delegateWants=true | blocked={} | inLove={} | lastBred='{}' | today={}",
+                            animal.getUUID(), blocked, animal.isInLove(), lastBred, today);
+                }
+                // Also log when we have NBT set (sheep was bred) even if delegate doesn't want.
+                if (!delegateWants && !lastBred.isEmpty()) {
+                    LOGGER.info("TemptGoal[{}]: delegateWants=false | blocked={} | lastBred='{}' | today={}",
+                            animal.getUUID(), blocked, lastBred, today);
+                }
+            }
+            return !blocked && delegateWants;
+        }
+
+        @Override
+        public boolean canContinueToUse() {
+            if (alreadyBredToday())
+                return false;
+            return delegate.canContinueToUse();
+        }
+
+        private boolean alreadyBredToday() {
+            // Block following if bred today OR currently in love mode (hearts showing).
+            if (animal.isInLove())
+                return true;
+            String lastBred = animal.getPersistentData().getString(NBT_LAST_BRED);
+            return LocalDate.now().toString().equals(lastBred);
+        }
+
+        @Override
+        public void start() {
+            if (animal instanceof Sheep && isDebugSheep((Sheep) animal)) {
+                LOGGER.info("TemptGoal[{}]: started following player (not blocked)", animal.getUUID());
+            }
+            delegate.start();
+        }
+
+        @Override
+        public void stop() {
+            delegate.stop();
+        }
+
+        @Override
+        public void tick() {
+            delegate.tick();
+        }
     }
 }
