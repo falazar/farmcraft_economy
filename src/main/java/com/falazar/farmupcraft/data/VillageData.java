@@ -24,7 +24,8 @@ public class VillageData {
             Codec.STRING.optionalFieldOf("founder", "").forGetter(VillageData::getFounder),
             UUIDUtil.STRING_CODEC.listOf().optionalFieldOf("member_uuids", new ArrayList<>())
                     .forGetter(VillageData::getMemberUUIDs),
-            Codec.STRING.optionalFieldOf("animal_grains", "").forGetter(VillageData::getAnimalGrains))
+            Codec.STRING.optionalFieldOf("animal_grains", "").forGetter(VillageData::getAnimalGrains),
+            VillagerRecord.CODEC.listOf().optionalFieldOf("reincarnation_pool", List.of()).forGetter(VillageData::getReincarnationPool))
             .apply(instance, VillageData::new));
 
     private final UUID uuid;
@@ -41,6 +42,7 @@ public class VillageData {
     private String founder; // Player name who founded the village
     private List<UUID> memberUUIDs; // UUIDs of all players who are members of this village
     private String animalGrains; // Serialized map: "cow=item1,item2|sheep=item3,item4|..."
+    private List<VillagerRecord> reincarnationPool;
 
     /**
      * Constructs a new VillageData object.
@@ -54,7 +56,7 @@ public class VillageData {
     public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
             boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange,
             String founder,
-            List<UUID> memberUUIDs, String animalGrains) {
+            List<UUID> memberUUIDs, String animalGrains, List<VillagerRecord> reincarnationPool) {
         this.uuid = uuid;
         this.name = name;
         this.position = position;
@@ -71,6 +73,7 @@ public class VillageData {
         this.founder = founder != null ? founder : "";
         this.memberUUIDs = memberUUIDs != null ? new ArrayList<>(memberUUIDs) : new ArrayList<>();
         this.animalGrains = animalGrains != null ? animalGrains : "";
+        this.reincarnationPool = reincarnationPool != null ? new ArrayList<>(reincarnationPool) : new ArrayList<>();
     }
 
     // Convenience constructor for new village creation (no grain assignment yet).
@@ -79,7 +82,7 @@ public class VillageData {
             String founder,
             List<UUID> memberUUIDs) {
         this(uuid, name, position, level, claimedChunks, bought, coins, lastRanDaily, animalType,
-                lastAnimalTypeChange, founder, memberUUIDs, "");
+                lastAnimalTypeChange, founder, memberUUIDs, "", List.of());
     }
 
     /**
@@ -303,5 +306,29 @@ public class VillageData {
     public List<String> getGrainsForAnimal(String animalType) {
         Map<String, List<String>> map = getAnimalGrainsMap();
         return map.getOrDefault(animalType, new ArrayList<>());
+    }
+
+    // --- Villager reincarnation pool ---
+
+    public List<VillagerRecord> getReincarnationPool() {
+        if (reincarnationPool == null)
+            reincarnationPool = new ArrayList<>();
+        return reincarnationPool;
+    }
+
+    /** Adds a deceased villager to the pool to be reincarnated on next spawn. */
+    public void addToReincarnationPool(VillagerRecord record) {
+        if (reincarnationPool == null)
+            reincarnationPool = new ArrayList<>();
+        reincarnationPool.add(record);
+    }
+
+    /**
+     * Removes and returns the next villager record from the pool, or null if empty.
+     */
+    public VillagerRecord pollReincarnation() {
+        if (reincarnationPool == null || reincarnationPool.isEmpty())
+            return null;
+        return reincarnationPool.remove(0);
     }
 }

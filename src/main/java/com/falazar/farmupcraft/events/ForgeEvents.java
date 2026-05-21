@@ -284,44 +284,4 @@ public class ForgeEvents {
         }
     }
 
-    /**
-     * When a villager is killed, broadcast a message to all players with the
-     * villager's name, position, and the mob that killed them.
-     */
-    @SubscribeEvent
-    public static void onVillagerDeath(LivingDeathEvent event) {
-        if (!(event.getEntity() instanceof Villager villager))
-            return;
-        if (event.getEntity().level().isClientSide())
-            return;
-
-        // Get villager name (custom name set by Villager Names mod, or fallback).
-        String villagerName = villager.hasCustomName()
-                ? villager.getCustomName().getString()
-                : "A Villager";
-
-        // Get the killer's name.
-        String killerName = "unknown";
-        if (event.getSource().getEntity() != null) {
-            killerName = event.getSource().getEntity().getName().getString();
-        } else if (event.getSource().getDirectEntity() != null) {
-            killerName = event.getSource().getDirectEntity().getName().getString();
-        }
-
-        // Get position.
-        net.minecraft.core.BlockPos pos = villager.blockPosition();
-        String location = "(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")";
-
-        String msg = "☠ " + villagerName + " was killed by " + killerName + " at " + location;
-        FarmUpCraft.LOGGER.info("Villager death: " + msg);
-
-        // Broadcast to all online players.
-        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
-        if (server != null) {
-            for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
-                sp.sendSystemMessage(Component.literal(msg).withStyle(ChatFormatting.DARK_RED));
-            }
-        }
-    }
-
 }

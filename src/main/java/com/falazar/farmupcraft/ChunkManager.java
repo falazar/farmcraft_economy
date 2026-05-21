@@ -5,6 +5,8 @@ import com.falazar.farmupcraft.data.GameStructureData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.message.AddJMWaypointPacket;
+import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import net.minecraft.ChatFormatting;
@@ -12,6 +14,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.Monster;
@@ -53,8 +56,9 @@ public class ChunkManager {
      * Lycanites mobs that are always blocked in village territory regardless of the
      * 50% roll — typically water/air hostiles that wander onto bought plots.
      */
-    private static final java.util.Set<String> LYCANITES_ALWAYS_BLOCK = java.util.Set.of(
-            "lycanitesmobs:jengu");
+    private static final java.util.Set<String> LYCANITES_HIGH_BLOCK = java.util.Set.of(
+            "lycanitesmobs:jengu",
+            "lycanitesmobs:vespidqueen");
     /**
      * Each Lycanites drop stack is multiplied by this and floored (1 -> 0 = no
      * drop).
@@ -268,7 +272,27 @@ public class ChunkManager {
         return data;
     }
 
-    private static final int DEFAULT_PLOT_PROTECTION_MIN_Y = 60;
+    /**
+     * Returns true if any of the 8 surrounding chunks (or the chunk itself) is a
+     * claimed plot (has non-empty ChunkData type). Used to extend spawn blocking
+     * one chunk beyond the plot border so mobs can't spawn just outside and walk
+     * in.
+     */
+    private static boolean isAdjacentToBoughtPlot(ChunkPos center) {
+        DataBase<Long, ChunkData> db = ModEvents.getChunkDataDatabase();
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                ChunkPos neighbor = new ChunkPos(center.x + dx, center.z + dz);
+                ChunkData data = db.getData(neighbor.toLong());
+                if (data != null && !data.getType().isEmpty()) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static final int DEFAULT_PLOT_PROTECTION_MIN_Y = 56;
 
     // Prevent non-owners from opening doors, trapdoors, and chests in owned house
     // plots.
@@ -364,6 +388,13 @@ public class ChunkManager {
                     Component.literal("You cannot stack rock paths.")
                             .withStyle(ChatFormatting.RED),
                     true);
+            // Resync the block and inventory to the client to prevent ghost-block glitch.
+            if (player instanceof ServerPlayer serverPlayer) {
+                serverPlayer.connection.send(
+                        new net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket(
+                                event.getLevel(), pos));
+                serverPlayer.inventoryMenu.sendAllDataToRemote();
+            }
             return;
         }
 
@@ -532,78 +563,111 @@ public class ChunkManager {
      */
     @SubscribeEvent
     public static void onMobSpawnCheck(MobSpawnEvent.FinalizeSpawn event) {
-        if (event.getLevel().isClientSide())
-            return;
-
-        net.minecraft.world.entity.LivingEntity entity = event.getEntity();
-        BlockPos pos = entity.blockPosition();
-
-        // Only apply above Y=45.
-        if (pos.getY() < 45)
-            return;
-
-        // Only block modded mobs — skip anything from the "minecraft" namespace.
-        net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
-                .getKey(entity.getType());
-        if (entityId == null || "minecraft".equals(entityId.getNamespace()))
-            return;
-
-        // ---- LYCANITES GLOBAL 50 % SPAWN RATE ----
-        // Cancel half of all Lycanites spawns regardless of location or hostility.
-        if (LYCANITES_MODID.equals(entityId.getNamespace())) {
-            if (LYCANITES_RAND.nextDouble() >= LYCANITES_SPAWN_RATE) {
-                event.setSpawnCancelled(true);
-                LOGGER.info("DEBUG: Lycanites 50% spawn suppressed: " + entityId + " at " + pos);
+        try {
+            if (event.getLevel().isClientSide())
                 return;
-            }
-        }
 
-        // Log all modded mob spawn attempts so we can see what's around.
-        // Use same hostile check as onEntityJoinLevel — some Lycanites mobs (e.g.
-        // jengu)
-        // use CREATURE category but implement Monster/Enemy interface.
-        boolean isHostile = entity.getType().getCategory() == net.minecraft.world.entity.MobCategory.MONSTER
-                || entity instanceof net.minecraft.world.entity.monster.Monster
-                || entity instanceof net.minecraft.world.entity.monster.Enemy;
-        String spawnPlot = getPlotType(pos, (Level) event.getLevel());
-        String spawnPlotLabel = spawnPlot.isEmpty() ? "unclaimed" : spawnPlot;
-        LOGGER.info("DEBUG: Modded mob spawn attempt: " + entityId
-                + " | category=" + entity.getType().getCategory()
-                + " | hostile=" + isHostile
-                + " | plot=" + spawnPlotLabel
-                + " | pos=" + pos);
+            net.minecraft.world.entity.LivingEntity entity = event.getEntity();
+            BlockPos pos = entity.blockPosition();
 
-        // Block modded mobs that are hostile (MONSTER category OR Monster/Enemy
-        // interface).
-        if (!isHostile)
-            return;
+            // Only apply above Y=45.
+            if (pos.getY() < 45)
+                return;
 
-        // Allow spawns in dark areas (block light = 0) — players can still have
-        // mob-spawning cellars/caves inside village/plot chunks by leaving them unlit.
-        int blockLight = ((Level) event.getLevel()).getBrightness(LightLayer.BLOCK, pos);
-        if (blockLight == 0)
-            return;
+            // Only block modded mobs — skip anything from the "minecraft" namespace.
+            net.minecraft.resources.ResourceLocation entityId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                    .getKey(entity.getType());
+            if (entityId == null || "minecraft".equals(entityId.getNamespace()))
+                return;
 
-        // getPlotType returns "" for unowned/unclaimed chunks.
-        String plotType = getPlotType(pos, (Level) event.getLevel());
-        if (!plotType.isEmpty()) {
-            // In base village chunks (type "village"), Lycanites monsters get an extra 50%
-            // cancel on top of the global 50% (= ~75% total suppression). In purchased
-            // plot chunks they are blocked entirely.
-            if (plotType.equalsIgnoreCase("village") && LYCANITES_MODID.equals(entityId.getNamespace())) {
-                // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
-                if (LYCANITES_ALWAYS_BLOCK.contains(entityId.toString())) {
+            // ---- LYCANITES GLOBAL 50 % SPAWN RATE ----
+            // Cancel half of all Lycanites spawns regardless of location or hostility.
+            if (LYCANITES_MODID.equals(entityId.getNamespace())) {
+                // Jengu gets a stricter 90% global cancel — it walks into plots from unclaimed
+                // chunks.
+                if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
+                    if (LYCANITES_RAND.nextDouble() >= 0.10) {
+                        event.setSpawnCancelled(true);
+                        LOGGER.info("[SPAWN] Lycanites 90% suppressed (jengu): " + entityId + " | uuid="
+                                + entity.getUUID() + " | pos=" + pos);
+                        return;
+                    }
+                    LOGGER.info("[SPAWN] ALLOWED jengu (10% passed global roll): " + entityId + " | uuid="
+                            + entity.getUUID() + " | pos=" + pos);
+                } else if (LYCANITES_RAND.nextDouble() >= LYCANITES_SPAWN_RATE) {
                     event.setSpawnCancelled(true);
-                    LOGGER.info("DEBUG: Lycanites always-block village-chunk suppressed: " + entityId + " at " + pos);
-                } else if (LYCANITES_RAND.nextDouble() < 0.50) {
-                    event.setSpawnCancelled(true);
-                    LOGGER.info("DEBUG: Lycanites 50% village-chunk suppressed: " + entityId + " at " + pos);
+                    LOGGER.info("[SPAWN] Lycanites 50% suppressed: " + entityId + " at " + pos);
+                    return;
                 }
-            } else {
-                event.setSpawnCancelled(true);
-                LOGGER.info("DEBUG: Blocked modded hostile spawn (" + entityId
-                        + ") in " + plotType + " plot at " + pos);
             }
+
+            // Log all modded mob spawn attempts so we can see what's around.
+            // Use same hostile check as onEntityJoinLevel — some Lycanites mobs (e.g.
+            // jengu)
+            // use CREATURE category but implement Monster/Enemy interface.
+            boolean isHostile = entity.getType().getCategory() == net.minecraft.world.entity.MobCategory.MONSTER
+                    || entity instanceof net.minecraft.world.entity.monster.Monster
+                    || entity instanceof net.minecraft.world.entity.monster.Enemy;
+            // During worldgen feature placement the level is a WorldGenRegion, not a Level
+            // — skip safely.
+            if (!(event.getLevel() instanceof Level worldLevel))
+                return;
+            String spawnPlot = getPlotType(pos, worldLevel);
+            String spawnPlotLabel = spawnPlot.isEmpty() ? "unclaimed" : spawnPlot;
+            LOGGER.info("DEBUG: Modded mob spawn attempt: " + entityId
+                    + " | category=" + entity.getType().getCategory()
+                    + " | hostile=" + isHostile
+                    + " | plot=" + spawnPlotLabel
+                    + " | pos=" + pos);
+
+            // Block modded mobs that are hostile (MONSTER category OR Monster/Enemy
+            // interface).
+            if (!isHostile)
+                return;
+
+            // Allow spawns in dark areas (block light = 0) — players can still have
+            // mob-spawning cellars/caves inside village/plot chunks by leaving them unlit.
+            int blockLight = worldLevel.getBrightness(LightLayer.BLOCK, pos);
+            if (blockLight == 0)
+                return;
+
+            // getPlotType returns "" for unowned/unclaimed chunks.
+            String plotType = getPlotType(pos, worldLevel);
+            if (!plotType.isEmpty()) {
+                // In base village chunks (type "village"), Lycanites monsters get an extra 50%
+                // cancel on top of the global 50% (= ~75% total suppression). In purchased
+                // plot chunks they are blocked entirely.
+                if (plotType.equalsIgnoreCase("village") && LYCANITES_MODID.equals(entityId.getNamespace())) {
+                    // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
+                    if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
+                        event.setSpawnCancelled(true);
+                        LOGGER.info(
+                                "[SPAWN] Lycanites always-block village-chunk suppressed: " + entityId + " | uuid="
+                                        + entity.getUUID() + " | pos=" + pos);
+                    } else if (LYCANITES_RAND.nextDouble() < 0.50) {
+                        event.setSpawnCancelled(true);
+                        LOGGER.info("[SPAWN] Lycanites 50% village-chunk suppressed: " + entityId + " at " + pos);
+                    }
+                } else {
+                    event.setSpawnCancelled(true);
+                    LOGGER.info("[SPAWN] Blocked modded hostile ("
+                            + entityId + ") in " + plotType + " plot at " + pos);
+                }
+            } else if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
+                // Unclaimed chunk — but block always-block mobs (e.g. jengu) if they are
+                // spawning directly adjacent to a claimed plot, to prevent them walking in.
+                ChunkPos chunkPos = new ChunkPos(pos);
+                if (isAdjacentToBoughtPlot(chunkPos)) {
+                    event.setSpawnCancelled(true);
+                    LOGGER.info("[SPAWN] Lycanites always-block adjacent-to-plot suppressed: "
+                            + entityId + " | uuid=" + entity.getUUID() + " | pos=" + pos);
+                } else {
+                    LOGGER.info("[SPAWN] ALLOWED jengu in unclaimed non-adjacent chunk: "
+                            + entityId + " | uuid=" + entity.getUUID() + " | pos=" + pos);
+                }
+            }
+        } catch (Exception e) {
+            LOGGER.error("onMobSpawnCheck error: " + e.getMessage(), e);
         }
     }
 
@@ -670,41 +734,52 @@ public class ChunkManager {
         if (!isMobHostile)
             return;
 
-        // Allow spawns in completely dark areas (block light = 0).
+        // Allow spawns in completely dark areas (block light = 0) — but NOT for
+        // always-block mobs (jengu/vespidqueen) which exploit underground dark spawns
+        // to enter plots.
         int blockLight = ((Level) event.getLevel()).getBrightness(LightLayer.BLOCK, pos);
-        if (blockLight == 0)
+        if (blockLight == 0 && !LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
             return;
+        }
 
         String plotType = getPlotType(pos, (Level) event.getLevel());
-        if (plotType.isEmpty())
+        if (plotType.isEmpty()) {
+            if (LYCANITES_HIGH_BLOCK.contains(entityId.toString()))
+                LOGGER.info("[ENTITYJOIN] ALLOWED jengu in unclaimed chunk: " + entityId
+                        + " | uuid=" + mob.getUUID() + " | pos=" + pos);
             return;
+        }
 
         if (plotType.equalsIgnoreCase("village") && LYCANITES_MODID.equals(entityId.getNamespace())) {
             // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
-            if (LYCANITES_ALWAYS_BLOCK.contains(entityId.toString())) {
+            if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
                 event.setCanceled(true);
-                LOGGER.info("DEBUG: EntityJoin BLOCKED Lycanites village-chunk (always-block list): " + entityId
+                LOGGER.info("[ENTITYJOIN] BLOCKED Lycanites village-chunk (always-block): " + entityId
+                        + " | uuid=" + event.getEntity().getUUID()
                         + " | plot=village | pos=" + pos);
                 return;
             }
             // Village chunks: extra 50% Lycanites suppression
             if (LYCANITES_RAND.nextDouble() < 0.50) {
                 event.setCanceled(true);
-                LOGGER.info("DEBUG: EntityJoin BLOCKED Lycanites village-chunk: " + entityId + " | plot=village | pos="
+                LOGGER.info("[ENTITYJOIN] BLOCKED Lycanites village-chunk (50% roll): " + entityId + " | uuid="
+                        + event.getEntity().getUUID() + " | plot=village | pos="
                         + pos);
             } else {
-                LOGGER.info("DEBUG: EntityJoin ALLOWED Lycanites village-chunk (50% roll): " + entityId
-                        + " | plot=village | pos=" + pos);
+                LOGGER.info("[ENTITYJOIN] ALLOWED Lycanites village-chunk (50% roll): " + entityId
+                        + " | uuid=" + event.getEntity().getUUID() + " | plot=village | pos=" + pos);
             }
         } else if (!plotType.equalsIgnoreCase("village")) {
             // Any owned plot chunk (farm, pasture, etc.): block entirely
             event.setCanceled(true);
             LOGGER.info(
-                    "DEBUG: EntityJoin BLOCKED modded hostile: " + entityId + " | plot=" + plotType + " | pos=" + pos);
+                    "[ENTITYJOIN] BLOCKED modded hostile: " + entityId + " | uuid=" + event.getEntity().getUUID()
+                            + " | plot=" + plotType + " | pos=" + pos);
         } else {
             // Village chunk, non-Lycanites hostile — log but allow through
             LOGGER.info(
-                    "DEBUG: EntityJoin ALLOWED non-Lycanites hostile: " + entityId + " | plot=village | pos=" + pos);
+                    "[ENTITYJOIN] ALLOWED non-Lycanites hostile: " + entityId + " | uuid="
+                            + event.getEntity().getUUID() + " | plot=village | pos=" + pos);
         }
     }
 
@@ -738,6 +813,7 @@ public class ChunkManager {
         String plotLabel = plotType.isEmpty() ? "unclaimed" : plotType;
 
         LOGGER.info("DEBUG: Modded mob death: " + entityId
+                + " | uuid=" + entity.getUUID()
                 + " | hostile=" + isHostile
                 + " | category=" + entity.getType().getCategory()
                 + " | plot=" + plotLabel
@@ -746,39 +822,123 @@ public class ChunkManager {
     }
 
     /**
-     * Log when a Player or Villager is killed — shows what entity killed them,
+     * Log when a Player is killed — shows what entity killed them,
      * flagging modded killers so we can track dangerous mobs.
      */
     @SubscribeEvent
-    public static void onPlayerOrVillagerDeath(LivingDeathEvent event) {
+    public static void onPlayerDeath(LivingDeathEvent event) {
         if (event.getEntity().level().isClientSide())
             return;
-
-        net.minecraft.world.entity.LivingEntity victim = event.getEntity();
-        boolean isPlayer = victim instanceof Player;
-        boolean isVillager = victim instanceof net.minecraft.world.entity.npc.Villager;
-        if (!isPlayer && !isVillager)
+        if (!(event.getEntity() instanceof Player victim))
             return;
 
+        String killerDesc = buildKillerDesc(event);
+        LOGGER.info("KILL: PLAYER " + victim.getName().getString()
+                + " was killed by " + killerDesc
+                + " at " + victim.blockPosition());
+    }
+
+    /**
+     * When a villager dies in a claimed village chunk, log the kill and notify all
+     * online players whose home village matches — also drops a temporary red
+     * JourneyMap waypoint at the death position for each notified player.
+     */
+    @SubscribeEvent
+    public static void onVillagerDeath(LivingDeathEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+        if (!(event.getEntity() instanceof net.minecraft.world.entity.npc.Villager victim))
+            return;
+
+        String killerDesc = buildKillerDesc(event);
+        LOGGER.info("KILL: VILLAGER " + victim.getName().getString()
+                + " was killed by " + killerDesc
+                + " at " + victim.blockPosition());
+
+        try {
+            String villagerName = victim.getName().getString();
+            BlockPos deathPos = victim.blockPosition();
+
+            // Build a short cause: "zombie", "centipede", "fall", "onFire", etc.
+            String killerShort = killerDesc;
+
+            net.minecraft.server.MinecraftServer server = victim.level().getServer();
+            if (server == null)
+                return;
+
+            // --- Try to find the village this villager belongs to ---
+            ChunkPos deathChunk = new ChunkPos(deathPos);
+            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+            ChunkData chunkData = chunkDb.getData(deathChunk.toLong());
+            VillageData village = null;
+            if (chunkData != null && chunkData.getVillageId() != null) {
+                DataBase<java.util.UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+                village = villageDb.getData(chunkData.getVillageId());
+            }
+
+            // --- Reincarnation pool (only if in a tracked village) ---
+            if (village != null) {
+                DataBase<java.util.UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+                com.falazar.farmupcraft.data.VillagerRecord reincRecord = new com.falazar.farmupcraft.data.VillagerRecord(
+                        victim.getUUID(), villagerName, deathPos);
+                village.addToReincarnationPool(reincRecord);
+                villageDb.putData(village.getUUID(), village);
+                LOGGER.info("[Reincarnation] Saved to pool: " + villagerName + " | uuid=" + victim.getUUID()
+                        + " | pool_size=" + village.getReincarnationPool().size());
+            }
+
+            // --- Build message ---
+            String villageLabel = village != null ? "[" + village.getName() + "]" : "[Village]";
+            String dimId = victim.level().dimension().location().toString();
+            String wpName = villagerName + " by " + killerShort;
+
+            Component msg = Component.literal(villageLabel + " Villager ")
+                    .withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(villagerName).withStyle(ChatFormatting.YELLOW))
+                    .append(Component.literal(" was killed by " + killerDesc
+                            + " at " + deathPos.toShortString()).withStyle(ChatFormatting.RED));
+
+            // --- Notify: village members + any player within 10 chunks (160 blocks) ---
+            DataBase<java.util.UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            final double NEARBY_DIST_SQ = 160.0 * 160.0;
+            java.util.Set<java.util.UUID> notified = new java.util.HashSet<>();
+
+            for (ServerPlayer sp : server.getPlayerList().getPlayers()) {
+                // Village member check
+                if (village != null) {
+                    PlayerData pd = playerDb.getData(sp.getUUID());
+                    if (pd != null && village.getUUID().equals(pd.getHomeVillageUUID())) {
+                        sp.sendSystemMessage(msg);
+                        EDBMessages.sendToPlayer(new AddJMWaypointPacket(
+                                deathPos.getX(), deathPos.getY(), deathPos.getZ(),
+                                wpName, dimId, true, 0xFF4040), sp);
+                        notified.add(sp.getUUID());
+                        continue;
+                    }
+                }
+                // Nearby player check (same dimension, within 160 blocks)
+                if (!notified.contains(sp.getUUID())
+                        && sp.level() == victim.level()
+                        && sp.distanceToSqr(deathPos.getX(), deathPos.getY(), deathPos.getZ()) <= NEARBY_DIST_SQ) {
+                    sp.sendSystemMessage(msg);
+                    notified.add(sp.getUUID());
+                }
+            }
+        } catch (Exception ex) {
+            LOGGER.error("onVillagerDeath: villager notify error - " + ex.getMessage());
+        }
+    }
+
+    /** Builds a human-readable killer description from a LivingDeathEvent. */
+    private static String buildKillerDesc(LivingDeathEvent event) {
         net.minecraft.world.entity.Entity killer = event.getSource().getEntity();
         if (killer == null)
             killer = event.getSource().getDirectEntity();
-
-        String killerDesc;
-        if (killer == null) {
-            killerDesc = "unknown (" + event.getSource().getMsgId() + ")";
-        } else {
-            net.minecraft.resources.ResourceLocation killerId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
-                    .getKey(killer.getType());
-            String ns = killerId != null ? killerId.getNamespace() : "?";
-            String modTag = "minecraft".equals(ns) ? "" : " [MODDED:" + ns + "]";
-            killerDesc = (killerId != null ? killerId.toString() : killer.getType().toString()) + modTag;
-        }
-
-        String victimType = isPlayer ? "PLAYER" : "VILLAGER";
-        LOGGER.info("KILL: " + victimType + " " + victim.getName().getString()
-                + " was killed by " + killerDesc
-                + " at " + victim.blockPosition());
+        if (killer == null)
+            return event.getSource().getMsgId();
+        net.minecraft.resources.ResourceLocation killerId = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES
+                .getKey(killer.getType());
+        return killerId != null ? killerId.getPath() : killer.getType().toString();
     }
 
     /**

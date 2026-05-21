@@ -76,6 +76,42 @@ public class NpcDataLoader {
     }
 
     /**
+     * Renames a profile file from "{oldName}-{uuid}.json" to
+     * "{newName}-{uuid}.json"
+     * and updates the "name" field inside the JSON.
+     *
+     * @return true if the file existed and was renamed successfully; false if not
+     *         found or on error
+     */
+    public static boolean renameProfile(String oldName, String newName, UUID uuid) {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return false;
+        Path oldPath = dir.resolve(oldName + "-" + uuid + ".json");
+        Path newPath = dir.resolve(newName + "-" + uuid + ".json");
+
+        if (!Files.exists(oldPath)) {
+            LOGGER.info("NpcDataLoader.renameProfile: no profile file found for '{}' ({})", oldName, uuid);
+            return false;
+        }
+
+        try {
+            String content = Files.readString(oldPath, StandardCharsets.UTF_8);
+            JsonObject json = JsonParser.parseString(content).getAsJsonObject();
+            json.addProperty("name", newName);
+            String updated = new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create()
+                    .toJson(json) + "\n";
+            Files.writeString(newPath, updated, StandardCharsets.UTF_8);
+            Files.delete(oldPath);
+            LOGGER.info("NpcDataLoader.renameProfile: renamed '{}' → '{}' ({})", oldName, newName, uuid);
+            return true;
+        } catch (IOException e) {
+            LOGGER.error("NpcDataLoader.renameProfile: failed for '{}': {}", oldName, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Returns true if a profile file exists for this villager, without loading it.
      * Cheap check — just a file-exists test.
      */
@@ -93,30 +129,91 @@ public class NpcDataLoader {
      * @param uuid        the villager's entity UUID
      * @param description a short description sentence
      * @param personality the AI-generated multi-paragraph personality text
+     * @param villageName the name of the villager's home village (may be empty)
      * @return true on success
      */
-    public static boolean writeProfile(String name, UUID uuid, String description, String personality) {
+    public static boolean writeProfile(String name, UUID uuid, String description, String personality,
+            String villageName) {
         Path dir = getOrCreateDir();
         if (dir == null)
             return false;
         String filename = name + "-" + uuid + ".json";
-        // Escape quotes in AI-generated text for safe JSON embedding.
-        String safeDesc = description.replace("\\", "\\\\").replace("\"", "\\\"");
-        String safePers = personality.replace("\\", "\\\\").replace("\"", "\\\"");
-        String json = "{\n" +
-                "  \"uuid\":        \"" + uuid + "\",\n" +
-                "  \"name\":        \"" + name + "\",\n" +
-                "  \"description\": \"" + safeDesc + "\",\n" +
-                "  \"personality\": \"" + safePers + "\"\n" +
-                "}\n";
+        com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping()
+                .create();
+        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+        obj.addProperty("uuid", uuid.toString());
+        obj.addProperty("name", name);
+        obj.addProperty("village_name", villageName == null ? "" : villageName);
+        obj.addProperty("description", description);
+        obj.addProperty("personality", personality);
         try {
-            Files.writeString(dir.resolve(filename), json, StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve(filename), gson.toJson(obj) + "\n", StandardCharsets.UTF_8);
             LOGGER.info("NpcDataLoader: wrote profile for '{}' → {}", name, filename);
             return true;
         } catch (IOException e) {
             LOGGER.error("NpcDataLoader: failed to write profile for '{}': {}", name, e.getMessage());
             return false;
         }
+    }
+
+    /** Legacy overload — no village_name. */
+    public static boolean writeProfile(String name, UUID uuid, String description, String personality) {
+        return writeProfile(name, uuid, description, personality, "");
+    }
+
+    /**
+     * Reads the raw JSON object from a profile file, or null if it doesn't exist.
+     * Used by redoprofile to pass the existing profile to the AI.
+     */
+    @Nullable
+    public static com.google.gson.JsonObject readRawProfile(String name, UUID uuid) {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return null;
+        Path path = dir.resolve(name + "-" + uuid + ".json");
+        if (!Files.exists(path))
+            return null;
+        try {
+            String content = Files.readString(path, StandardCharsets.UTF_8);
+            return JsonParser.parseString(content).getAsJsonObject();
+        } catch (Exception e) {
+            LOGGER.error("NpcDataLoader.readRawProfile: failed for '{}': {}", name, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Scans the npcData/ directory and deletes any profile whose personality field
+     * contains "[AI Error]" (e.g. timeout/failure entries).
+     *
+     * @return number of files deleted
+     */
+    public static int deleteErrorProfiles() {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return 0;
+        int deleted = 0;
+        try (var stream = Files.list(dir)) {
+            for (Path file : stream.filter(p -> p.getFileName().toString().endsWith(".json"))
+                    .collect(java.util.stream.Collectors.toList())) {
+                try {
+                    String content = Files.readString(file, StandardCharsets.UTF_8);
+                    JsonObject json = JsonParser.parseString(content).getAsJsonObject();
+                    String pers = json.has("personality") ? json.get("personality").getAsString() : "";
+                    if (pers.contains("[AI Error]")) {
+                        Files.delete(file);
+                        LOGGER.info("NpcDataLoader.deleteErrorProfiles: deleted {}", file.getFileName());
+                        deleted++;
+                    }
+                } catch (Exception e) {
+                    LOGGER.error("NpcDataLoader.deleteErrorProfiles: skipping {}: {}", file.getFileName(),
+                            e.getMessage());
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.error("NpcDataLoader.deleteErrorProfiles: failed to list dir: {}", e.getMessage());
+        }
+        return deleted;
     }
 
     // -------------------------------------------------------------------------

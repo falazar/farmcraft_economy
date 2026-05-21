@@ -49,7 +49,7 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
     private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen",
-            "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery");
+            "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery", "library", "guardhouse");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -78,6 +78,8 @@ public class PlotCommand {
                             builder2.suggest("graveyard");
                             builder2.suggest("pasture");
                             builder2.suggest("refinery");
+                            builder2.suggest("library");
+                            builder2.suggest("guardhouse");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
@@ -227,12 +229,14 @@ public class PlotCommand {
                     .withStyle(ChatFormatting.YELLOW)
                     // .append(Component.literal("Owned by: " +
                     // chunkData.getNameForPlayer(serverLevel) + ", "))
-                    .append(Component.literal("Village: " + villageData.getName() + "\n")
-                            .withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal("Type: " + chunkData.getType() + "\n").withStyle(ChatFormatting.WHITE))
-                    .append(Component.literal("Plot Level: " + chunkData.getPlotLevel()
-                            + " (village level: " + villageData.getLevel() + ", max upgrade: "
-                            + (villageData.getLevel() / 2) + ")\n").withStyle(ChatFormatting.WHITE));
+                    .append(Component.literal("Village: ").withStyle(ChatFormatting.GOLD)
+                            .append(Component.literal(villageData.getName() + "\n").withStyle(ChatFormatting.WHITE)))
+                    .append(Component.literal("Type: ").withStyle(ChatFormatting.GOLD)
+                            .append(Component.literal(chunkData.getType() + "\n").withStyle(ChatFormatting.WHITE)))
+                    .append(Component.literal("Plot Level: ").withStyle(ChatFormatting.GOLD)
+                            .append(Component.literal(chunkData.getPlotLevel()
+                                    + " (village level: " + villageData.getLevel() + ", max upgrade: "
+                                    + (villageData.getLevel() / 2) + ")\n").withStyle(ChatFormatting.WHITE)));
             // todo if village show village unclaimed...
 
             // TODO get counts of biomes also.
@@ -240,10 +244,10 @@ public class PlotCommand {
                 String biomeStr = biomes.entrySet().stream()
                         .map(e -> e.getKey() + " (" + e.getValue() + ")")
                         .collect(java.util.stream.Collectors.joining(", "));
-                response.append(Component.literal("Biomes: " + biomeStr + "\n")
-                        .withStyle(ChatFormatting.WHITE));
+                response.append(Component.literal("Biomes: ").withStyle(ChatFormatting.GOLD)
+                        .append(Component.literal(biomeStr + "\n").withStyle(ChatFormatting.WHITE)));
             } else {
-                response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.WHITE));
+                response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.GRAY));
             }
 
             // If pasture plot show animal count.
@@ -257,13 +261,30 @@ public class PlotCommand {
             // If farm plot show all crops planted.
             if (chunkData.getType().equalsIgnoreCase("farm")) {
                 // Scan a Y range around the player to reliably find crops.
-                response.append(Component
-                        .literal("Farm plot with crops planted: "
-                                + getCropsPlanted(playerSource.blockPosition(), serverLevel) + "\n")
-                        .withStyle(ChatFormatting.GREEN));
+                response.append(Component.literal("Crops Planted: ").withStyle(ChatFormatting.GOLD)
+                        .append(Component.literal(getCropsPlanted(playerSource.blockPosition(), serverLevel) + "\n")
+                                .withStyle(ChatFormatting.WHITE)));
             }
 
             MutableComponent finalResponse = response;
+
+            // 30% chance: show upgrade reminder for upgradeable plot types.
+            String plotType2 = chunkData.getType();
+            boolean isUpgradeable = plotType2.equalsIgnoreCase("farm")
+                    || plotType2.equalsIgnoreCase("nursery")
+                    || plotType2.equalsIgnoreCase("pasture");
+            if (isUpgradeable && Math.random() < 0.30) {
+                int currentLevel = chunkData.getPlotLevel();
+                int maxAllowed = Math.min(4, villageData.getLevel() / 2);
+                if (currentLevel < maxAllowed) {
+                    int upgradeCost = calculatePlotCost(villageData, plotType2);
+                    finalResponse.append(Component.literal(
+                            "\n💡 Tip: Upgrade this plot to level " + (currentLevel + 1)
+                                    + " for " + upgradeCost + " coins! Use /plot upgrade")
+                            .withStyle(ChatFormatting.AQUA));
+                }
+            }
+
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
             context.getSource().sendFailure(Component.literal("Exception thrown - see log"));
@@ -485,7 +506,9 @@ public class PlotCommand {
 
             // STEP 2.4: Block plot buy if village is in debt.
             if (!playerSource.isCreative() && village.getCoins() < 0) {
-                source.sendFailure(Component.literal("Your village is in debt (balance: " + village.getCoins() + " coins). Pay off the debt before buying more plots.")
+                source.sendFailure(Component
+                        .literal("Your village is in debt (balance: " + village.getCoins()
+                                + " coins). Pay off the debt before buying more plots.")
                         .withStyle(ChatFormatting.RED));
                 return 0;
             }

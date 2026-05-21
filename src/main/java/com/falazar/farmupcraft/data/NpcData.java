@@ -18,7 +18,9 @@ public class NpcData {
             UUIDUtil.STRING_CODEC.optionalFieldOf("home_village_id", UUID.randomUUID())
                     .forGetter(NpcData::getHomeVillageUUID),
             Codec.STRING.optionalFieldOf("description", "").forGetter(NpcData::getDescription),
-            Codec.STRING.optionalFieldOf("personality", "").forGetter(NpcData::getPersonality))
+            Codec.STRING.optionalFieldOf("personality", "").forGetter(NpcData::getPersonality),
+            Codec.STRING.optionalFieldOf("village_name", "").forGetter(NpcData::getVillageName),
+            Codec.BOOL.optionalFieldOf("forever_kid", false).forGetter(NpcData::isForeverKid))
             .apply(instance, NpcData::new));
 
     @Nonnull
@@ -31,19 +33,34 @@ public class NpcData {
     private String description = "";
     @Nonnull
     private String personality = "";
+    @Nonnull
+    private String villageName = "";
+    private boolean foreverKid = false;
     // todo add lastPos
 
     /** Legacy constructor — no personality. */
     public NpcData(UUID uuid, String name, UUID homeVillageUUID, String description) {
-        this(uuid, name, homeVillageUUID, description, "");
+        this(uuid, name, homeVillageUUID, description, "", "", false);
     }
 
+    /** Constructor — no village_name. */
     public NpcData(UUID uuid, String name, UUID homeVillageUUID, String description, String personality) {
+        this(uuid, name, homeVillageUUID, description, personality, "", false);
+    }
+
+    /** Constructor — no foreverKid. */
+    public NpcData(UUID uuid, String name, UUID homeVillageUUID, String description, String personality, String villageName) {
+        this(uuid, name, homeVillageUUID, description, personality, villageName, false);
+    }
+
+    public NpcData(UUID uuid, String name, UUID homeVillageUUID, String description, String personality, String villageName, boolean foreverKid) {
         this.uuid = uuid;
         this.name = name;
         this.homeVillageUUID = homeVillageUUID;
         this.description = description;
         this.personality = personality;
+        this.villageName = villageName == null ? "" : villageName;
+        this.foreverKid = foreverKid;
     }
 
     /**
@@ -97,6 +114,23 @@ public class NpcData {
 
     public void setPersonality(@Nonnull String personality) {
         this.personality = personality;
+    }
+
+    @Nonnull
+    public String getVillageName() {
+        return villageName;
+    }
+
+    public void setVillageName(@Nonnull String villageName) {
+        this.villageName = villageName;
+    }
+
+    public boolean isForeverKid() {
+        return foreverKid;
+    }
+
+    public void setForeverKid(boolean foreverKid) {
+        this.foreverKid = foreverKid;
     }
 
 }

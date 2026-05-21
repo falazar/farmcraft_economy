@@ -21,6 +21,7 @@ test minions
     TODO: possibly a command to scan for chests there.
         How do we tell if chests have been opened or not before?
     TODO: Add an extra bad guy in most all underground structures, first time only when discovered.
+    TODO: Add new loot item to mineshaft chests — potion of mining (haste effect) or similar mining-buff potion.
     TODO: Add a note, paper or book to a chest in the structure, if no chest add a chest? (only once, when discovered?)
         make those helper methods?
 
@@ -52,6 +53,21 @@ TODO: bug can break blocks if super fast in other village some break some dont.
 
 Dont spawn bad guys in top level in city and lwer if bought plot?
 CURRENT SECTION:
+
+    TODO - Market boost tokens: consumable item that targets one market group (food, general, etc.).
+        On use, randomly selects 3 items from that group (repeats allowed) and increases each item's
+        cost by 3 coins. Stacks with existing price. Could be used to simulate demand spikes.
+
+    TODO - Daylight/Nighttime token: consumable item that instantly sets the world time to the
+        start of day (sunrise) or start of night (dusk). Two variants — one per phase.
+        Admin-craftable or loot-only. Sets time via server command equivalent (setDayTime).
+
+    TODO - Multi-layer dungeon tower: a tall structure with distinct floors, each floor using a
+        different dimension/realm layer generated on the fly (overworld stone, nether brick,
+        end-stone, custom, etc.). Players descend (or ascend) through portals or trapdoor shafts
+        between floors. Each layer has its own mob theme, loot tier, and difficulty scaling.
+        Floors generated procedurally or from schematic pool when first entered.
+        Sponsored by Scouter.
 
 
 

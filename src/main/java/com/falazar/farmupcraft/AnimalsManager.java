@@ -83,6 +83,49 @@ public class AnimalsManager {
         LOGGER.info("Sheep {} sheared by {} at gameTick={}", sheep.getUUID(), player.getName().getString(), gameTime);
     }
 
+    // Base dye success chance (20%) + 10% per pasture level above 1.
+    private static final int DYE_BASE_CHANCE = 20;
+    private static final int DYE_CHANCE_PER_LEVEL = 10;
+
+    @SubscribeEvent
+    public static void onRightClickSheepDye(PlayerInteractEvent.EntityInteract event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        Entity source = event.getEntity();
+        if (!(source instanceof Player player))
+            return;
+
+        if (!(event.getTarget() instanceof Sheep sheep))
+            return;
+
+        ItemStack held = player.getItemInHand(event.getHand());
+        DyeColor dyeColor = DyeColor.getColor(held);
+        if (dyeColor == null)
+            return; // not holding a dye
+
+        // Get pasture level at the sheep's position.
+        ChunkData chunk = ChunkManager.getPlot(sheep.blockPosition());
+        int pastureLevel = (chunk != null) ? chunk.getPlotLevel() : 1;
+
+        int successChance = DYE_BASE_CHANCE + (pastureLevel - 1) * DYE_CHANCE_PER_LEVEL;
+
+        if (new java.util.Random().nextInt(100) >= successChance) {
+            // Failed — cancel the interaction so the sheep is not dyed.
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal(
+                            "The dye didn't take. (" + successChance + "% chance, pasture level " + pastureLevel + ")")
+                            .withStyle(net.minecraft.ChatFormatting.RED),
+                    true);
+            // Consume the dye and resync inventory to prevent ghost-item on client.
+            if (player instanceof net.minecraft.server.level.ServerPlayer serverPlayer) {
+                held.shrink(1);
+                serverPlayer.inventoryMenu.sendAllDataToRemote();
+            }
+        }
+    }
+
     @SubscribeEvent
     public static void onSheepTick(LivingEvent.LivingTickEvent event) {
         if (!(event.getEntity() instanceof Sheep sheep))
@@ -137,11 +180,18 @@ public class AnimalsManager {
             if (!usedStack.is(Items.BUCKET))
                 return;
 
+            // Cow must be in a claimed pasture plot.
+            String plotType = ChunkManager.getPlotType(cow.blockPosition(), event.getLevel());
+            if (!"pasture".equals(plotType)) {
+                cancelMilkingWithSync(event, player, "Cows can only be milked in a pasture plot.");
+                return;
+            }
+
             String today = LocalDate.now().toString(); // "yyyy-MM-dd"
             String lastMilked = cow.getPersistentData().getString(NBT_LAST_MILKED);
 
             if (today.equals(lastMilked)) {
-                cancelWithError(event, player, "This cow has already been milked today.");
+                cancelMilkingWithSync(event, player, "This cow has already been milked today.");
                 return;
             }
 
@@ -150,7 +200,7 @@ public class AnimalsManager {
             LOGGER.info("Cow {} milked by {} on {}", cow.getUUID(), player.getName().getString(), today);
         } catch (Throwable t) {
             LOGGER.error("Unhandled milking handler failure: {}", t.getMessage(), t);
-            cancelWithError(event, player, "Milking failed due to an internal error.");
+            cancelMilkingWithSync(event, player, "Milking failed due to an internal error.");
         }
     }
 
@@ -408,6 +458,19 @@ public class AnimalsManager {
     }
 
     /**
+     * Cancel milking and sync inventory to the client to clear the ghost milk
+     * bucket
+     * that vanilla predicts client-side before the server cancels the event.
+     */
+    private static void cancelMilkingWithSync(PlayerInteractEvent.EntityInteract event, Player player, String message) {
+        event.setCanceled(true);
+        player.displayClientMessage(Component.literal(message).withStyle(ChatFormatting.RED), false);
+        if (player instanceof net.minecraft.server.level.ServerPlayer sp) {
+            sp.inventoryMenu.broadcastChanges();
+        }
+    }
+
+    /**
      * When any Animal joins the level, replace all of its TemptGoals with a
      * subclass that skips tempting while the animal is in love mode (already fed
      * and waiting to breed). This stops sheep/cows/etc. from chasing the food
@@ -424,14 +487,16 @@ public class AnimalsManager {
             return;
 
         // Log all goals for blue/purple sheep so we can see what's actually registered.
-        if (animal instanceof Sheep sheep && isDebugSheep(sheep)) {
-            StringBuilder goalList = new StringBuilder();
-            for (WrappedGoal wrapped : animal.goalSelector.getAvailableGoals()) {
-                goalList.append("[p=").append(wrapped.getPriority())
-                        .append(" ").append(wrapped.getGoal().getClass().getSimpleName()).append("] ");
-            }
-            LOGGER.info("Sheep {} ({}) goals: {}", animal.getUUID(), sheep.getColor(), goalList);
-        }
+        // if (animal instanceof Sheep sheep && isDebugSheep(sheep)) {
+        // StringBuilder goalList = new StringBuilder();
+        // for (WrappedGoal wrapped : animal.goalSelector.getAvailableGoals()) {
+        // goalList.append("[p=").append(wrapped.getPriority())
+        // .append(" ").append(wrapped.getGoal().getClass().getSimpleName()).append("]
+        // ");
+        // }
+        // LOGGER.info("Sheep {} ({}) goals: {}", animal.getUUID(), sheep.getColor(),
+        // goalList);
+        // }
 
         // Collect all TemptGoal-backed WrappedGoals, then swap them out.
         List<WrappedGoal> toReplace = new ArrayList<>();
@@ -440,22 +505,24 @@ public class AnimalsManager {
                 toReplace.add(wrapped);
             }
         }
-        boolean isDebugSheep = animal instanceof Sheep && isDebugSheep((Sheep) animal);
-        if (isDebugSheep && toReplace.isEmpty()) {
-            LOGGER.info("TemptGoal patch: no TemptGoals found for {} (type={})",
-                    animal.getUUID(),
-                    net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(animal.getType()));
-        }
+        // boolean isDebugSheep = animal instanceof Sheep && isDebugSheep((Sheep)
+        // animal);
+        // if (isDebugSheep && toReplace.isEmpty()) {
+        // LOGGER.info("TemptGoal patch: no TemptGoals found for {} (type={})",
+        // animal.getUUID(),
+        // net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(animal.getType()));
+        // }
         for (WrappedGoal wrapped : toReplace) {
             TemptGoal original = (TemptGoal) wrapped.getGoal();
             int priority = wrapped.getPriority();
             animal.goalSelector.removeGoal(original);
             animal.goalSelector.addGoal(priority, new NoLoveTemptGoal(animal, original));
-            if (isDebugSheep) {
-                LOGGER.info("TemptGoal patch: replaced TemptGoal[priority={}] on {} (type={})",
-                        priority, animal.getUUID(),
-                        net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(animal.getType()));
-            }
+            // if (isDebugSheep) {
+            // LOGGER.info("TemptGoal patch: replaced TemptGoal[priority={}] on {}
+            // (type={})",
+            // priority, animal.getUUID(),
+            // net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(animal.getType()));
+            // }
         }
     }
 
@@ -479,21 +546,21 @@ public class AnimalsManager {
             // Call delegate once and cache — TemptGoal.canUse() has side effects
             // (it finds and stores the nearby player). Calling it twice was a bug.
             boolean delegateWants = delegate.canUse();
-            boolean debug = animal instanceof Sheep && isDebugSheep((Sheep) animal);
-            if (debug) {
-                String today = LocalDate.now().toString();
-                String lastBred = animal.getPersistentData().getString(NBT_LAST_BRED);
-                // Always log when delegate wants to run (player nearby with food).
-                if (delegateWants) {
-                    LOGGER.info("TemptGoal[{}]: delegateWants=true | blocked={} | inLove={} | lastBred='{}' | today={}",
-                            animal.getUUID(), blocked, animal.isInLove(), lastBred, today);
-                }
-                // Also log when we have NBT set (sheep was bred) even if delegate doesn't want.
-                if (!delegateWants && !lastBred.isEmpty()) {
-                    LOGGER.info("TemptGoal[{}]: delegateWants=false | blocked={} | lastBred='{}' | today={}",
-                            animal.getUUID(), blocked, lastBred, today);
-                }
-            }
+            // boolean debug = animal instanceof Sheep && isDebugSheep((Sheep) animal);
+            // if (debug) {
+            // String today = LocalDate.now().toString();
+            // String lastBred = animal.getPersistentData().getString(NBT_LAST_BRED);
+            // if (delegateWants) {
+            // LOGGER.info("TemptGoal[{}]: delegateWants=true | blocked={} | inLove={} |
+            // lastBred='{}' | today={}",
+            // animal.getUUID(), blocked, animal.isInLove(), lastBred, today);
+            // }
+            // if (!delegateWants && !lastBred.isEmpty()) {
+            // LOGGER.info("TemptGoal[{}]: delegateWants=false | blocked={} | lastBred='{}'
+            // | today={}",
+            // animal.getUUID(), blocked, lastBred, today);
+            // }
+            // }
             return !blocked && delegateWants;
         }
 
@@ -514,9 +581,10 @@ public class AnimalsManager {
 
         @Override
         public void start() {
-            if (animal instanceof Sheep && isDebugSheep((Sheep) animal)) {
-                LOGGER.info("TemptGoal[{}]: started following player (not blocked)", animal.getUUID());
-            }
+            // if (animal instanceof Sheep && isDebugSheep((Sheep) animal)) {
+            // LOGGER.info("TemptGoal[{}]: started following player (not blocked)",
+            // animal.getUUID());
+            // }
             delegate.start();
         }
 

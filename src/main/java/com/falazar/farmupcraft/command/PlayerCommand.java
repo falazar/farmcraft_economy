@@ -142,7 +142,9 @@ public class PlayerCommand {
             // STEP 2: Get money from player coin field.
             int bronzeCoins = player.getCoins();
             LOGGER.info("DEBUG: Player info bronze coins: " + bronzeCoins);
-            source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
+            source.sendSuccess(() -> Component.literal("Coins: ").withStyle(ChatFormatting.GOLD)
+                    .append(Component.literal(String.format("%,d", bronzeCoins)).withStyle(ChatFormatting.WHITE)),
+                    false);
 
             // STEP 3: Pull home village info if set.
             sendHomeVillageInfo(source, serverLevel, player);

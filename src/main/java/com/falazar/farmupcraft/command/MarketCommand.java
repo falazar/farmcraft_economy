@@ -6,8 +6,6 @@ import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
-
-import java.util.UUID;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -183,7 +181,19 @@ public class MarketCommand {
                         .executes(context -> findFoodMarketItems(context.getSource())))
                 // findwood - lists wood-type items
                 .then(Commands.literal("findwood")
-                        .executes(context -> findWoodMarketItems(context.getSource())));
+                        .executes(context -> findWoodMarketItems(context.getSource())))
+                // clearair - removes any market entries whose item resolves to Air
+                .then(Commands.literal("clearair")
+                        .executes(context -> {
+                            clearAirMarketItems(context.getSource());
+                            return 0;
+                        }))
+                // restoreremoved - re-adds the items accidentally removed by clearair
+                .then(Commands.literal("restoreremoved")
+                        .executes(context -> {
+                            restoreRemovedItems(context.getSource());
+                            return 0;
+                        }));
         builder.then(adminBuilder);
 
         // Define a "buy" sub-command
@@ -200,12 +210,13 @@ public class MarketCommand {
 
     public static int showMarketInfo(CommandContext<CommandSourceStack> context) {
         try {
-            MutableComponent response = Component.literal("Market info options: \n");
-            response = response.append(Component.literal("  /market show general \n"));
-            response = response.append(Component.literal("  /market show food \n"));
-            response = response.append(Component.literal("  /market show wood \n"));
-            response = response.append(Component.literal("  /market show stone \n"));
-            response = response.append(Component.literal("  /market show high [minCoins] \n"));
+            MutableComponent response = Component.literal("Market Commands:\n").withStyle(ChatFormatting.GOLD);
+            response = response.append(Component.literal("  /market show general\n").withStyle(ChatFormatting.WHITE));
+            response = response.append(Component.literal("  /market show food\n").withStyle(ChatFormatting.WHITE));
+            response = response.append(Component.literal("  /market show wood\n").withStyle(ChatFormatting.WHITE));
+            response = response.append(Component.literal("  /market show stone\n").withStyle(ChatFormatting.WHITE));
+            response = response
+                    .append(Component.literal("  /market show high [minCoins]\n").withStyle(ChatFormatting.WHITE));
             MutableComponent finalResponse = response;
             context.getSource().sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -1010,6 +1021,14 @@ public class MarketCommand {
                     // Step 2: Create an object to hold as a GoodsData object.
                     GoodsData goodsData = goodsDataDataBase.getData(trimmedItem);
                     if (goodsData == null) {
+                        // Guard: skip if the item resolves to Air (unrecognised registry key).
+                        net.minecraft.world.item.Item resolvedItem = net.minecraftforge.registries.ForgeRegistries.ITEMS
+                                .getValue(new net.minecraft.resources.ResourceLocation(trimmedItem));
+                        if (resolvedItem == null || resolvedItem == net.minecraft.world.item.Items.AIR) {
+                            LOGGER.warn("Market import SKIPPED '{}' — resolves to Air/null, mod may not be loaded.",
+                                    trimmedItem);
+                            continue;
+                        }
                         // STEP 3: Insert into DB, ignore if an old one exists.
                         // Dont create dupes, just insert new ones.
                         goodsData = new GoodsData(trimmedItem, 5, 0, "common", false, type, "");
@@ -1042,6 +1061,140 @@ public class MarketCommand {
             source.sendSuccess(() -> Component.literal("All market items cleared."), false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Clear All Market Items Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+    }
+
+    public static void clearAirMarketItems(CommandSourceStack source) {
+        try {
+            DataBase<String, GoodsData> goodsDb = ModEvents.getGoodsDataDatabase();
+            List<String> toRemove = new ArrayList<>();
+            for (String key : goodsDb.getKeys()) {
+                GoodsData gd = goodsDb.getData(key);
+                if (gd == null) {
+                    toRemove.add(key);
+                    continue;
+                }
+                net.minecraft.world.item.Item resolved = net.minecraftforge.registries.ForgeRegistries.ITEMS
+                        .getValue(new net.minecraft.resources.ResourceLocation(gd.getItemId()));
+                if (resolved == null || resolved == net.minecraft.world.item.Items.AIR) {
+                    LOGGER.warn("clearAirMarketItems: removing '{}' — resolves to Air/null", gd.getItemId());
+                    toRemove.add(key);
+                }
+            }
+            if (!toRemove.isEmpty()) {
+                goodsDb.removeDataBatch(toRemove);
+            }
+            int count = toRemove.size();
+            source.sendSuccess(() -> Component.literal("Removed " + count + " Air/invalid market item(s): "
+                    + String.join(", ", toRemove)), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("clearAirMarketItems exception — see log"));
+            ex.printStackTrace();
+        }
+    }
+    /*
+     * list here alot of these are ok though and im not sure why exactly???
+     * 07:35:59] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT]
+     * Removed 46 Air/invalid market item(s): pamhc2foodcore:rabbitpotpieitem,
+     * pamhc2foodcore:choruspieitem, pamhc2foodcore:melonmuffinitem,
+     * pamhc2foodcore:sweetberrypopsicleitem, pamhc2foodcore:melondonutitem,
+     * pamhc2foodcore:gummycreepersitem, pamhc2foodcore:glowberrydonutitem,
+     * pamhc2foodcore:beefpotpieitem, pamhc2foodcore:carrotpieitem,
+     * pamhc2foodcore:powdereddonutitem, pamhc2foodcore:glowberrymuffinitem,
+     * pamhc2foodcore:chorusjellytoastitem, pamhc2foodcore:crackersandcheeseitem,
+     * alexmobs:bison_fur, pamhc2foodcore:choruspopsicleitem,
+     * pamhc2foodcore:chorusjuiceitem, pamhc2foodcore:chocolatepieitem,
+     * pamhc2foodcore:plaindonutitem, pamhc2foodcore:melonpopsicleitem,
+     * pamhc2foodcore:fishpotpieitem, pamhc2foodcore:carameldonutitem,
+     * minecraft:sea_grass, iceandfire:dragon_bone,
+     * pamhc2foodcore:glowberrypopsicleitem, pamhc2foodcore:melonyogurtitem,
+     * pamhc2foodcore:fudgesicleitem, pamhc2foodcore:honeypieitem,
+     * pamhc2foodcore:carrotdonutitem, pamhc2foodcore:carrotjuiceitem,
+     * pamhc2foodcore:muttonpotpieitem, pamhc2foodcore:appledonutitem,
+     * pamhc2foodcore:porkpotpieitem, pamhc2foodcore:chocolatemilkitem,
+     * pamhc2foodcore:chorusjellyitem, pamhc2foodcore:sweetberrydonutitem,
+     * pamhc2foodcore:sweetberrymuffinitem, pamhc2foodcore:caramelpieitem,
+     * pamhc2foodcore:chorusmuffinitem, pamhc2foodcore:pumpkindonutitem,
+     * pamhc2foodcore:sprinklesdonutitem, pamhc2foodcore:applemuffinitem,
+     * pamhc2foodcore:honeyglazeddonutitem, pamhc2foodcore:chorussmoothieitem,
+     * pamhc2foodcore:chorusdonutitem, pamhc2foodcore:applepopsicleitem,
+     * pamhc2foodcore:chorusyogurtitem
+     */
+
+    /** Restores the 46 items accidentally removed by /market admin clearair. */
+    public static void restoreRemovedItems(CommandSourceStack source) {
+        try {
+            DataBase<String, GoodsData> goodsDb = ModEvents.getGoodsDataDatabase();
+            List<String> items = java.util.Arrays.asList(
+                    "pamhc2foodcore:rabbitpotpieitem",
+                    "pamhc2foodcore:choruspieitem",
+                    "pamhc2foodcore:melonmuffinitem",
+                    "pamhc2foodcore:sweetberrypopsicleitem",
+                    "pamhc2foodcore:melondonutitem",
+                    "pamhc2foodcore:gummycreepersitem",
+                    "pamhc2foodcore:glowberrydonutitem",
+                    "pamhc2foodcore:beefpotpieitem",
+                    "pamhc2foodcore:carrotpieitem",
+                    "pamhc2foodcore:powdereddonutitem",
+                    "pamhc2foodcore:glowberrymuffinitem",
+                    "pamhc2foodcore:chorusjellytoastitem",
+                    "pamhc2foodcore:crackersandcheeseitem",
+                    "alexmobs:bison_fur",
+                    "pamhc2foodcore:choruspopsicleitem",
+                    "pamhc2foodcore:chorusjuiceitem",
+                    "pamhc2foodcore:chocolatepieitem",
+                    "pamhc2foodcore:plaindonutitem",
+                    "pamhc2foodcore:melonpopsicleitem",
+                    "pamhc2foodcore:fishpotpieitem",
+                    "pamhc2foodcore:carameldonutitem",
+                    "minecraft:sea_grass",
+                    "iceandfire:dragon_bone",
+                    "pamhc2foodcore:glowberrypopsicleitem",
+                    "pamhc2foodcore:melonyogurtitem",
+                    "pamhc2foodcore:fudgesicleitem",
+                    "pamhc2foodcore:honeypieitem",
+                    "pamhc2foodcore:carrotdonutitem",
+                    "pamhc2foodcore:carrotjuiceitem",
+                    "pamhc2foodcore:muttonpotpieitem",
+                    "pamhc2foodcore:appledonutitem",
+                    "pamhc2foodcore:porkpotpieitem",
+                    "pamhc2foodcore:chocolatemilkitem",
+                    "pamhc2foodcore:chorusjellyitem",
+                    "pamhc2foodcore:sweetberrydonutitem",
+                    "pamhc2foodcore:sweetberrymuffinitem",
+                    "pamhc2foodcore:caramelpieitem",
+                    "pamhc2foodcore:chorusmuffinitem",
+                    "pamhc2foodcore:pumpkindonutitem",
+                    "pamhc2foodcore:sprinklesdonutitem",
+                    "pamhc2foodcore:applemuffinitem",
+                    "pamhc2foodcore:honeyglazeddonutitem",
+                    "pamhc2foodcore:chorussmoothieitem",
+                    "pamhc2foodcore:chorusdonutitem",
+                    "pamhc2foodcore:applepopsicleitem",
+                    "pamhc2foodcore:chorusyogurtitem");
+
+            int added = 0;
+            int skipped = 0;
+            for (String itemId : items) {
+                if (goodsDb.getData(itemId) != null) {
+                    skipped++;
+                    continue;
+                }
+                // Determine marketType heuristically.
+                String marketType = itemId.startsWith("pamhc2foodcore:") ? "food" : "general";
+                GoodsData gd = new GoodsData(itemId, 5, 0, "common", false, marketType, "");
+                goodsDb.putData(itemId, gd);
+                added++;
+            }
+            goodsDb.setDirty();
+            int finalAdded = added;
+            int finalSkipped = skipped;
+            source.sendSuccess(() -> Component.literal(
+                    "[Market] Restored " + finalAdded + " item(s). Skipped " + finalSkipped + " already-present.")
+                    .withStyle(ChatFormatting.GREEN), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("restoreRemovedItems exception — see log"));
             ex.printStackTrace();
         }
     }
@@ -1099,8 +1252,8 @@ public class MarketCommand {
         NumberFormat numberFormat = NumberFormat.getInstance();
         String costStr = numberFormat.format(cost);
         String label = inInventory
-                ? " -" + itemName + ": " + costStr + " coins (" + inventoryCount + " cnt)\n"
-                : " -" + itemName + ": " + costStr + " coins\n";
+                ? itemName + ": " + costStr + " coins (" + inventoryCount + " cnt)\n"
+                : itemName + ": " + costStr + " coins\n";
 
         HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_ITEM,
                 new HoverEvent.ItemStackInfo(item.getDefaultInstance()));

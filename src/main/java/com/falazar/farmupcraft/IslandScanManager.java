@@ -34,20 +34,23 @@ import java.util.function.Consumer;
  * Algorithm summary:
  * 1. Sparse grid sampling (every 5 blocks, grid-aligned) finds water/land
  * seeds.
- * 2. S-erosion: water within ±2 of land is "shallow" and excluded from water
- * flood-fills.
- * This pre-splits lake bodies from rivers/oceans through narrow channels.
- * 3. Water flood-fill (non-shallow only) → classify: river (any IS_RIVER
+ * 2. Water flood-fill → classify: river (any IS_RIVER
  * block),
  * ocean (size > OCEAN_THRESHOLD), or lake.
- * 4. Land flood-fill → C-erosion: land within ±2 of water is "coastal".
+ * 3. Land flood-fill → C-erosion: land within ±2 of water is "coastal".
  * Interior BFS checks if any non-coastal land escapes the body → peninsula →
  * skip.
- * 5. Results saved to findings.json; visited coords cached in scan_cache.json.
+ * 4. Results saved to findings.json; visited coords cached in scan_cache.json.
  */
 public class IslandScanManager {
     public static final CustomLogger LOGGER = new CustomLogger(IslandScanManager.class.getSimpleName());
-
+    private static int scanCount = 0;
+    private static String lastSkipReason = "";
+    private static Set<Long> lastSkipBody = null;
+    /**
+     * Persisted map from grid-seed coord to large-body name (ocean/river/mainland).
+     */
+    private static Map<Long, String> largeBodyNames = new HashMap<>();
     // --- Tuning constants ---
     private static final int GRID_STEP = 5;
     private static final int EROSION_DIST = 2; // C / S erosion radius (±2 blocks)
@@ -77,14 +80,18 @@ public class IslandScanManager {
         return FMLPaths.GAMEDIR.get().resolve("findings.json");
     }
 
+    private static Path largeBodiesFile() {
+        return FMLPaths.GAMEDIR.get().resolve("large_body_names.json");
+    }
+
     private static final String[] WP_NAMES = {
             "Mist", "Storm", "Dawn", "Dusk", "Frost", "Ember", "Tide", "Gale",
             "Vale", "Cove", "Reef", "Fen", "Briar", "Shoal", "Bluff", "Mere"
     };
     private static final Random RNG = new Random();
 
-    private static String randomWpName() {
-        return WP_NAMES[RNG.nextInt(WP_NAMES.length)] + "-" + (100 + RNG.nextInt(900));
+    private static String randomWpName(int blockCount) {
+        return WP_NAMES[RNG.nextInt(WP_NAMES.length)] + "-" + blockCount;
     }
 
     // --- 4-directional offsets ---
@@ -104,6 +111,7 @@ public class IslandScanManager {
         MinecraftServer server = level.getServer();
         Thread t = new Thread(() -> {
             try {
+                scanCount++;
                 doScan(level, centerX, centerZ, radius, msg -> server.execute(() -> feedback.accept(msg)), player);
             } catch (Throwable e) {
                 LOGGER.error("Island scan failed: " + e.getMessage(), e);
@@ -145,12 +153,16 @@ public class IslandScanManager {
     private static void doScan(ServerLevel level, int cx, int cz, int radius,
             Consumer<Component> feedback, ServerPlayer player) throws IOException {
         long t0 = System.currentTimeMillis();
-        feedback.accept(Component.literal("Island scan started (radius=" + radius + ")..."));
+        String startTime = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(t0));
+        largeBodyNames = loadLargeBodyNames();
+        feedback.accept(
+                Component.literal("Scan:" + scanCount + " started at " + startTime + " (radius=" + radius + ")"));
 
         Set<Long> visited = loadCache(); // grid seeds from previous scans
         Set<Long> newVisited = new HashSet<>(); // body blocks, in-memory only for this run
         Set<Long> processedSeeds = new HashSet<>(); // grid seeds processed this run (saved to cache)
         List<JsonObject> findings = new ArrayList<>();
+        Set<String> cachedBodyNamesSeen = new java.util.LinkedHashSet<>(); // unique body names hit from cache
 
         // Grid-aligned scan bounds
         int x0 = floorGrid(cx - radius), x1 = ceilGrid(cx + radius);
@@ -158,16 +170,20 @@ public class IslandScanManager {
 
         int seeds = 0;
         int skippedUnloaded = 0;
+        int skippedCached = 0;
+        int skippedBody = 0;
         int chunksLoaded = 0;
         int xStepCount = 0;
         int totalXSteps = (x1 - x0) / GRID_STEP + 1;
         Set<Long> seenChunks = new HashSet<>();
         for (int x = x0; x <= x1; x += GRID_STEP) {
             xStepCount++;
-            String progressMsg = "P: col " + xStepCount + "/" + totalXSteps
-                    + " x=" + x + " found=" + findings.size() + " seeds=" + seeds
-                    + " ffBlocks=" + newVisited.size()
-                    + (skippedUnloaded > 0 ? " skippedChunks=" + skippedUnloaded : "");
+            String progressMsg = ":" + scanCount + " " + xStepCount + "/" + totalXSteps
+                    + " " + x + " fnd=" + findings.size() + " sds=" + seeds
+                    + (skippedCached > 0 ? " cache:" + skippedCached : "")
+                    // + " body:" + skippedBody
+                    // + " ff:" + newVisited.size()
+                    + (skippedUnloaded > 0 ? " skpChnks:" + skippedUnloaded : "");
             LOGGER.info(progressMsg);
             feedback.accept(Component.literal(progressMsg));
             for (int z = z0; z <= z1; z += GRID_STEP) {
@@ -175,8 +191,22 @@ public class IslandScanManager {
                     continue;
                 long key = pack(x, z);
                 // Skip if this grid seed was already processed (cache or this run)
-                if (visited.contains(key) || processedSeeds.contains(key))
+                if (visited.contains(key) || processedSeeds.contains(key)) {
+                    skippedCached++;
+                    String cbn = largeBodyNames.get(key);
+                    if (cbn != null)
+                        cachedBodyNamesSeen.add(cbn);
                     continue;
+                }
+                // Skip if inside a body already flood-filled this run
+                if (newVisited.contains(key)) {
+                    skippedBody++;
+                    processedSeeds.add(key); // save to cache so next scan skips it too
+                    String bname = largeBodyNames.get(key);
+                    if (bname != null)
+                        LOGGER.info("Body-skip at ({},{}) -> {}", px(key), pz(key), bname);
+                    continue;
+                }
 
                 // Force-load chunk if needed (dispatches to server thread)
                 int chunkX = x >> 4, chunkZ = z >> 4;
@@ -194,13 +224,15 @@ public class IslandScanManager {
                     continue;
                 BlockPos pos = new BlockPos(x, surfY, z);
                 seeds++;
+                if (seeds % 500 == 0) {
+                    LOGGER.info("Scan:{} {} seeds scanned, {} found so far", scanCount, seeds, findings.size());
+                }
                 processedSeeds.add(key); // mark this grid seed as done
 
                 boolean water = isWater(level, pos);
-                boolean shallow = water && isShallow(level, x, surfY, z);
                 boolean coastal = !water && isCoastal(level, x, surfY, z);
                 LOGGER.info("SEED ({},{}) y={} -> {}", x, z, surfY,
-                        water ? (shallow ? "SHALLOW" : "WATER") : (coastal ? "COASTAL" : "LAND"));
+                        water ? "WATER" : (coastal ? "COASTAL" : "LAND"));
 
                 if (water) {
                     JsonObject result = processWaterSeed(level, x, z, surfY, cx, cz, radius, visited, newVisited);
@@ -221,15 +253,28 @@ public class IslandScanManager {
         }
 
         long elapsed = System.currentTimeMillis() - t0;
+        String endTime = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
+        long elapsedSec = elapsed / 1000;
+        String elapsedStr = elapsedSec >= 60
+                ? (elapsedSec / 60) + "m " + (elapsedSec % 60) + "s"
+                : elapsedSec + "s";
         feedback.accept(Component.literal(
-                "Scan done in " + (elapsed / 1000.0) + "s — " + seeds + " seeds, " + chunksLoaded + " chunks, "
-                        + findings.size() + " features found."));
+                "Scan:" + scanCount + " done " + endTime + " (took " + elapsedStr + ") — " + seeds + " scanned, "
+                        + skippedCached + " cached, " + skippedBody + " body-skipped, "
+                        + chunksLoaded + " chunks, " + findings.size() + " features found.")
+                .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)));
+        if (!cachedBodyNamesSeen.isEmpty()) {
+            feedback.accept(Component
+                    .literal("Scan:" + scanCount + " cached bodies seen: " + String.join(", ", cachedBodyNamesSeen)));
+        }
 
         visited.addAll(processedSeeds); // only persist grid seeds, not body blocks
         saveCache(visited);
+        saveLargeBodyNames();
         appendFindings(findings);
-        feedback.accept(Component.literal("Saved findings.json (" + findings.size() + " new) and scan_cache.json ("
-                + visited.size() + " grid seeds)"));
+        feedback.accept(Component.literal(
+                "Scan:" + scanCount + " Saved findings.json (" + findings.size() + " new) and scan_cache.json ("
+                        + visited.size() + " grid seeds)"));
     }
 
     // =========================================================================
@@ -237,74 +282,27 @@ public class IslandScanManager {
     // =========================================================================
 
     /**
-     * From a water seed, flood-fill non-shallow water.
-     * If the seed itself is shallow, BFS outward through shallow water to find
-     * the nearest non-shallow entry point; if none found, mark cluster visited.
+     * From a water seed, flood-fill all connected water.
      */
     private static JsonObject processWaterSeed(ServerLevel level, int sx, int sz, int sy,
             int cx, int cz, int radius,
             Set<Long> visited, Set<Long> newVisited) {
-        if (isShallow(level, sx, sy, sz)) {
-            // Shallow seed — flood-fill connected shallow to mark visited,
-            // and check if any deep water is adjacent.
-            int[] deepEntry = findDeepFromShallow(level, sx, sy, sz, visited, newVisited);
-            if (deepEntry == null)
-                return null; // pure shallow cluster, no deep entry
-            // Delegate to deep BFS from the entry point
-            return floodFillWaterBody(level, deepEntry[0], deepEntry[2], deepEntry[1], cx, cz, radius, visited,
-                    newVisited);
-        }
         return floodFillWaterBody(level, sx, sz, sy, cx, cz, radius, visited, newVisited);
     }
 
-    /**
-     * BFS from a shallow seed through connected shallow water to find the nearest
-     * non-shallow neighbor.
-     */
-    private static int[] findDeepFromShallow(ServerLevel level, int sx, int sy, int sz,
-            Set<Long> visited, Set<Long> newVisited) {
-        Set<Long> shallowCluster = new HashSet<>();
-        Deque<int[]> queue = new ArrayDeque<>();
-        queue.add(new int[] { sx, sy, sz });
-        shallowCluster.add(pack(sx, sz));
-
-        while (!queue.isEmpty()) {
-            int[] cur = queue.poll();
-            int x = cur[0], y = cur[1], z = cur[2];
-            for (int d = 0; d < 4; d++) {
-                int nx = x + DX[d], nz = z + DZ[d];
-                long nkey = pack(nx, nz);
-                if (shallowCluster.contains(nkey) || visited.contains(nkey) || newVisited.contains(nkey))
-                    continue;
-                if (!level.hasChunk(nx >> 4, nz >> 4))
-                    continue;
-                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
-                if (ny < 0)
-                    continue;
-                BlockPos npos = new BlockPos(nx, ny, nz);
-                if (!isWater(level, npos))
-                    continue;
-                if (!isShallow(level, nx, ny, nz)) {
-                    // Found a deep water block — return it
-                    newVisited.addAll(shallowCluster);
-                    return new int[] { nx, ny, nz };
-                }
-                shallowCluster.add(nkey);
-                queue.add(new int[] { nx, ny, nz });
-            }
-        }
-        // No deep water found — mark cluster visited
-        newVisited.addAll(shallowCluster);
-        return null;
-    }
-
-    /** Core water body BFS — only expands through non-shallow water. */
+    /** Core water body BFS. */
     private static JsonObject floodFillWaterBody(ServerLevel level, int sx, int sz, int sy,
             int cx, int cz, int radius,
             Set<Long> visited, Set<Long> newVisited) {
         long seedKey = pack(sx, sz);
-        if (newVisited.contains(seedKey) || visited.contains(seedKey))
+        if (newVisited.contains(seedKey) || visited.contains(seedKey)) {
+            String bname = largeBodyNames.get(seedKey);
+            lastSkipReason = bname != null
+                    ? "Already cached (previously: " + bname + ")"
+                    : "Already cached (previously scanned water body)";
+            lastSkipBody = null;
             return null;
+        }
 
         Set<Long> deepCoords = new HashSet<>();
         boolean isRiver = false;
@@ -339,8 +337,6 @@ public class IslandScanManager {
                 BlockPos npos = new BlockPos(nx, ny, nz);
                 if (!isWater(level, npos))
                     continue;
-                if (isShallow(level, nx, ny, nz))
-                    continue; // S-erosion: skip shallow
                 if (tooBig) {
                     // Body is too big — just mark as visited so later seeds don't pick up orphaned
                     // pockets
@@ -352,81 +348,39 @@ public class IslandScanManager {
             }
         }
 
-        // Also expand one step into adjacent shallow water to mark it visited
-        Set<Long> shallowEdge = gatherShallowEdge(level, deepCoords, visited, newVisited);
         newVisited.addAll(deepCoords);
-        newVisited.addAll(shallowEdge);
 
         if (isRiver) {
-            LOGGER.info("Water body at ({},{}) skipped: RIVER ({} blocks)", sx, sz, deepCoords.size());
+            int[] sc = countGridSeeds(deepCoords, visited);
+            String bname = getOrCreateBodyName(deepCoords, deepCoords.size());
+            LOGGER.info("Water body at ({},{}) skipped: RIVER '{}' ({} blocks, cached:{} checked:{})", sx, sz, bname,
+                    deepCoords.size(), sc[0], sc[1]);
+            lastSkipReason = String.format("River '%s'  %,d blocks  cached:%d seeds, checked:%d seeds", bname,
+                    deepCoords.size(),
+                    sc[0], sc[1]);
+            lastSkipBody = new HashSet<>(deepCoords);
             return null; // river — skip
         }
         if (tooBig || deepCoords.size() > OCEAN_THRESHOLD) {
-            LOGGER.info("Water body at ({},{}) skipped: OCEAN/TOO BIG ({} blocks)", sx, sz, deepCoords.size());
+            int[] sc = countGridSeeds(deepCoords, visited);
+            String bname = getOrCreateBodyName(deepCoords, deepCoords.size());
+            LOGGER.info("Water body at ({},{}) skipped: OCEAN/TOO BIG '{}' ({} blocks, cached:{} checked:{})", sx, sz,
+                    bname,
+                    deepCoords.size(), sc[0], sc[1]);
+            lastSkipReason = String.format("Ocean/too big '%s'  %,d+ blocks  cached:%d seeds, checked:%d seeds", bname,
+                    deepCoords.size(), sc[0], sc[1]);
+            lastSkipBody = new HashSet<>(deepCoords);
             return null; // ocean — skip
         }
         if (deepCoords.size() < MIN_FEATURE_SIZE) {
             LOGGER.info("Water body at ({},{}) skipped: TOO SMALL ({} blocks)", sx, sz, deepCoords.size());
+            lastSkipReason = String.format("Too small  %,d blocks", deepCoords.size());
+            lastSkipBody = null;
             return null; // too small
         }
 
         LOGGER.info("Water body at ({},{}) → LAKE ({} blocks)", sx, sz, deepCoords.size());
         return buildResult("lake", deepCoords);
-    }
-
-    /**
-     * Expands one BFS step through shallow water adjacent to a confirmed deep body,
-     * so that nearby grid seeds don't re-process the same body's edges.
-     */
-    private static Set<Long> gatherShallowEdge(ServerLevel level, Set<Long> deepCoords,
-            Set<Long> visited, Set<Long> newVisited) {
-        Set<Long> edge = new HashSet<>();
-        Deque<Long> queue = new ArrayDeque<>();
-        for (long key : deepCoords) {
-            int x = px(key), z = pz(key);
-            for (int d = 0; d < 4; d++) {
-                int nx = x + DX[d], nz = z + DZ[d];
-                long nkey = pack(nx, nz);
-                if (deepCoords.contains(nkey) || edge.contains(nkey)
-                        || visited.contains(nkey) || newVisited.contains(nkey))
-                    continue;
-                if (!level.hasChunk(nx >> 4, nz >> 4))
-                    continue;
-                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
-                if (ny < 0)
-                    continue;
-                BlockPos npos = new BlockPos(nx, ny, nz);
-                if (!isWater(level, npos))
-                    continue;
-                if (!isShallow(level, nx, ny, nz))
-                    continue; // only collect shallow
-                edge.add(nkey);
-                queue.add(nkey);
-            }
-        }
-        // Flood-fill shallow reachable from edge
-        while (!queue.isEmpty()) {
-            long key = queue.poll();
-            int x = px(key), z = pz(key);
-            for (int d = 0; d < 4; d++) {
-                int nx = x + DX[d], nz = z + DZ[d];
-                long nkey = pack(nx, nz);
-                if (deepCoords.contains(nkey) || edge.contains(nkey)
-                        || visited.contains(nkey) || newVisited.contains(nkey))
-                    continue;
-                if (!level.hasChunk(nx >> 4, nz >> 4))
-                    continue;
-                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
-                if (ny < 0)
-                    continue;
-                BlockPos npos = new BlockPos(nx, ny, nz);
-                if (!isWater(level, npos) || !isShallow(level, nx, ny, nz))
-                    continue;
-                edge.add(nkey);
-                queue.add(nkey);
-            }
-        }
-        return edge;
     }
 
     // =========================================================================
@@ -437,8 +391,14 @@ public class IslandScanManager {
             int cx, int cz, int radius,
             Set<Long> visited, Set<Long> newVisited) {
         long seedKey = pack(sx, sz);
-        if (newVisited.contains(seedKey) || visited.contains(seedKey))
+        if (newVisited.contains(seedKey) || visited.contains(seedKey)) {
+            String bname = largeBodyNames.get(seedKey);
+            lastSkipReason = bname != null
+                    ? "Already cached (previously: " + bname + ")"
+                    : "Already cached (previously scanned land body)";
+            lastSkipBody = null;
             return null;
+        }
 
         // Step 1: flood-fill all connected land
         Set<Long> body = new HashSet<>();
@@ -482,8 +442,14 @@ public class IslandScanManager {
 
         // Definitely mainland — not an island
         if (tooBig || body.size() < MIN_FEATURE_SIZE) {
-            LOGGER.info("Land body at ({},{}) skipped: {} ({} blocks)",
-                    sx, sz, tooBig ? "MAINLAND" : "TOO SMALL", body.size());
+            int[] sc = countGridSeeds(body, visited);
+            String bname = tooBig ? getOrCreateBodyName(body, body.size()) : null;
+            String label = tooBig ? "Mainland '" + bname + "'" : "Too small";
+            LOGGER.info("Land body at ({},{}) skipped: {} ({} blocks, cached:{} checked:{})",
+                    sx, sz, label, body.size(), sc[0], sc[1]);
+            lastSkipReason = String.format("%s  %,d+ blocks  cached:%d seeds, checked:%d seeds",
+                    label, body.size(), sc[0], sc[1]);
+            lastSkipBody = tooBig ? new HashSet<>(body) : null;
             return null;
         }
 
@@ -510,6 +476,8 @@ public class IslandScanManager {
             }
             LOGGER.info("Land body at ({},{}) skipped: CONNECTS TO MAINLAND via coastal ({} blocks)", sx, sz,
                     body.size());
+            lastSkipReason = String.format("Connects to mainland  %,d blocks", body.size());
+            lastSkipBody = null;
             return null; // connects to mainland
         }
 
@@ -518,6 +486,8 @@ public class IslandScanManager {
         if (interiorConnectsToExternalLand(level, body, interior)) {
             LOGGER.info("Land body at ({},{}) skipped: PENINSULA ({} blocks, {} interior)", sx, sz, body.size(),
                     interior.size());
+            lastSkipReason = String.format("Peninsula  %,d blocks  %,d interior", body.size(), interior.size());
+            lastSkipBody = null;
             return null;
         }
 
@@ -596,28 +566,6 @@ public class IslandScanManager {
     // =========================================================================
 
     /**
-     * Water block is "shallow" (S) if it has a land neighbor within EROSION_DIST.
-     */
-    private static boolean isShallow(ServerLevel level, int x, int y, int z) {
-        // Water within EROSION_DIST of land surface is shallow (S-erosion)
-        for (int dx = -EROSION_DIST; dx <= EROSION_DIST; dx++) {
-            for (int dz = -EROSION_DIST; dz <= EROSION_DIST; dz++) {
-                if (dx == 0 && dz == 0)
-                    continue;
-                int nx = x + dx, nz = z + dz;
-                if (!level.hasChunk(nx >> 4, nz >> 4))
-                    continue;
-                int ny = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, nx, nz) - 1;
-                if (ny < 0)
-                    continue;
-                if (!isWater(level, new BlockPos(nx, ny, nz)))
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    /**
      * Land block is "coastal" (C) if it has a water neighbor within EROSION_DIST.
      */
     private static boolean isCoastal(ServerLevel level, int x, int y, int z) {
@@ -690,17 +638,28 @@ public class IslandScanManager {
         int blocks = result.get("block_count").getAsInt();
         int sizeX = bb.get("max_x").getAsInt() - bb.get("min_x").getAsInt();
         int sizeZ = bb.get("max_z").getAsInt() - bb.get("min_z").getAsInt();
-        String text = "Found " + type + " at (" + cx + ", " + cz + ")  size: "
-                + sizeX + "x" + sizeZ + "  blocks: " + blocks;
+        int chunkX = (int) Math.ceil(sizeX / 16.0);
+        int chunkZ = (int) Math.ceil(sizeZ / 16.0);
+        // Generate name once and store on result so sendScanWaypoints uses the same
+        // name
+        if (!result.has("name")) {
+            result.addProperty("name", randomWpName(blocks));
+        }
+        String wpName = result.get("name").getAsString();
+        LOGGER.info("Feature '{}' {} at ({},{})  {}x{} chunks  {} blocks", wpName, type, cx, cz, chunkX, chunkZ,
+                blocks);
         Style style = type.equals("lake")
                 ? Style.EMPTY.withColor(ChatFormatting.AQUA)
                 : Style.EMPTY.withColor(TextColor.fromRgb(0xD2B48C)); // tan
         Style coordStyle = style.withClickEvent(
                 new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/tp @s " + cx + " ~ " + cz));
         return Component.empty()
-                .append(Component.literal("Found " + type + " at ").withStyle(style))
-                .append(Component.literal("(" + cx + ", " + cz + ")").withStyle(coordStyle))
-                .append(Component.literal("  size: " + sizeX + "x" + sizeZ + "  blocks: " + blocks).withStyle(style));
+                .append(Component.literal("Found " + type + " '").withStyle(style))
+                .append(Component.literal(wpName).withStyle(style.withBold(true)))
+                .append(Component.literal("' at ").withStyle(style))
+                .append(Component.literal(cx + ", " + cz).withStyle(coordStyle))
+                .append(Component.literal("  size: " + chunkX + "x" + chunkZ + " chnks  blcks: " + blocks)
+                        .withStyle(style));
     }
 
     // =========================================================================
@@ -710,6 +669,7 @@ public class IslandScanManager {
     public static void scanPointAsync(ServerLevel level, int px, int pz, Consumer<Component> feedback,
             ServerPlayer player) {
         MinecraftServer server = level.getServer();
+        scanCount++;
         Thread t = new Thread(() -> {
             try {
                 doScanPoint(level, px, pz, msg -> server.execute(() -> feedback.accept(msg)), player);
@@ -725,7 +685,22 @@ public class IslandScanManager {
 
     private static void doScanPoint(ServerLevel level, int sx, int sz, Consumer<Component> feedback,
             ServerPlayer player) {
-        feedback.accept(Component.literal("=== scanPoint (" + sx + "," + sz + ") ==="));
+        // Round to nearest grid point and check cache first
+        int gx = Math.round((float) sx / GRID_STEP) * GRID_STEP;
+        int gz = Math.round((float) sz / GRID_STEP) * GRID_STEP;
+        Set<Long> visited = loadCache();
+        largeBodyNames = loadLargeBodyNames();
+        long gridKey = pack(gx, gz);
+        if (visited.contains(gridKey)) {
+            String bname = largeBodyNames.get(gridKey);
+            String cached = bname != null ? "'" + bname + "'" : "a previously scanned body";
+            feedback.accept(Component
+                    .literal("Scan:" + scanCount + " Grid point (" + gx + "," + gz + ") cached — part of " + cached));
+            feedback.accept(Component.literal("Scan:" + scanCount + " === done ==="));
+            return;
+        }
+        feedback.accept(Component.literal(
+                "Scan:" + scanCount + " === scanPoint (" + sx + "," + sz + ") grid=(" + gx + "," + gz + ") ==="));
         forceLoadChunk(level, sx >> 4, sz >> 4);
         int surfY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, sx, sz) - 1;
         if (surfY < 0) {
@@ -735,14 +710,12 @@ public class IslandScanManager {
 
         BlockPos pos = new BlockPos(sx, surfY, sz);
         boolean water = isWater(level, pos);
-        boolean shallow = water && isShallow(level, sx, surfY, sz);
         boolean coastal = !water && isCoastal(level, sx, surfY, sz);
         feedback.accept(Component.literal(
                 "y=" + surfY + " block=" + level.getBlockState(pos).getBlock()
-                        + "  " + (water ? (shallow ? "SHALLOW" : "WATER") : (coastal ? "COASTAL" : "LAND"))));
+                        + "  " + (water ? "WATER" : (coastal ? "COASTAL" : "LAND"))));
 
         // Run the real flood-fill from this seed
-        Set<Long> visited = loadCache();
         Set<Long> newVisited = new HashSet<>();
         JsonObject result;
         if (water) {
@@ -752,17 +725,43 @@ public class IslandScanManager {
         }
 
         if (result == null) {
-            feedback.accept(
-                    Component.literal("No feature found at this seed (skipped/too small/river/ocean — see log)"));
+            feedback.accept(Component.literal("[Scan:" + scanCount + "] " + lastSkipReason));
+            if (lastSkipBody != null && !lastSkipBody.isEmpty()) {
+                sendCornerWaypoints(level, player, lastSkipBody, lastSkipReason);
+            }
         } else {
             feedback.accept(formatFeatureMessage(result));
             sendScanWaypoints(level, player, result);
         }
-        feedback.accept(Component.literal("=== done ==="));
+        feedback.accept(Component.literal("Scan:" + scanCount + " === done ==="));
     }
 
-    // =========================================================================
-    // Cache I/O
+    private static void sendCornerWaypoints(ServerLevel level, ServerPlayer player, Set<Long> body, String label) {
+        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+        for (long key : body) {
+            int x = px(key), z = pz(key);
+            if (x < minX)
+                minX = x;
+            if (x > maxX)
+                maxX = x;
+            if (z < minZ)
+                minZ = z;
+            if (z > maxZ)
+                maxZ = z;
+        }
+        int color = (RNG.nextInt(256) << 16) | (RNG.nextInt(256) << 8) | RNG.nextInt(256);
+        String groupName = "Large-" + scanCount;
+        int[][] corners = { { minX, minZ }, { maxX, minZ }, { minX, maxZ }, { maxX, maxZ } };
+        String[] wpLabels = { "NW", "NE", "SW", "SE" };
+        List<ScanWaypointsPacket.Entry> entries = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            entries.add(new ScanWaypointsPacket.Entry(
+                    groupName + "-" + wpLabels[i], corners[i][0], 64, corners[i][1], color));
+        }
+        level.getServer().execute(() -> EDBMessages.sendToPlayer(new ScanWaypointsPacket(entries), player));
+    }
+
     // =========================================================================
 
     public static String clearCache(ServerLevel level, ServerPlayer player) {
@@ -774,8 +773,8 @@ public class IslandScanManager {
     public static String clearCache() {
         try {
             Files.deleteIfExists(cacheFile());
-            LOGGER.info("scan_cache.json deleted.");
-            return "Cache cleared. Next scan will start fresh.";
+            LOGGER.info("scan_cache.json deleted. findings.json is NOT cleared.");
+            return "Cache cleared (scan_cache.json). findings.json is kept. Next scan will start fresh.";
         } catch (IOException e) {
             LOGGER.error("Failed to delete scan_cache.json: " + e.getMessage());
             return "Failed to clear cache — see server log.";
@@ -787,8 +786,12 @@ public class IslandScanManager {
         int minX = bb.get("min_x").getAsInt(), maxX = bb.get("max_x").getAsInt();
         int minZ = bb.get("min_z").getAsInt(), maxZ = bb.get("max_z").getAsInt();
         int color = (RNG.nextInt(256) << 16) | (RNG.nextInt(256) << 8) | RNG.nextInt(256);
-        String groupName = randomWpName();
-        int[][] corners = { { minX, minZ }, { minX, maxZ }, { maxX, minZ }, { maxX, maxZ } };
+        // Reuse the name already set by formatFeatureMessage, or generate one
+        int blockCount = result.get("block_count").getAsInt();
+        String groupName = result.has("name") ? result.get("name").getAsString() : randomWpName(blockCount);
+        // Minecraft: -X=west +X=east -Z=north +Z=south
+        // minX=west maxX=east minZ=north maxZ=south
+        int[][] corners = { { minX, minZ }, { maxX, minZ }, { minX, maxZ }, { maxX, maxZ } };
         String[] labels = { "NW", "NE", "SW", "SE" };
         List<ScanWaypointsPacket.Entry> entries = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
@@ -833,25 +836,31 @@ public class IslandScanManager {
 
     private static void appendFindings(List<JsonObject> newResults) throws IOException {
         List<JsonObject> all = new ArrayList<>();
-        Set<String> seen = new HashSet<>();
+        Map<String, JsonObject> seen = new java.util.LinkedHashMap<>();
         Path path = findingsFile();
         if (Files.exists(path)) {
             try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
                 JsonArray arr = JsonParser.parseReader(r).getAsJsonArray();
                 for (JsonElement e : arr) {
                     JsonObject obj = e.getAsJsonObject();
-                    if (seen.add(findingDedupeKey(obj)))
-                        all.add(obj);
+                    seen.put(findingDedupeKey(obj), obj);
                 }
             } catch (Exception ignored) {
             }
         }
         for (JsonObject obj : newResults) {
-            if (seen.add(findingDedupeKey(obj)))
-                all.add(obj);
+            String key = findingDedupeKey(obj);
+            if (seen.containsKey(key)) {
+                // Merge name into existing entry if it has one
+                if (obj.has("name") && !seen.get(key).has("name")) {
+                    seen.get(key).addProperty("name", obj.get("name").getAsString());
+                }
+            } else {
+                seen.put(key, obj);
+            }
         }
         JsonArray arr = new JsonArray();
-        all.forEach(arr::add);
+        seen.values().forEach(arr::add);
         Files.writeString(path, new GsonBuilder().setPrettyPrinting().create().toJson(arr),
                 StandardCharsets.UTF_8);
     }
@@ -877,5 +886,96 @@ public class IslandScanManager {
 
     private static int ceilGrid(int v) {
         return (int) Math.ceil((double) v / GRID_STEP) * GRID_STEP;
+    }
+
+    /**
+     * Returns the existing name for this large body (checked via grid seeds), or
+     * generates and persists a new one.
+     */
+    private static String getOrCreateBodyName(Set<Long> coords, int blockCount) {
+        for (long key : coords) {
+            if (px(key) % GRID_STEP == 0 && pz(key) % GRID_STEP == 0) {
+                String existing = largeBodyNames.get(key);
+                if (existing != null)
+                    return existing;
+            }
+        }
+        String name = randomWpName(blockCount);
+        for (long key : coords) {
+            if (px(key) % GRID_STEP == 0 && pz(key) % GRID_STEP == 0)
+                largeBodyNames.put(key, name);
+        }
+        return name;
+    }
+
+    private static Map<Long, String> loadLargeBodyNames() {
+        Map<Long, String> map = new HashMap<>();
+        Path path = largeBodiesFile();
+        if (!Files.exists(path))
+            return map;
+        try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+            JsonArray arr = JsonParser.parseReader(r).getAsJsonArray();
+            for (JsonElement e : arr) {
+                JsonObject o = e.getAsJsonObject();
+                String name = o.get("name").getAsString();
+                for (JsonElement se : o.getAsJsonArray("seeds")) {
+                    JsonObject s = se.getAsJsonObject();
+                    map.put(pack(s.get("x").getAsInt(), s.get("z").getAsInt()), name);
+                }
+            }
+            LOGGER.info("Loaded {} large body name entries from large_body_names.json", map.size());
+        } catch (Exception e) {
+            LOGGER.error("Failed to load large_body_names.json: " + e.getMessage());
+        }
+        return map;
+    }
+
+    private static void saveLargeBodyNames() {
+        if (largeBodyNames.isEmpty())
+            return;
+        // Group coords by name
+        Map<String, List<long[]>> byName = new java.util.LinkedHashMap<>();
+        for (Map.Entry<Long, String> entry : largeBodyNames.entrySet()) {
+            byName.computeIfAbsent(entry.getValue(), k -> new ArrayList<>())
+                    .add(new long[] { px(entry.getKey()), pz(entry.getKey()) });
+        }
+        JsonArray arr = new JsonArray();
+        for (Map.Entry<String, List<long[]>> entry : byName.entrySet()) {
+            JsonObject o = new JsonObject();
+            o.addProperty("name", entry.getKey());
+            JsonArray seeds = new JsonArray();
+            for (long[] xz : entry.getValue()) {
+                JsonObject s = new JsonObject();
+                s.addProperty("x", (int) xz[0]);
+                s.addProperty("z", (int) xz[1]);
+                seeds.add(s);
+            }
+            o.add("seeds", seeds);
+            arr.add(o);
+        }
+        try {
+            Files.writeString(largeBodiesFile(), new GsonBuilder().setPrettyPrinting().create().toJson(arr),
+                    StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            LOGGER.error("Failed to save large_body_names.json: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Count grid-aligned seeds in coords split by [cached (in visited), checked
+     * (not in visited)].
+     */
+    private static int[] countGridSeeds(Set<Long> coords, Set<Long> visited) {
+        int cached = 0, checked = 0;
+        for (long key : coords) {
+            int x = px(key), z = pz(key);
+            if (x % GRID_STEP == 0 && z % GRID_STEP == 0) {
+                if (visited.contains(key))
+                    cached++;
+                else
+                    checked++;
+            }
+        }
+        return new int[] { cached, checked };
     }
 }

@@ -490,8 +490,11 @@ Stretches out to chunk areas.
             BlockPos villagerPos = v.blockPosition();
             int distance = Math.abs(villagerPos.getX() - playerPos.getX()) + Math.abs(villagerPos.getY() - playerPos.getY()) + Math.abs(villagerPos.getZ() - playerPos.getZ());
 
+            // Plot context: own chunk type, or nearest typed neighbor.
+            String plotContext = com.falazar.farmupcraft.VillagerManager.getVillagerPlotContextStatic(villager);
+
             // Send to chat now name and profession.
-            response = Component.literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance);
+            response = Component.literal(" - " + v.getName().getString() + " (" + profession + ") [" + plotContext + "] d=" + distance);
             MutableComponent finalResponse1 = response;
             source.sendSuccess(() -> finalResponse1, false);
             // TODO say direction too?

@@ -1,6 +1,8 @@
 package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -20,6 +22,7 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -27,9 +30,11 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
+import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+
 import net.minecraftforge.fml.common.Mod;
 
 import java.util.List;
@@ -174,16 +179,20 @@ public final class TreeManager {
 
     public static boolean allowSaplingDrop(BlockPos pos, ServerLevel level) {
         // STEP 1: Set base rate for success.
-        int successRate = 20; // 20% chance to get drops at start.
+        int successRate = 20; // 20% base chance
 
-        // STEP 2: If in a nursery plot, add bonus.
+        // STEP 2: If in a nursery plot, scale by plot level (1=20%, 2=40%, 3=60%).
         if (isNurseryPlot(pos, level)) {
-            successRate += 30;
+            ChunkPos chunkPos = new ChunkPos(pos);
+            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+            ChunkData chunkData = chunkDb.getData(chunkPos.toLong());
+            int plotLevel = chunkData != null ? chunkData.getPlotLevel() : 1;
+            successRate += plotLevel * 20; // plot level 1=20%, 2=40%, 3=60%
         }
 
         // STEP 3: Roll for success now.
         Random rand = new Random();
-        int randomNum = rand.nextInt(100); // 100% 0-99
+        int randomNum = rand.nextInt(100); // 0-99
         return randomNum < successRate;
     }
 
@@ -440,6 +449,48 @@ public final class TreeManager {
             player.addItem(bonusLog);
             LOGGER.info("DEBUG: Nursery level {} bonus log for {}!", nurseryLevel,
                     state.getBlock().getDescriptionId());
+        }
+    }
+
+    /**
+     * Fires when a player picks up a pam fruit item (or apple).
+     * Shows a skill milestone message every 5 harvests up to 20, then every 30.
+     * Runs on pickup so the stat count reflects actual fruit received.
+     */
+    @SubscribeEvent
+    public static void onFruitPickup(EntityItemPickupEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+        if (!(event.getEntity() instanceof ServerPlayer serverPlayer))
+            return;
+
+        Item item = event.getItem().getItem().getItem();
+        ResourceLocation itemKey = ForgeRegistries.ITEMS.getKey(item);
+        if (itemKey == null)
+            return;
+        String itemId = itemKey.toString();
+        if (!itemId.startsWith("pamhc2trees:") && !itemId.equals("minecraft:apple"))
+            return;
+
+        // Current total before this pickup; after = current + amount being picked up.
+        int currentPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
+        int currentDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
+        int before = currentPickedUp - currentDropped;
+        int after = before + event.getItem().getItem().getCount();
+
+        // Find the first milestone crossed in this pickup.
+        for (int h = before + 1; h <= after; h++) {
+            boolean isMilestone = (h <= 20 && h % 5 == 0)
+                    || (h > 20 && (h - 20) % 30 == 0);
+            if (isMilestone) {
+                String fruitShortName = itemId.replace("pamhc2trees:", "").replace("item", "")
+                        .replace("pam", "").replace("minecraft:", "");
+                serverPlayer.displayClientMessage(
+                        Component.literal("You're getting better at harvesting " + fruitShortName
+                                + "! (" + h + " harvested)").withStyle(ChatFormatting.GREEN),
+                        false);
+                break; // only one message per pickup
+            }
         }
     }
 }

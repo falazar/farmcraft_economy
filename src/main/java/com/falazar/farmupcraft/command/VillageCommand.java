@@ -174,7 +174,10 @@ public class VillageCommand {
                                     String filter = StringArgumentType.getString(context, "filter");
                                     int count = IntegerArgumentType.getInteger(context, "count");
                                     return showVillageStructures(context.getSource(), count, filter);
-                                })));
+                                })))
+                .then(Commands.literal("rescan")
+                        .requires(s -> s.hasPermission(2))
+                        .executes(context -> rescanVillageStructures(context.getSource())));
         builder.then(villageStructuresBuilder);
 
         // Define the "villagers" sub-command to show nearby villagers
@@ -1475,9 +1478,31 @@ public class VillageCommand {
             int newChunksCount = addNewVillageChunks(village, playerSource);
             villageDatabase.putData(village.getUUID(), village);
 
+            // STEP 7: Find already-visited structures now inside the newly claimed chunks.
+            List<String> newlyFoundStructureNames = new ArrayList<>();
+            if (playerSource.level() instanceof ServerLevel serverLevel) {
+                var structureDb = ModEvents.getGameStructureDatabase(serverLevel);
+                DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+                for (Long structureId : structureDb.getKeys()) {
+                    GameStructureData sd = structureDb.getData(structureId);
+                    if (sd == null || !sd.wasVisited())
+                        continue;
+                    ChunkPos sc = new ChunkPos(sd.getCenterPos());
+                    ChunkData cd = chunkDb.getData(sc.toLong());
+                    if (cd != null && village.getUUID().equals(cd.getVillageId())) {
+                        newlyFoundStructureNames.add(sd.getName());
+                    }
+                }
+            }
+
             // Build a response message
             MutableComponent response = Component.literal("Village leveled up to: " + village.getLevel());
             response = response.append(Component.literal(", and added " + newChunksCount + " new chunks. \n"));
+            if (!newlyFoundStructureNames.isEmpty()) {
+                response = response.append(Component.literal(
+                        "Structures now in village: " + String.join(", ", newlyFoundStructureNames) + "\n")
+                        .withStyle(ChatFormatting.GREEN));
+            }
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -1701,22 +1726,28 @@ public class VillageCommand {
         int dailyCost = getDailyCost(village);
         int claimedStructures = countVillageClaimedStructures(village, level);
         int dailyCoins = claimedStructures * 100;
-        int totalCost = Math.max(0, dailyCost - dailyCoins);
-        village.subtractCoins(totalCost);
+        int net = dailyCoins - dailyCost;
+        if (net >= 0) {
+            village.addCoins(net);
+        } else {
+            village.subtractCoins(-net);
+        }
         village.markDailyRanToday(); // stamp the date so we don't charge again today
         ModEvents.getVillageDatabase().putData(village.getUUID(), village);
-        LOGGER.info("Village upkeep: {} charged {} coins (cost={}, earned={}).",
-                village.getName(), totalCost, dailyCost, dailyCoins);
+        String netStr = net >= 0 ? "+" + net : String.valueOf(net);
+        LOGGER.info("Village upkeep: {} net={} coins (earned={}, cost={}).",
+                village.getName(), netStr, dailyCoins, dailyCost);
 
         // Broadcast upkeep result to all online players.
+        ChatFormatting netColor = net >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
         Component broadcastMsg = Component.literal("[Village] " + village.getName()
-                + " daily upkeep: -" + totalCost + " coins (cost=" + dailyCost + ", earned=" + dailyCoins + ")")
-                .withStyle(ChatFormatting.YELLOW);
+                + " daily upkeep: net " + netStr + " coins (earned=" + dailyCoins + ", cost=" + dailyCost + ")")
+                .withStyle(netColor);
         if (level.getServer() != null) {
             level.getServer().getPlayerList().broadcastSystemMessage(broadcastMsg, false);
         }
 
-        return totalCost;
+        return net;
     }
 
     public static int runVillageDailyUpkeep(CommandSourceStack source) {
@@ -2249,6 +2280,52 @@ public class VillageCommand {
     }
 
     /**
+     * Admin: re-evaluates isOnClaimedPlot for every structure in the DB.
+     * Clears the flag for any structure whose chunk is no longer a plot
+     * (i.e. chunk has no data or its type is "village").
+     */
+    public static int rescanVillageStructures(CommandSourceStack source) {
+        try {
+            ServerLevel world = (ServerLevel) source.getLevel();
+            var structureDb = ModEvents.getGameStructureDatabase(world);
+            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+
+            int cleared = 0;
+            int updated = 0;
+
+            for (Long structureId : structureDb.getKeys()) {
+                GameStructureData structureData = structureDb.getData(structureId);
+                if (structureData == null)
+                    continue;
+
+                ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
+                ChunkData chunkData = chunkDb.getData(structureChunk.toLong());
+
+                // A chunk is "plot-claimed" if it has data and a type other than "village".
+                boolean shouldBeClaimed = chunkData != null && !chunkData.getType().equals("village");
+
+                if (structureData.isOnClaimedPlot() != shouldBeClaimed) {
+                    structureData.setOnClaimedPlot(shouldBeClaimed);
+                    structureDb.putData(structureId, structureData);
+                    updated++;
+                    if (!shouldBeClaimed)
+                        cleared++;
+                }
+            }
+
+            structureDb.setDirty();
+
+            source.sendSystemMessage(Component.literal(
+                    "[Structures Rescan] Updated " + updated + " record(s), cleared claimed flag on " + cleared + ".")
+                    .withStyle(ChatFormatting.GREEN));
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Rescan failed: " + ex.getMessage()));
+            return 0;
+        }
+    }
+
+    /**
      * Finds and displays nearby villagers within a specified chunk radius.
      * 
      * @param source The command source
@@ -2269,9 +2346,9 @@ public class VillageCommand {
         }
 
         // Get list of nearby villagers with default 10 chunk radius
-        List<LivingEntity> villagersList = getVillagersList(playerSource.blockPosition(), source.getLevel(), 10);
-        int count = villagersList.size();
+        List<LivingEntity> villagersList = getVillagersInVillage(playerSource, source.getLevel(), 10);
 
+        int count = villagersList.size();
         MutableComponent response = Component.literal("Found " + count + " villagers nearby.");
         source.sendSuccess(() -> response, false);
 
@@ -2316,6 +2393,22 @@ public class VillageCommand {
                                 .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, tpCmd)));
                 villagerResponse.append(tpLink);
             }
+            // Show/Hide name tag toggle for this individual villager
+            String vName = v.getName().getString();
+            boolean nameVisible = v.isCustomNameVisible();
+            String showCmd = "/npc showname \"" + vName + "\"";
+            String hideCmd = "/npc hidename \"" + vName + "\"";
+            MutableComponent showLink = Component.literal(nameVisible ? " [Hide]" : " [Show]")
+                    .withStyle(s -> s
+                            .withColor(nameVisible ? ChatFormatting.RED : ChatFormatting.GREEN)
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                    nameVisible ? hideCmd : showCmd))
+                            .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                    net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                    Component.literal(nameVisible
+                                            ? "Hide " + vName + "'s name tag"
+                                            : "Show " + vName + "'s name tag"))));
+            villagerResponse.append(showLink);
             source.sendSuccess(() -> villagerResponse, false);
         }
 
@@ -2340,6 +2433,28 @@ public class VillageCommand {
                 new net.minecraft.world.phys.AABB(centerPos).inflate(radiusInChunks * 16) // Convert chunks to blocks
         );
         return new ArrayList<>(list);
+    }
+
+    /**
+     * Gets villagers within a chunk radius that belong to the given player's home
+     * village.
+     * Excludes any villager not currently standing in a chunk claimed by that
+     * village.
+     */
+    public static List<LivingEntity> getVillagersInVillage(Player player, Level level, int radiusInChunks) {
+        List<LivingEntity> all = getVillagersList(player.blockPosition(), level, radiusInChunks);
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        java.util.UUID homeVillageUUID = (playerData != null) ? playerData.getHomeVillageUUID() : null;
+        if (homeVillageUUID == null)
+            return all;
+        DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+        return all.stream()
+                .filter(v -> {
+                    ChunkPos vChunk = new ChunkPos(v.blockPosition());
+                    ChunkData cd = chunkDb.getData(vChunk.toLong());
+                    return cd != null && homeVillageUUID.equals(cd.getVillageId());
+                })
+                .collect(java.util.stream.Collectors.toList());
     }
 
     /**

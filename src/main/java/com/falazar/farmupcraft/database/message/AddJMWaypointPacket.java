@@ -26,13 +26,22 @@ public class AddJMWaypointPacket {
     private final int z;
     private final String name;
     private final String dimId;
+    private final boolean persistent;
+    private final int color;
 
+    /** Convenience constructor — persistent gold waypoint (existing behaviour). */
     public AddJMWaypointPacket(int x, int y, int z, String name, String dimId) {
+        this(x, y, z, name, dimId, true, 0xFFD700);
+    }
+
+    public AddJMWaypointPacket(int x, int y, int z, String name, String dimId, boolean persistent, int color) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.name = name;
         this.dimId = dimId;
+        this.persistent = persistent;
+        this.color = color;
     }
 
     public AddJMWaypointPacket(FriendlyByteBuf buf) {
@@ -41,6 +50,8 @@ public class AddJMWaypointPacket {
         this.z = buf.readInt();
         this.name = buf.readUtf();
         this.dimId = buf.readUtf();
+        this.persistent = buf.readBoolean();
+        this.color = buf.readInt();
     }
 
     public void toBytes(FriendlyByteBuf buf) {
@@ -49,6 +60,8 @@ public class AddJMWaypointPacket {
         buf.writeInt(z);
         buf.writeUtf(name);
         buf.writeUtf(dimId);
+        buf.writeBoolean(persistent);
+        buf.writeInt(color);
     }
 
     public static void handle(AddJMWaypointPacket msg, Supplier<NetworkEvent.Context> contextSupplier) {
@@ -69,8 +82,8 @@ public class AddJMWaypointPacket {
                 msg.name,
                 dim,
                 new BlockPos(msg.x, msg.y, msg.z));
-        waypoint.setColor(0xFFD700); // gold yellow
-        waypoint.setPersistent(true); // persistent = shows in waypoint manager, can be edited/removed by player
+        waypoint.setColor(msg.color);
+        waypoint.setPersistent(msg.persistent);
 
         try {
             api.show(waypoint);

@@ -87,7 +87,7 @@ public class PlayerDataOverlay {
             homeVillage = ModEvents.getVillageDatabase(level).getData(playerData.getHomeVillageUUID());
         }
         String homeVillageText = homeVillage != null ? "Home: " + homeVillage.getName() : "No Village";
-        guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFFFFF, true);
+        guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFD700, true);
         currentY += lineSpacing;
 
         guiGraphics.drawString(mc.font, Component.literal("Coins: " + NumberFormat.getInstance().format(playerData.getCoins())), paddingLeft, currentY,

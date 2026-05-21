@@ -23,7 +23,8 @@ public class WeatherSoundManager {
         var stack = event.getItemStack();
         if (stack.is(FUCTags.MODDED_CROPS) || stack.is(FUCTags.MODDED_SEEDS) || stack.is(FUCTags.VANILLA_CROPS)) {
             event.getToolTip().add(Component.literal("Requires: farm plot").withStyle(ChatFormatting.DARK_GREEN));
-            event.getToolTip().add(Component.literal("Biome rules apply — use /show cropbiomes or /plot info").withStyle(ChatFormatting.GRAY));
+            event.getToolTip().add(Component.literal("Biome rules apply — use /show cropbiomes or /plot info")
+                    .withStyle(ChatFormatting.GRAY));
         }
     }
 

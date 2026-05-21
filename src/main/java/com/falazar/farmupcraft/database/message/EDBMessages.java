@@ -76,6 +76,12 @@ public class EDBMessages {
                 .consumerMainThread(ScanWaypointsPacket::handle)
                 .add();
 
+        net.messageBuilder(RemoveModWaypointsPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(RemoveModWaypointsPacket::new)
+                .encoder(RemoveModWaypointsPacket::toBytes)
+                .consumerMainThread(RemoveModWaypointsPacket::handle)
+                .add();
+
         // net.registerMessage(id(), DataBaseEntryS2CO.class,
         // DataBaseEntryS2CO::encode,
         // DataBaseEntryS2CO::decode,

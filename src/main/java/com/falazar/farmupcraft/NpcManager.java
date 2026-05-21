@@ -147,7 +147,11 @@ public class NpcManager {
                     false);
 
             // Append to logs/<playerName>/<YY-MM-DD>/NPC.txt
-            NpcConversationLogger.log(player.getName().getString(), player.getName().getString(), playerMessage);
+            try {
+                NpcConversationLogger.log(player.getName().getString(), player.getName().getString(), playerMessage);
+            } catch (Throwable logErr) {
+                LOGGER.error("NpcConversationLogger unavailable (player msg): {}", logErr.getMessage());
+            }
             LOGGER.info("[NPC Conversation] <{}> to {}: {}", player.getName().getString(), conv.npcName, playerMessage);
 
             // Cancel so the vanilla chat handler doesn't also send it.
@@ -164,7 +168,11 @@ public class NpcManager {
             OllamaService.chat(systemPrompt)
                     .thenAccept(reply -> server.execute(() -> {
                         // Append NPC reply to logs/<playerName>/<YY-MM-DD>/NPC.txt
-                        NpcConversationLogger.log(player.getName().getString(), conv.npcName, reply);
+                        try {
+                            NpcConversationLogger.log(player.getName().getString(), conv.npcName, reply);
+                        } catch (Throwable logErr) {
+                            LOGGER.error("NpcConversationLogger unavailable (npc reply): {}", logErr.getMessage());
+                        }
                         LOGGER.info("[NPC Conversation] <{}> to {}: {}", conv.npcName, player.getName().getString(),
                                 reply);
                         player.displayClientMessage(

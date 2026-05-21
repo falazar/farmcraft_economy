@@ -43,7 +43,9 @@ import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -114,6 +116,80 @@ public class NpcCommand {
                 .requires(source -> source.hasPermission(2))
                 .executes(context -> initVillagers(context.getSource()));
         builder.then(initVillagersBuilder);
+
+        // Define the "rename" sub-command (admin only)
+        LiteralArgumentBuilder<CommandSourceStack> renameBuilder = Commands.literal("rename")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.argument("oldName", StringArgumentType.string())
+                        .then(Commands.argument("newName", StringArgumentType.string())
+                                .executes(context -> {
+                                    String oldName = StringArgumentType.getString(context, "oldName");
+                                    String newName = StringArgumentType.getString(context, "newName");
+                                    return renameVillager(context.getSource(), oldName, newName);
+                                })));
+        builder.then(renameBuilder);
+
+        // redoprofile — regenerate AI profile for one villager, keeping existing text
+        // as context
+        LiteralArgumentBuilder<CommandSourceStack> redoProfileBuilder = Commands.literal("redoprofile")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.argument("name", StringArgumentType.string())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "name");
+                            return redoProfile(context.getSource(), name);
+                        }));
+        builder.then(redoProfileBuilder);
+
+        // cleanprofiles — delete error-state profiles from npcData/
+        LiteralArgumentBuilder<CommandSourceStack> cleanProfilesBuilder = Commands.literal("cleanprofiles")
+                .requires(source -> source.hasPermission(2))
+                .executes(context -> cleanProfiles(context.getSource()));
+        builder.then(cleanProfilesBuilder);
+
+        // setkid — toggle forever-kid flag on a named villager
+        LiteralArgumentBuilder<CommandSourceStack> setKidBuilder = Commands.literal("setkid")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.argument("name", StringArgumentType.string())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "name");
+                            return setForeverKid(context.getSource(), name, true);
+                        }));
+        builder.then(setKidBuilder);
+
+        LiteralArgumentBuilder<CommandSourceStack> unsetKidBuilder = Commands.literal("unsetkid")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.argument("name", StringArgumentType.string())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "name");
+                            return setForeverKid(context.getSource(), name, false);
+                        }));
+        builder.then(unsetKidBuilder);
+
+        // shownames / hidenames — toggle floating name tags on ALL village villagers
+        LiteralArgumentBuilder<CommandSourceStack> showNamesBuilder = Commands.literal("shownames")
+                .executes(context -> setVillagerNamesVisible(context.getSource(), true));
+        builder.then(showNamesBuilder);
+
+        LiteralArgumentBuilder<CommandSourceStack> hideNamesBuilder = Commands.literal("hidenames")
+                .executes(context -> setVillagerNamesVisible(context.getSource(), false));
+        builder.then(hideNamesBuilder);
+
+        // showname / hidename <name> — toggle name tag for a single villager
+        LiteralArgumentBuilder<CommandSourceStack> showNameBuilder = Commands.literal("showname")
+                .then(Commands.argument("name", StringArgumentType.string())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "name");
+                            return setOneVillagerNameVisible(context.getSource(), name, true);
+                        }));
+        builder.then(showNameBuilder);
+
+        LiteralArgumentBuilder<CommandSourceStack> hideNameBuilder = Commands.literal("hidename")
+                .then(Commands.argument("name", StringArgumentType.string())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "name");
+                            return setOneVillagerNameVisible(context.getSource(), name, false);
+                        }));
+        builder.then(hideNameBuilder);
 
         // Register the main "npc" command with the dispatcher
         pDispatcher.register(builder);
@@ -406,7 +482,35 @@ public class NpcCommand {
             source.sendSuccess(() -> Component.literal("Found " + villagers.size()
                     + " villager(s). Generating profiles for those without one..."), false);
 
+            // Collect all villager names in advance so the AI knows who's in the village.
+            List<String> allNames = villagers.stream()
+                    .filter(e -> e instanceof Villager)
+                    .map(e -> e.getName().getString())
+                    .collect(java.util.stream.Collectors.toList());
+
+            // Gather biome context for the village.
+            Map<String, Integer> biomeMap = VillageCommand.getVillageBiomes(village, level);
+            List<String> biomeNames = biomeMap.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(2)
+                    .map(Map.Entry::getKey)
+                    .collect(java.util.stream.Collectors.toList());
+
+            // Gather surface structure names for curiosity hints (shuffle so each villager
+            // can get a different one).
+            List<String> structureNames = VillageCommand.getVillageStructuresList(village, level)
+                    .stream()
+                    .map(e -> e.getValue().getName())
+                    .filter(n -> n != null && !n.isBlank())
+                    .collect(java.util.stream.Collectors.toList());
+            Collections.shuffle(structureNames);
+
+            MinecraftServer server = source.getServer();
+            String villageName = village.getName();
+            UUID villageUUID = village.getUUID();
+
             int queued = 0;
+            int structureIndex = 0;
             for (LivingEntity entity : villagers) {
                 if (!(entity instanceof Villager villager))
                     continue;
@@ -423,37 +527,14 @@ public class NpcCommand {
                 }
 
                 String profession = villager.getVillagerData().getProfession().toString();
+                // Assign one structure to be curious about (cycle through the list).
+                String structureCuriosity = structureNames.isEmpty() ? null
+                        : structureNames.get(structureIndex % structureNames.size());
+                structureIndex++;
                 queued++;
 
-                // Fire async AI call — don't block the server thread.
-                MinecraftServer server = source.getServer();
-                AIManager.generateNpcPersonality(npcName, profession)
-                        .thenAccept(personality -> server.execute(() -> {
-                            // Write JSON profile file.
-                            String description = "A " + profession.replace("minecraft:", "")
-                                    + " living in the village.";
-                            boolean wrote = NpcDataLoader.writeProfile(npcName, npcUUID, description, personality);
-                            String filename = npcName + "-" + npcUUID + ".json";
-
-                            // Save to NPC database.
-                            NpcData npcData = new NpcData(npcUUID, npcName, village.getUUID(), description,
-                                    personality);
-                            ModEvents.getNpcDatabase().putData(npcUUID, npcData);
-
-                            if (wrote) {
-                                source.sendSuccess(() -> Component.literal(
-                                        "[NPC] Profile created for " + npcName + " → npcData/" + filename)
-                                        .withStyle(ChatFormatting.GREEN), false);
-                            } else {
-                                source.sendFailure(Component.literal(
-                                        "[NPC] AI done but failed to write file for " + npcName));
-                            }
-                        }))
-                        .exceptionally(err -> {
-                            server.execute(() -> source.sendFailure(Component.literal(
-                                    "[NPC] Failed to generate profile for " + npcName + ": " + err.getMessage())));
-                            return null;
-                        });
+                generateProfileForVillager(source, server, npcName, npcUUID, profession,
+                        allNames, villageName, biomeNames, structureCuriosity, villageUUID, false, null);
             }
 
             if (queued == 0) {
@@ -468,6 +549,362 @@ public class NpcCommand {
             }
         } catch (Exception ex) {
             source.sendFailure(Component.literal("initVillagers exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * /npc rename "OldName" "NewName"
+     * Renames the villager entity in-world, renames the npcData JSON file, and
+     * updates the in-memory NPC database entry.
+     */
+    public static int renameVillager(CommandSourceStack source, String oldName, String newName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            // Search for villager by name within 320-block radius.
+            double radius = 320.0;
+            AABB searchBox = new AABB(
+                    summoner.getX() - radius, summoner.getY() - radius, summoner.getZ() - radius,
+                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius);
+            List<Villager> nearby = summoner.level().getEntitiesOfClass(
+                    Villager.class, searchBox,
+                    v -> v.getName().getString().trim().equals(oldName));
+            Villager villager = nearby.stream().findFirst().orElse(null);
+            if (villager == null) {
+                source.sendFailure(Component.literal(
+                        "No villager named '" + oldName + "' found within 320 blocks."));
+                return 0;
+            }
+
+            UUID uuid = villager.getUUID();
+
+            // Rename entity in-world.
+            villager.setCustomName(Component.literal(newName));
+
+            // Rename npcData JSON file (updates filename + "name" field inside).
+            boolean fileRenamed = NpcDataLoader.renameProfile(oldName, newName, uuid);
+
+            // Update in-memory NPC database entry if present.
+            DataBase<UUID, NpcData> npcDB = ModEvents.getNpcDatabase();
+            NpcData npcData = npcDB.getValues().stream()
+                    .filter(n -> n.getUUID().equals(uuid))
+                    .findFirst().orElse(null);
+            if (npcData != null) {
+                npcData.setName(newName);
+                npcDB.putData(uuid, npcData);
+            }
+
+            String fileMsg = fileRenamed
+                    ? " Profile file renamed."
+                    : " (No profile file found — in-world name updated only.)";
+            String msg = "Renamed '" + oldName + "' → '" + newName + "'." + fileMsg;
+            LOGGER.info("renameVillager: {} → {} (uuid={})", oldName, newName, uuid);
+            source.sendSuccess(() -> Component.literal(msg), true);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("renameVillager exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * /npc redoprofile "Name"
+     * Re-generates the AI personality for a nearby villager.
+     * If an existing profile file is found, its content is sent to the AI as
+     * context so the update builds on what was already written.
+     * Also stamps village_name into the new file.
+     */
+    public static int redoProfile(CommandSourceStack source, String name) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            // Find the villager by name.
+            double radius = 320.0;
+            AABB searchBox = new AABB(
+                    summoner.getX() - radius, summoner.getY() - radius, summoner.getZ() - radius,
+                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius);
+            List<Villager> nearby = summoner.level().getEntitiesOfClass(
+                    Villager.class, searchBox,
+                    v -> v.getName().getString().trim().equals(name));
+            Villager villager = nearby.stream().findFirst().orElse(null);
+            if (villager == null) {
+                source.sendFailure(Component.literal("No villager named '" + name + "' found within 320 blocks."));
+                return 0;
+            }
+
+            UUID uuid = villager.getUUID();
+            String profession = villager.getVillagerData().getProfession().toString();
+
+            // Read existing profile (if any) to pass as context.
+            com.google.gson.JsonObject existing = NpcDataLoader.readRawProfile(name, uuid);
+            String existingText = existing != null ? existing.toString() : null;
+
+            // Get village context.
+            PlayerData playerData = ModEvents.getPlayerDatabase().getData(summoner.getUUID());
+            VillageData village = (playerData != null && playerData.getHomeVillageUUID() != null)
+                    ? ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID())
+                    : null;
+            String villageName = village != null ? village.getName() : "";
+            UUID villageUUID = village != null ? village.getUUID() : new UUID(0, 0);
+
+            Map<String, Integer> biomeMap = village != null
+                    ? VillageCommand.getVillageBiomes(village, summoner.level()) : Map.of();
+            List<String> biomeNames = biomeMap.entrySet().stream()
+                    .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
+                    .limit(2)
+                    .map(Map.Entry::getKey)
+                    .collect(java.util.stream.Collectors.toList());
+
+            List<String> structureNames = village != null
+                    ? VillageCommand.getVillageStructuresList(village, summoner.level())
+                            .stream().map(e -> e.getValue().getName())
+                            .filter(n -> n != null && !n.isBlank())
+                            .collect(java.util.stream.Collectors.toList())
+                    : List.of();
+            String structureCuriosity = structureNames.isEmpty() ? null
+                    : structureNames.get((int) (Math.random() * structureNames.size()));
+
+            // Collect sibling names.
+            double namesRadius = 320.0;
+            AABB namesBox = new AABB(
+                    summoner.getX() - namesRadius, summoner.getY() - namesRadius, summoner.getZ() - namesRadius,
+                    summoner.getX() + namesRadius, summoner.getY() + namesRadius, summoner.getZ() + namesRadius);
+            List<String> siblingNames = summoner.level().getEntitiesOfClass(Villager.class, namesBox)
+                    .stream().map(v -> v.getName().getString())
+                    .collect(java.util.stream.Collectors.toList());
+
+            source.sendSuccess(() -> Component.literal(
+                    "[NPC] Regenerating profile for " + name + "...").withStyle(ChatFormatting.YELLOW), false);
+
+            MinecraftServer server = source.getServer();
+            generateProfileForVillager(source, server, name, uuid, profession,
+                    siblingNames, villageName, biomeNames, structureCuriosity, villageUUID, true, existingText);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("redoProfile exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * Fires an async AI profile generation (or regeneration) for one villager and
+     * handles the result: guards against [AI Error], writes the file, updates the
+     * in-memory DB, and sends success/failure feedback to the command source.
+     *
+     * @param isRegen       true = regenerate (uses existing profile text), false = generate fresh
+     * @param existingText  existing profile JSON text; only used when isRegen=true
+     */
+    private static void generateProfileForVillager(
+            CommandSourceStack source,
+            MinecraftServer server,
+            String npcName,
+            UUID npcUUID,
+            String profession,
+            List<String> villagerNames,
+            String villageName,
+            List<String> biomes,
+            String structureCuriosity,
+            UUID villageUUID,
+            boolean isRegen,
+            String existingText) {
+
+        java.util.concurrent.CompletableFuture<String> future = isRegen
+                ? AIManager.regenerateNpcPersonality(npcName, profession, existingText,
+                        villagerNames, villageName, biomes, structureCuriosity)
+                : AIManager.generateNpcPersonality(npcName, profession,
+                        villagerNames, villageName, biomes, structureCuriosity);
+
+        future.thenAccept(personality -> server.execute(() -> {
+            if (personality != null && personality.startsWith("[AI Error]")) {
+                source.sendFailure(Component.literal(
+                        "[NPC] AI failed for " + npcName + ": " + personality));
+                return;
+            }
+            String description = "A " + profession.replace("minecraft:", "")
+                    + " living in " + villageName + ".";
+            boolean wrote = NpcDataLoader.writeProfile(npcName, npcUUID, description, personality, villageName);
+            String filename = npcName + "-" + npcUUID + ".json";
+
+            // Preserve foreverKid flag when updating.
+            NpcData existingNpc = ModEvents.getNpcDatabase().getData(npcUUID);
+            boolean keepForeverKid = existingNpc != null && existingNpc.isForeverKid();
+            NpcData npcData = new NpcData(npcUUID, npcName, villageUUID, description,
+                    personality, villageName, keepForeverKid);
+            ModEvents.getNpcDatabase().putData(npcUUID, npcData);
+
+            String verb = isRegen ? "updated" : "created";
+            if (wrote) {
+                source.sendSuccess(() -> Component.literal(
+                        "[NPC] Profile " + verb + " for " + npcName + " → npcData/" + filename)
+                        .withStyle(ChatFormatting.GREEN), false);
+            } else {
+                source.sendFailure(Component.literal(
+                        "[NPC] AI done but failed to write file for " + npcName));
+            }
+        })).exceptionally(err -> {
+            server.execute(() -> source.sendFailure(Component.literal(
+                    "[NPC] Failed to generate profile for " + npcName + ": " + err.getMessage())));
+            return null;
+        });
+    }
+
+    /**
+     * /npc cleanprofiles
+     * Deletes any npcData/ profile files that contain "[AI Error]" in personality.
+     */
+    public static int cleanProfiles(CommandSourceStack source) {
+        try {
+            int deleted = NpcDataLoader.deleteErrorProfiles();
+            if (deleted == 0) {
+                source.sendSuccess(
+                        () -> Component.literal("[NPC] No error profiles found.").withStyle(ChatFormatting.GRAY),
+                        false);
+            } else {
+                int d = deleted;
+                source.sendSuccess(() -> Component.literal("[NPC] Deleted " + d + " error profile(s).")
+                        .withStyle(ChatFormatting.GREEN), false);
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("cleanProfiles exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * /npc setkid "Name" / /npc unsetkid "Name"
+     * Marks or unmarks a villager as a forever-kid (stays baby indefinitely).
+     */
+    public static int setForeverKid(CommandSourceStack source, String name, boolean foreverKid) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            double radius = 320.0;
+            AABB searchBox = new AABB(
+                    summoner.getX() - radius, summoner.getY() - radius, summoner.getZ() - radius,
+                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius);
+            List<Villager> nearby = summoner.level().getEntitiesOfClass(
+                    Villager.class, searchBox,
+                    v -> v.getName().getString().trim().equals(name));
+            Villager villager = nearby.stream().findFirst().orElse(null);
+            if (villager == null) {
+                source.sendFailure(Component.literal("No villager named '" + name + "' found within 320 blocks."));
+                return 0;
+            }
+
+            if (foreverKid) {
+                villager.setBaby(true);
+            }
+
+            DataBase<UUID, NpcData> npcDB = ModEvents.getNpcDatabase();
+            NpcData npcData = npcDB.getData(villager.getUUID());
+            if (npcData == null) {
+                source.sendFailure(Component.literal("No NPC data found for '" + name + "'."));
+                return 0;
+            }
+            npcData.setForeverKid(foreverKid);
+            npcDB.putData(villager.getUUID(), npcData);
+
+            String label = foreverKid ? "forever kid" : "normal (can grow up)";
+            source.sendSuccess(() -> Component.literal("[NPC] " + name + " is now " + label + "."), true);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("setkid exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * /npc shownames / /npc hidenames
+     * Sets setCustomNameVisible on all villagers in the player's village.
+     * This controls the always-on floating name tag, which is also shown on the
+     * minimap radar.
+     */
+    public static int setVillagerNamesVisible(CommandSourceStack source, boolean visible) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            List<LivingEntity> villagers = VillageCommand.getVillagersInVillage(summoner, summoner.level(), 10);
+            if (villagers.isEmpty()) {
+                source.sendFailure(Component.literal("No villagers found in your village."));
+                return 0;
+            }
+
+            int count = 0;
+            for (LivingEntity e : villagers) {
+                if (e instanceof Villager v) {
+                    v.setCustomNameVisible(visible);
+                    count++;
+                }
+            }
+
+            int finalCount = count;
+            String label = visible ? "shown" : "hidden";
+            source.sendSuccess(() -> Component.literal(
+                    "[NPC] Villager names " + label + " on minimap for " + finalCount + " villager(s).")
+                    .withStyle(visible ? ChatFormatting.GREEN : ChatFormatting.GRAY), true);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("shownames/hidenames exception — see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    /**
+     * /npc showname "Name" / /npc hidename "Name"
+     * Sets the floating name tag on a single named villager within 320 blocks.
+     */
+    public static int setOneVillagerNameVisible(CommandSourceStack source, String name, boolean visible) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            double radius = 320.0;
+            AABB searchBox = new AABB(
+                    summoner.getX() - radius, summoner.getY() - radius, summoner.getZ() - radius,
+                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius);
+            List<Villager> nearby = summoner.level().getEntitiesOfClass(
+                    Villager.class, searchBox,
+                    v -> v.getName().getString().trim().equals(name));
+            Villager villager = nearby.stream().findFirst().orElse(null);
+            if (villager == null) {
+                source.sendFailure(Component.literal("No villager named '" + name + "' found within 320 blocks."));
+                return 0;
+            }
+
+            villager.setCustomNameVisible(visible);
+            String label = visible ? "shown" : "hidden";
+            source.sendSuccess(() -> Component.literal(
+                    "[NPC] " + name + "'s name tag is now " + label + ".")
+                    .withStyle(visible ? ChatFormatting.GREEN : ChatFormatting.GRAY), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("showname/hidename exception — see log"));
             ex.printStackTrace();
         }
         return 0;

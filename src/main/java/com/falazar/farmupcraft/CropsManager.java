@@ -3,6 +3,8 @@ package com.falazar.farmupcraft;
 import com.falazar.farmupcraft.command.ShowBiomesCommand;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
@@ -85,6 +87,15 @@ public class CropsManager {
         BlockPos clickedPos = event.getPos();
         BlockState clickedState = level.getBlockState(clickedPos);
         ItemStack stack = event.getItemStack();
+
+        // Skip if the player is interacting with a container or interactive block
+        // (chest, barrel, door, etc.) — don't interfere with normal block use.
+        if (clickedState.getBlock() instanceof net.minecraft.world.level.block.BaseEntityBlock
+                || clickedState.is(net.minecraft.tags.BlockTags.DOORS)
+                || clickedState.is(net.minecraft.tags.BlockTags.TRAPDOORS)
+                || clickedState.is(net.minecraft.tags.BlockTags.FENCE_GATES)) {
+            return;
+        }
 
         // Return if clicked block is not farmland
         boolean isFarmBelow = false;
@@ -209,14 +220,18 @@ public class CropsManager {
      */
     @SubscribeEvent
     public static void onRightClickHarvestCrops(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getEntity().level().isClientSide()) return;
-        if (event.getHand() != InteractionHand.MAIN_HAND) return;
+        if (event.getEntity().level().isClientSide())
+            return;
+        if (event.getHand() != InteractionHand.MAIN_HAND)
+            return;
 
         Player player = (Player) event.getEntity();
-        if (player.isCreative()) return;
+        if (player.isCreative())
+            return;
 
         // Skip when holding bone meal.
-        if (event.getItemStack().is(Items.BONE_MEAL)) return;
+        if (event.getItemStack().is(Items.BONE_MEAL))
+            return;
 
         // Only handle PAM HC2 crops.
         Level level = event.getLevel();
@@ -224,21 +239,26 @@ public class CropsManager {
         BlockState blockState = level.getBlockState(clickedPos);
         Block block = blockState.getBlock();
         String blockId = block.getDescriptionId();
-        if (!blockId.contains("pamhc2crops")) return;
+        if (!blockId.contains("pamhc2crops"))
+            return;
 
         // Must be fully grown.
-        if (!(block instanceof CropBlock cropBlock)) return;
-        if (!cropBlock.isMaxAge(blockState)) return;
+        if (!(block instanceof CropBlock cropBlock))
+            return;
+        if (!cropBlock.isMaxAge(blockState))
+            return;
 
         // Must be on a farm plot (quiet type check first).
-        if (!ChunkManager.getPlotType(clickedPos, level).equalsIgnoreCase("farm")) return;
+        if (!ChunkManager.getPlotType(clickedPos, level).equalsIgnoreCase("farm"))
+            return;
 
         // Get farm plot level.
         ChunkData farmChunk = ChunkManager.getPlot(clickedPos);
         int farmLevel = farmChunk != null ? farmChunk.getPlotLevel() : 1;
         // Level 1 = no bonus, Level 2 = +20%, Level 3 = +40%, Level 4 = +60%.
         int bonusChance = farmLevel <= 1 ? 0 : (farmLevel - 1) * 20;
-        if (bonusChance <= 0) return;
+        if (bonusChance <= 0)
+            return;
 
         // Derive crop item name from block description ID.
         // e.g. block.pamhc2crops.pamasparaguscrop -> pamhc2crops:asparagusitem
@@ -763,6 +783,130 @@ public class CropsManager {
 
         // recipe not found.
         return null;
+    }
+
+    /**
+     * Middle-click on any crop block (vanilla or HarvestCraft 2) to pick its seed
+     * and show the name in chat. Client-only.
+     */
+    @net.minecraftforge.api.distmarker.OnlyIn(net.minecraftforge.api.distmarker.Dist.CLIENT)
+    @SubscribeEvent
+    public static void onMiddleClick(net.minecraftforge.client.event.InputEvent.MouseButton event) {
+        // button 2 = middle mouse, action 1 = press
+        if (event.getButton() != 2 || event.getAction() != 1)
+            return;
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player == null || mc.level == null)
+            return;
+        if (mc.hitResult == null || mc.hitResult.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK)
+            return;
+
+        net.minecraft.world.phys.BlockHitResult blockHit = (net.minecraft.world.phys.BlockHitResult) mc.hitResult;
+        net.minecraft.core.BlockPos pos = blockHit.getBlockPos();
+        net.minecraft.world.level.block.state.BlockState state = mc.level.getBlockState(pos);
+
+        // getCloneItemStack is the Forge hook pick-block uses — handles HC2 seed blocks
+        // too.
+        net.minecraft.world.item.ItemStack seedStack = state.getCloneItemStack(blockHit, mc.level, pos, mc.player);
+        if (seedStack.isEmpty() || !seedStack.is(com.falazar.farmupcraft.util.FUCTags.VANILLA_AND_MODDED_CROPS))
+            return;
+
+        // Show seed name in chat always
+        mc.player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal("Seed: ").withStyle(net.minecraft.ChatFormatting.GOLD)
+                        .append(seedStack.getDisplayName().copy().withStyle(net.minecraft.ChatFormatting.WHITE)),
+                false);
+
+        // Move seed from inventory to active hotbar slot (no item creation).
+        pickItemFromInventory(mc.player.getInventory(), seedStack);
+        event.setCanceled(true);
+    }
+
+    /**
+     * Finds the first matching seed stack in the player's inventory and selects or
+     * swaps it into the active hotbar slot. Does nothing if the seed is not found.
+     *
+     * @param inv       the player's inventory
+     * @param seedStack the seed item to look for (matched by item + tags)
+     */
+    @net.minecraftforge.api.distmarker.OnlyIn(net.minecraftforge.api.distmarker.Dist.CLIENT)
+    private static void pickItemFromInventory(net.minecraft.world.entity.player.Inventory inv,
+            net.minecraft.world.item.ItemStack seedStack) {
+        int foundSlot = -1;
+        for (int i = 0; i < 36; i++) {
+            net.minecraft.world.item.ItemStack stack = inv.getItem(i);
+            if (!stack.isEmpty() && net.minecraft.world.item.ItemStack.isSameItemSameTags(stack, seedStack)) {
+                foundSlot = i;
+                break;
+            }
+        }
+        if (foundSlot == -1)
+            return; // not in inventory — chat message already shown
+
+        if (foundSlot < 9) {
+            // Already in hotbar — just select that slot
+            inv.selected = foundSlot;
+        } else {
+            // In main inventory — swap with current hotbar slot
+            net.minecraft.world.item.ItemStack hotbarStack = inv.getItem(inv.selected);
+            inv.setItem(inv.selected, inv.getItem(foundSlot));
+            inv.setItem(foundSlot, hotbarStack);
+        }
+    }
+
+    // Prevent farmland from being trampled on claimed farm plots.
+    // Non-members: always blocked.
+    // Members: blocked once the farm plot is level 2+.
+    @SubscribeEvent
+    public static void onFarmlandTrample(BlockEvent.FarmlandTrampleEvent event) {
+        if (event.getLevel().isClientSide())
+            return;
+
+        BlockPos pos = event.getPos();
+        ChunkPos chunkPos = new ChunkPos(pos);
+        ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(chunkPos.toLong());
+        if (chunkData == null)
+            return;
+
+        // Only protect claimed farm/village plots.
+        String plotType = chunkData.getType();
+        if (!plotType.equalsIgnoreCase("farm") && !plotType.equalsIgnoreCase("village center"))
+            return;
+
+        Entity trampler = event.getEntity();
+        if (!(trampler instanceof Player player)) {
+            // Block animal/mob trampling on any claimed farm plot.
+            event.setCanceled(true);
+            return;
+        }
+
+        if (player.isCreative())
+            return;
+
+        if (!isVillageMember(player, chunkData)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("You can't trample crops here — not a village member.")
+                            .withStyle(ChatFormatting.RED),
+                    true);
+            return;
+        }
+
+        // Members: block trampling on level 2+ farm plots.
+        if (chunkData.getPlotLevel() >= 2) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("Protected farm — watch your step!")
+                            .withStyle(ChatFormatting.YELLOW),
+                    true);
+        }
+    }
+
+    private static boolean isVillageMember(Player player, ChunkData chunkData) {
+        java.util.UUID chunkVillageId = chunkData.getVillageId();
+        if (chunkVillageId == null) return true;
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        return playerData != null && chunkVillageId.equals(playerData.getHomeVillageUUID());
     }
 
 }
