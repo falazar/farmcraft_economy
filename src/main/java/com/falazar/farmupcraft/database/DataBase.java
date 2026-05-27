@@ -46,7 +46,6 @@ public class DataBase<M, V> extends SavedData {
 
     private final ReadWriteLock readWriteLock = new ReentrantReadWriteLock();
 
-
     private final DataSerializer<M> keySerializer;
     private final DataSerializer<V> valueSerializer;
     private final boolean enableExpiry;
@@ -59,9 +58,7 @@ public class DataBase<M, V> extends SavedData {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
-
     private final boolean autoSync;
-
 
     private final String databaseName;
 
@@ -70,16 +67,19 @@ public class DataBase<M, V> extends SavedData {
     private static final String MAP_ENTRY = "map_entry";
     private static final String DATABASE_NAME_TAG = "database_name";
 
-    public static <M, V> DataBase<M, V> get(Level level, String key, DataSerializer<M> keySerializer, DataSerializer<V> valueSerializer, boolean enableExpiry, long expiryDuration, boolean autoSync) {
+    public static <M, V> DataBase<M, V> get(Level level, String key, DataSerializer<M> keySerializer,
+            DataSerializer<V> valueSerializer, boolean enableExpiry, long expiryDuration, boolean autoSync) {
         // Make sure we are always in overworld storage!
         ServerLevel overworld = level.getServer().getLevel(Level.OVERWORLD);
         DimensionDataStorage storage = ((ServerLevel) overworld).getDataStorage();
-        return storage.computeIfAbsent(e -> new DataBase<>(e, key, overworld, keySerializer, valueSerializer, enableExpiry, expiryDuration, autoSync),
+        return storage.computeIfAbsent(
+                e -> new DataBase<>(e, key, overworld, keySerializer, valueSerializer, enableExpiry, expiryDuration,
+                        autoSync),
                 () -> new DataBase<>(key, keySerializer, valueSerializer, enableExpiry, expiryDuration, autoSync), key);
     }
 
-
-    public DataBase(String databaseName, DataSerializer<M> keySerializer, DataSerializer<V> valueSerializer, boolean enableExpiry, long expiryDuration, boolean autoSync) {
+    public DataBase(String databaseName, DataSerializer<M> keySerializer, DataSerializer<V> valueSerializer,
+            boolean enableExpiry, long expiryDuration, boolean autoSync) {
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;
         this.enableExpiry = enableExpiry;
@@ -87,10 +87,12 @@ public class DataBase<M, V> extends SavedData {
         this.databaseName = databaseName;
         this.autoSync = autoSync;
         setExpiration();
-        //LOGGER.info("Initialized DataBase {} with expiryEnabled={}, expiryDuration={}", databaseName, enableExpiry, expiryDuration);
+        // LOGGER.info("Initialized DataBase {} with expiryEnabled={},
+        // expiryDuration={}", databaseName, enableExpiry, expiryDuration);
     }
 
-    public DataBase(CompoundTag nbt, String databaseName, ServerLevel level, DataSerializer<M> keySerializer, DataSerializer<V> valueSerializer, boolean enableExpiry, long expiryDuration, boolean autoSync) {
+    public DataBase(CompoundTag nbt, String databaseName, ServerLevel level, DataSerializer<M> keySerializer,
+            DataSerializer<V> valueSerializer, boolean enableExpiry, long expiryDuration, boolean autoSync) {
         this.keySerializer = keySerializer;
         this.valueSerializer = valueSerializer;
         this.enableExpiry = enableExpiry;
@@ -99,13 +101,13 @@ public class DataBase<M, V> extends SavedData {
         this.autoSync = autoSync;
         setExpiration();
         load(nbt, level);
-        LOGGER.info("Initialized DataBase {} with expiryEnabled={}, expiryDuration={}", databaseName, enableExpiry, expiryDuration);
+        LOGGER.info("Initialized DataBase {} with expiryEnabled={}, expiryDuration={}", databaseName, enableExpiry,
+                expiryDuration);
     }
 
     public void load(CompoundTag compoundTag, Level level) {
         load(compoundTag, level, false);
     }
-
 
     private void load(CompoundTag nbt, Level level, boolean setDirty) {
         Map<M, V> map = loadDataToMap(nbt, level);
@@ -120,7 +122,6 @@ public class DataBase<M, V> extends SavedData {
         }
     }
 
-
     private Map<M, V> loadDataToMap(CompoundTag nbt, Level level) {
         Map<M, V> newDataMap = new HashMap<>();
         ListTag listTag = nbt.getList(MAP_ENTRY, Tag.TAG_COMPOUND);
@@ -131,13 +132,13 @@ public class DataBase<M, V> extends SavedData {
 
             M key = keySerializer.deserialize(keyCompound, level);
             V value = valueSerializer.deserialize(valueCompound, level);
-            if (key == null || value == null) continue;
+            if (key == null || value == null)
+                continue;
 
             newDataMap.put(key, value);
         }
         return newDataMap;
     }
-
 
     private Map<V, M> createIndexMap(Map<M, V> dataMap) {
         Map<V, M> newIndexMap = new HashMap<>();
@@ -156,7 +157,8 @@ public class DataBase<M, V> extends SavedData {
             CompoundTag compoundTag = new CompoundTag();
             CompoundTag key = keySerializer.serialize(entry.getKey());
             CompoundTag value = valueSerializer.serialize(entry.getValue());
-            if (key == null || value == null) continue;
+            if (key == null || value == null)
+                continue;
 
             compoundTag.put(KEY, key);
             compoundTag.put(VALUE, value);
@@ -169,7 +171,6 @@ public class DataBase<M, V> extends SavedData {
 
     }
 
-
     public void putData(M key, V value) {
         readWriteLock.writeLock().lock();
         try {
@@ -181,6 +182,7 @@ public class DataBase<M, V> extends SavedData {
             // Perform the actual put operation
             data.put(key, value);
             index.put(value, key);
+            cache.put(key, value); // keep cache in sync so getData returns the fresh value
 
             if (enableExpiry) {
                 expiryMap.put(key, System.currentTimeMillis() + expiryDuration);
@@ -198,7 +200,6 @@ public class DataBase<M, V> extends SavedData {
                 }
             }
 
-
             int logInterval = Math.max(100, data.size() / 10);
             if (data.size() % logInterval == 0) {
                 LOGGER.info("[{}] Data size reached {}", databaseName, data.size());
@@ -209,14 +210,16 @@ public class DataBase<M, V> extends SavedData {
         }
     }
 
-
     public V getData(M key) {
+        if (key == null)
+            return null;
         readWriteLock.readLock().lock();
         try {
             V value = cache.get(key);
             if (value == null) {
                 value = data.get(key);
-                if (value != null) cache.put(key, value);
+                if (value != null)
+                    cache.put(key, value);
             }
             return value;
         } finally {
@@ -225,6 +228,8 @@ public class DataBase<M, V> extends SavedData {
     }
 
     public boolean containsKey(M key) {
+        if (key == null)
+            return false;
         readWriteLock.readLock().lock();
         try {
             return data.containsKey(key);
@@ -318,7 +323,6 @@ public class DataBase<M, V> extends SavedData {
             readWriteLock.readLock().unlock();
         }
     }
-
 
     public List<V> queryWithPagination(int page, int pageSize) {
         readWriteLock.readLock().lock();
@@ -417,7 +421,6 @@ public class DataBase<M, V> extends SavedData {
         }
     }
 
-
     public void beginTransaction() {
         readWriteLock.readLock().lock();
         try {
@@ -447,14 +450,14 @@ public class DataBase<M, V> extends SavedData {
             if (!transactionStack.isEmpty()) {
                 data.clear();
                 data.putAll(transactionStack.pop()); // Restore previous state
-                LOGGER.info("[{}] Transaction rolled back. Transaction stack size: {}", databaseName, transactionStack.size());
+                LOGGER.info("[{}] Transaction rolled back. Transaction stack size: {}", databaseName,
+                        transactionStack.size());
 
             }
         } finally {
             readWriteLock.readLock().unlock();
         }
     }
-
 
     public void createSavepoint() {
         readWriteLock.readLock().lock();
@@ -473,7 +476,8 @@ public class DataBase<M, V> extends SavedData {
                 data.clear();
                 data.putAll(savepoints.pop());
                 setDirty(true);
-                LOGGER.info("[{}] Rolled back to savepoint. Savepoints stack size: {}", databaseName, savepoints.size());
+                LOGGER.info("[{}] Rolled back to savepoint. Savepoints stack size: {}", databaseName,
+                        savepoints.size());
             }
         } finally {
             readWriteLock.readLock().unlock();
@@ -548,7 +552,6 @@ public class DataBase<M, V> extends SavedData {
         });
     }
 
-
     public void putDataBatch(Map<M, V> entries) {
         readWriteLock.writeLock().lock();
         try {
@@ -608,7 +611,6 @@ public class DataBase<M, V> extends SavedData {
         });
     }
 
-
     public void removeDataBatch(Collection<M> keys) {
         readWriteLock.writeLock().lock();
         try {
@@ -655,9 +657,9 @@ public class DataBase<M, V> extends SavedData {
         return profile(() -> getData(key), "getData");
     }
 
-    //public void exportDataBase(Path filePath) {
-    //    exportDataBase(filePath, "");
-    //}
+    // public void exportDataBase(Path filePath) {
+    // exportDataBase(filePath, "");
+    // }
 
     public int getSerializedSize() {
         try {
@@ -670,7 +672,6 @@ public class DataBase<M, V> extends SavedData {
             return Integer.MAX_VALUE; // fallback to chunked if error
         }
     }
-
 
     public List<CompoundTag> saveChunked(int entriesPerChunk) {
         List<CompoundTag> chunks = new ArrayList<>();
@@ -707,7 +708,6 @@ public class DataBase<M, V> extends SavedData {
         return chunks;
     }
 
-
     public void exportDataBase(Path filePath, FileFormat format) {
         readWriteLock.readLock().lock();
         try {
@@ -715,7 +715,7 @@ public class DataBase<M, V> extends SavedData {
 
             filePath = ensureFileExtension(filePath, format);
             Files.createDirectories(filePath.getParent());
-            //Path path = filePath.resolve(name);
+            // Path path = filePath.resolve(name);
 
             CompoundTag tag = new CompoundTag();
             save(tag);
@@ -732,8 +732,7 @@ public class DataBase<M, V> extends SavedData {
         }
     }
 
-
-    //mainly used for backups now
+    // mainly used for backups now
     public boolean importWithCheckSumValidation(Path path, FileFormat format, ServerLevel level) throws Exception {
         Path checksumFile = Paths.get(path.toString() + ".sha256");
         if (Files.exists(path)) {
@@ -752,7 +751,6 @@ public class DataBase<M, V> extends SavedData {
         return false;
     }
 
-
     public boolean importDataBase(Path filePath, ServerLevel level) {
         String extension = getFileExtension(filePath.toString());
         FileFormat format = FileFormat.fromExtension(extension);
@@ -770,7 +768,6 @@ public class DataBase<M, V> extends SavedData {
                 LOGGER.error("[{}] The file does not exist at {}", databaseName, filePath.toAbsolutePath());
                 return false;
             }
-
 
             // Get the appropriate import strategy based on file format
             ImportFormatStrategy strategy = format.getImportStrategy();
@@ -821,7 +818,8 @@ public class DataBase<M, V> extends SavedData {
     }
 
     public void cleanUpExpiredData() {
-        if (!enableExpiry) return;
+        if (!enableExpiry)
+            return;
 
         long currentTime = System.currentTimeMillis();
         List<M> expiredKeys = new ArrayList<>();
@@ -884,7 +882,7 @@ public class DataBase<M, V> extends SavedData {
             setDirty();
         }
 
-        if(autoSync) {
+        if (autoSync) {
             EDBMessages.sendToClients(new DataBaseFullS2C<>(new CompoundTag(), databaseName));
         }
 

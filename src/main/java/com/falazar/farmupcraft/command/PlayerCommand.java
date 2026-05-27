@@ -1,25 +1,24 @@
 package com.falazar.farmupcraft.command;
 
-import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
-import com.falazar.farmupcraft.registry.CoinRegistry;
-import com.falazar.farmupcraft.registry.FUCRegistries;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
+import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.Registry;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
@@ -27,6 +26,9 @@ import net.minecraft.world.level.Level;
 import net.minecraftforge.common.world.ForgeChunkManager;
 
 import java.util.UUID;
+import java.util.ArrayList;
+import java.util.List;
+import java.text.NumberFormat;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 
@@ -37,11 +39,18 @@ public class PlayerCommand {
         // Define the base command "player"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("player");
 
-        // Define the "info" sub-command
+        // Define the "info" sub-command — /player info shows self, /player info <name>
+        // shows another player (admin)
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(context -> {
                     return showPlayerInfo(context.getSource());
-                });
+                })
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .requires(s -> s.hasPermission(2))
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "playerName");
+                            return showPlayerInfoByName(context.getSource(), name);
+                        }));
         builder.then(infoBuilder);
 
         // Define the leave village command.
@@ -50,27 +59,6 @@ public class PlayerCommand {
                     return leaveVillage(context.getSource());
                 });
         builder.then(leaveVillageBuilder);
-
-        // Admin command joinvillage
-        // Define the "joinvillage" sub-command
-        LiteralArgumentBuilder<CommandSourceStack> joinVillageBuilder = Commands.literal("joinvillage")
-                .then(Commands.argument("village", StringArgumentType.string())
-                        .executes(context -> {
-                            String villageName = StringArgumentType.getString(context, "village");
-                            return setVillage(context.getSource(), villageName);
-                        }))
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
-        builder.then(joinVillageBuilder);
-
-        // Admin: Define the "givecoins" and amount sub-command for admin only.
-        LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
-                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
-                        .executes(context -> {
-                            int amount = IntegerArgumentType.getInteger(context, "amount");
-                            return givePlayerCoins(context.getSource(), amount);
-                        }))
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
-        builder.then(giveCoinsBuilder);
 
         // Define the "givevillagecoins" and amount sub-command.
         LiteralArgumentBuilder<CommandSourceStack> giveVillageCoinsBuilder = Commands.literal("givevillagecoins")
@@ -81,6 +69,18 @@ public class PlayerCommand {
                         }));
         builder.then(giveVillageCoinsBuilder);
 
+        // /player givecoins <playerName> <amount> (admin)
+        LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
+            .requires(s -> s.hasPermission(2))
+            .then(Commands.argument("playerName", StringArgumentType.word())
+                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
+                    .executes(context -> {
+                        String playerName = StringArgumentType.getString(context, "playerName");
+                        int amount = IntegerArgumentType.getInteger(context, "amount");
+                        return givePlayerCoinsByName(context.getSource(), playerName, amount);
+                    })));
+        builder.then(giveCoinsBuilder);
+
         // Define the "takevillagecoins" and amount sub-command.
         LiteralArgumentBuilder<CommandSourceStack> takeVillageCoinsBuilder = Commands.literal("takevillagecoins")
                 .then(Commands.argument("amount", IntegerArgumentType.integer(0))
@@ -90,6 +90,44 @@ public class PlayerCommand {
                         }));
         builder.then(takeVillageCoinsBuilder);
 
+        // Border sub-commands: /player border show / /player border color <color>
+        SuggestionProvider<CommandSourceStack> colorSuggestions = (ctx, b) -> {
+            for (String c : new String[] { "blue", "yellow", "orange", "pink", "teal", "green", "red", "purple",
+                    "white" })
+                b.suggest(c);
+            return b.buildFuture();
+        };
+        LiteralArgumentBuilder<CommandSourceStack> borderBuilder = Commands.literal("border")
+                .then(Commands.literal("show")
+                        .executes(context -> setBorderShow(context.getSource())))
+                .then(Commands.literal("color")
+                        .then(Commands.argument("color", StringArgumentType.word())
+                                .suggests(colorSuggestions)
+                                .executes(context -> {
+                                    String color = StringArgumentType.getString(context, "color");
+                                    return setBorderColor(context.getSource(), color);
+                                })));
+        builder.then(borderBuilder);
+
+        // Admin-only sub-commands grouped under "/player admin ..."
+        LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
+                .requires(s -> s.hasPermission(2))
+                // joinvillage <village>
+                .then(Commands.literal("joinvillage")
+                        .then(Commands.argument("village", StringArgumentType.string())
+                                .executes(context -> {
+                                    String villageName = StringArgumentType.getString(context, "village");
+                                    return setVillage(context.getSource(), villageName);
+                                })))
+                // givecoins <amount>
+                .then(Commands.literal("givecoins")
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
+                                .executes(context -> {
+                                    int amount = IntegerArgumentType.getInteger(context, "amount");
+                                    return givePlayerCoins(context.getSource(), amount);
+                                })));
+        builder.then(adminBuilder);
+
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -98,44 +136,123 @@ public class PlayerCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
             LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             PlayerData player = getPlayer(source);
             ServerLevel serverLevel = source.getLevel();
 
             // TODO make helper methods for get name and send text.
             // STEP 1: Show player info.
-            source.sendSuccess(() -> Component.literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID()) + " ----------")
+            source.sendSuccess(() -> Component
+                    .literal("---------- Player Name: " + player.getNameForPlayer(serverLevel, playerSource.getUUID())
+                            + " ----------")
                     .withStyle(ChatFormatting.YELLOW), false);
 
-            // STEP 2: Get money from wallet.
-            // TODO helper method.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = serverLevel.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            int bronzeCoins = wallet.get(bronzeCoin);
+            // STEP 2: Get money from player coin field.
+            int bronzeCoins = player.getCoins();
             LOGGER.info("DEBUG: Player info bronze coins: " + bronzeCoins);
-            source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
+            source.sendSuccess(() -> Component.literal("Coins: ").withStyle(ChatFormatting.GOLD)
+                    .append(Component.literal(String.format("%,d", bronzeCoins)).withStyle(ChatFormatting.WHITE)),
+                    false);
 
             // STEP 3: Pull home village info if set.
-            if (player.getHomeVillageUUID() == null) {
-                source.sendSuccess(() -> Component.literal("No home village."), false);
-            } else {
-                // todo helper method on player manager or village manager.
-                // todo player.getHomeVillage();
-                DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
-                VillageData villageData = villageDataDB.getData(player.getHomeVillageUUID());
-                if (villageData != null) {
-                    source.sendSuccess(() -> Component.literal("Home village: " + villageData.getName()), false);
-                } else {
-                    source.sendFailure(Component.literal("Error, Home village not found."));
-                }
-            }
+            sendHomeVillageInfo(source, serverLevel, player);
         } catch (Exception ex) {
-            LOGGER.info ("DEBUG: Player info failed test name: " + source.getTextName());
-            source.sendFailure(Component.literal("player info Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("Player info error for " + source.getTextName() + ": " + ex.getMessage(), ex);
+            source.sendFailure(
+                    Component.literal("player info error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
+    }
+
+    /** /player info <name> — admin command to look up any player's data by name. */
+    public static int showPlayerInfoByName(CommandSourceStack source, String targetName) {
+        try {
+            ServerLevel serverLevel = source.getLevel();
+
+            // Find UUID by checking online players first, then the full player database.
+            UUID targetUUID = null;
+            net.minecraft.server.level.ServerPlayer online = source.getServer().getPlayerList()
+                    .getPlayerByName(targetName);
+            if (online != null) {
+                targetUUID = online.getUUID();
+            } else {
+                // Scan all known player records for a name match.
+                DataBase<UUID, PlayerData> db = ModEvents.getPlayerDatabase();
+                for (UUID uuid : db.getKeys()) {
+                    PlayerData pd = db.getData(uuid);
+                    if (pd != null) {
+                        String recordedName = pd.getNameForPlayer(serverLevel, uuid);
+                        if (recordedName.equalsIgnoreCase(targetName)) {
+                            targetUUID = uuid;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (targetUUID == null) {
+                source.sendFailure(Component.literal("No player data found for '" + targetName + "'."));
+                return 0;
+            }
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(targetUUID);
+            if (player == null) {
+                source.sendFailure(Component.literal("Player data not found for '" + targetName + "'."));
+                return 0;
+            }
+
+            source.sendSuccess(() -> Component
+                    .literal("---------- Player: " + targetName + " ----------")
+                    .withStyle(ChatFormatting.YELLOW), false);
+
+            // Coins
+            int bronzeCoins = player.getCoins();
+            source.sendSuccess(() -> Component.literal("Coins: " + String.format("%,d", bronzeCoins)), false);
+
+            // Village
+            sendHomeVillageInfo(source, serverLevel, player);
+
+            // Online status
+            boolean isOnline = online != null;
+            source.sendSuccess(() -> Component.literal("Online: " + (isOnline ? "Yes" : "No"))
+                    .withStyle(isOnline ? ChatFormatting.GREEN : ChatFormatting.GRAY), false);
+
+        } catch (Exception ex) {
+            LOGGER.error("showPlayerInfoByName error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal("Error: " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    private static void sendHomeVillageInfo(CommandSourceStack source, ServerLevel level, PlayerData player) {
+        if (player.getHomeVillageUUID() == null) {
+            source.sendSuccess(() -> Component.literal("No home village."), false);
+            return;
+        }
+
+        VillageData village = ModEvents.getVillageDatabase(level).getData(player.getHomeVillageUUID());
+        if (village == null) {
+            source.sendSuccess(
+                    () -> Component.literal("Home village: (unknown uuid: " + player.getHomeVillageUUID() + ")"),
+                    false);
+            return;
+        }
+
+        String safeVillageName = village.getName().replace("\"", "\\\"");
+        String cmd = "/village info \"" + safeVillageName + "\"";
+        Component villageLink = Component.literal("Home village: ")
+                .append(Component.literal(village.getName())
+                        .withStyle(style -> style
+                                .withColor(ChatFormatting.AQUA)
+                                .withUnderlined(true)
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, cmd))
+                                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                        Component.literal("Click to view village info")))));
+        source.sendSuccess(() -> villageLink, false);
     }
 
     // Give player coins method.
@@ -145,22 +262,84 @@ public class PlayerCommand {
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             PlayerData player = getPlayer(source);
 
-            // Add money to wallet.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = playerSource.level().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-
-            wallet.add(bronzeCoin, amount);
+            // Add money to player coin field.
+            player.addCoins(amount);
 
             // TODO THIS IS ALL THATS NEEDED? save is not quite working.
             savePlayer(playerSource.getUUID(), player);
 
-            int bronzeCoins = wallet.get(bronzeCoin);
+            int bronzeCoins = player.getCoins();
+            NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Player: "
-                    + playerSource.getScoreboardName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+                    + playerSource.getScoreboardName() + " given " + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("givePlayerCoins error: " + ex.getMessage(), ex);
+            source.sendFailure(Component
+                    .literal("givePlayerCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    /** /player givecoins <playerName> <amount> — admin command, works for online or offline players. */
+    public static int givePlayerCoinsByName(CommandSourceStack source, String targetName, int amount) {
+        try {
+            ServerLevel serverLevel = source.getLevel();
+
+            UUID targetUUID = null;
+            ServerPlayer online = source.getServer().getPlayerList().getPlayerByName(targetName);
+            if (online != null) {
+                targetUUID = online.getUUID();
+            } else {
+                DataBase<UUID, PlayerData> db = ModEvents.getPlayerDatabase();
+                for (UUID uuid : db.getKeys()) {
+                    PlayerData pd = db.getData(uuid);
+                    if (pd != null) {
+                        String recordedName = pd.getNameForPlayer(serverLevel, uuid);
+                        if (recordedName.equalsIgnoreCase(targetName)) {
+                            targetUUID = uuid;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (targetUUID == null) {
+                source.sendFailure(Component.literal("No player data found for '" + targetName + "'."));
+                return 0;
+            }
+
+            DataBase<UUID, PlayerData> db = ModEvents.getPlayerDatabase();
+            PlayerData player = db.getData(targetUUID);
+            if (player == null) {
+                source.sendFailure(Component.literal("Player data not found for '" + targetName + "'."));
+                return 0;
+            }
+
+            player.addCoins(amount);
+            savePlayer(targetUUID, player);
+
+            String resolvedName = player.getNameForPlayer(serverLevel, targetUUID);
+            int bronzeCoins = player.getCoins();
+            NumberFormat numberFormat = NumberFormat.getInstance();
+            boolean isOnline = online != null;
+
+            source.sendSuccess(() -> Component.literal("Player: "
+                    + resolvedName + " "
+                    + (amount >= 0 ? "given " : "adjusted by ")
+                    + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)
+                    + " (" + (isOnline ? "online" : "offline") + ")"), false);
+
+            if (online != null) {
+                online.sendSystemMessage(Component.literal("[Admin] Your coins were adjusted by "
+                        + numberFormat.format(amount) + ". New total: " + numberFormat.format(bronzeCoins))
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+        } catch (Exception ex) {
+            LOGGER.error("givePlayerCoinsByName error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal(
+                    "givePlayerCoinsByName error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -170,15 +349,58 @@ public class PlayerCommand {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Only a player can use this command."));
+                return 0;
+            }
+
             PlayerData player = getPlayer(source);
+            if (player == null) {
+                return 0;
+            }
+
+            UUID homeVillageId = player.getHomeVillageUUID();
+            if (homeVillageId == null) {
+                source.sendFailure(Component.literal("You are not currently in a village."));
+                return 0;
+            }
+
+            ServerLevel level = source.getLevel();
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase(level);
 
             // TODO make helper method for this.
             source.sendSuccess(() -> Component.literal("Leaving home village now"), false);
+
+            // Remove from village member list before clearing.
+            VillageData oldVillage = villageDb.getData(homeVillageId);
+            if (oldVillage != null) {
+                List<UUID> members = oldVillage.getMemberUUIDs();
+                members.removeIf(uuid -> uuid == null || uuid.equals(new UUID(0L, 0L)));
+                oldVillage.removeMember(playerSource.getUUID());
+                villageDb.putData(oldVillage.getUUID(), oldVillage);
+
+                // Notify remaining online members, but never let message dispatch crash the
+                // command flow.
+                for (UUID memberUUID : new ArrayList<>(oldVillage.getMemberUUIDs())) {
+                    if (memberUUID == null || memberUUID.equals(playerSource.getUUID())) {
+                        continue;
+                    }
+                    ServerPlayer member = source.getServer().getPlayerList().getPlayer(memberUUID);
+                    if (member != null) {
+                        member.sendSystemMessage(
+                                Component.literal(playerSource.getScoreboardName() + " left the village.")
+                                        .withStyle(ChatFormatting.YELLOW));
+                    }
+                }
+            }
+
+            // null is serialized as zero-UUID by PlayerData codec.
             player.setHomeVillageId(null);
             savePlayer(playerSource.getUUID(), player);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("player info Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("leaveVillage error: " + ex.getMessage(), ex);
+            source.sendFailure(Component
+                    .literal("leaveVillage error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -201,9 +423,13 @@ public class PlayerCommand {
             source.sendSuccess(() -> Component.literal("Joining home village now: " + villageName), false);
             player.setHomeVillageId(village.getUUID());
             savePlayer(playerSource.getUUID(), player);
+            // Add to village member list.
+            village.addMember(playerSource.getUUID());
+            ModEvents.getVillageDatabase().putData(village.getUUID(), village);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("player info Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("setVillage error: " + ex.getMessage(), ex);
+            source.sendFailure(
+                    Component.literal("setVillage error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -250,30 +476,30 @@ public class PlayerCommand {
                 return 0;
             }
 
-            // STEP 2: Check enough money in wallet.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!player.getWallet().hasEnough(bronzeCoin, amount)) {
-                source.sendFailure(Component.literal("Not enough coins in wallet, only have " + wallet.get(bronzeCoin)));
+            // STEP 2: Check enough money in player coins.
+            if (player.getCoins() < amount) {
+                source.sendFailure(
+                        Component.literal("Not enough coins, only have " + player.getCoins()));
                 return 0;
             }
 
             // STEP 3: Subtract coins from player.
-            // TODO use helper method.
-            wallet.remove(bronzeCoin, amount);
+            player.removeCoins(amount);
             savePlayer(playerSource.getUUID(), player);
 
             // STEP 4: Add to village coins.
             village.addCoins(amount);
             villageDatabase.putData(village.getUUID(), village);
 
-            int bronzeCoins = wallet.get(bronzeCoin);
+            int bronzeCoins = player.getCoins();
+            NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
-                    + village.getName() + " given " + amount + " coins. Total: " + bronzeCoins), false);
+                    + village.getName() + " given " + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("giveVillageCoins error: " + ex.getMessage(), ex);
+            source.sendFailure(Component
+                    .literal("giveVillageCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }
@@ -305,10 +531,7 @@ public class PlayerCommand {
             villageDatabase.putData(village.getUUID(), village);
 
             // STEP 4: Add to player coins.
-            Wallet wallet = player.getWallet();
-            Registry<Coin> coinRegistry = source.getLevel().registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            wallet.add(bronzeCoin, amount);
+            player.addCoins(amount);
 
             // TODO remove almost all playerDatabase calls within this file, use helpers.
             // TODO remove almost all playerDatabase calls within this file, use helpers.
@@ -318,15 +541,66 @@ public class PlayerCommand {
             // TODO remoe almost all playerDatabase calls within this file, use helpers.
             // TODO remoe almost all playerDatabase calls within this file, use helpers.
 
-//            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            // DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             savePlayer(playerSource.getUUID(), player);
 
-            int bronzeCoins = wallet.get(bronzeCoin);
+            int bronzeCoins = player.getCoins();
+            NumberFormat numberFormat = NumberFormat.getInstance();
             source.sendSuccess(() -> Component.literal("Village: "
-                    + village.getName() + " taken " + amount + " coins. Total: " + bronzeCoins), false);
+                    + village.getName() + " taken " + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)), false);
         } catch (Exception ex) {
-            source.sendFailure(Component.literal("give coins Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("takeVillageCoins error: " + ex.getMessage(), ex);
+            source.sendFailure(Component
+                    .literal("takeVillageCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    // Toggle border visibility on/off and save to PlayerData.
+    public static int setBorderShow(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+            PlayerData player = getPlayer(source);
+            if (player == null)
+                return 0;
+            boolean newVal = !player.isBorderShow();
+            player.setBorderShow(newVal);
+            savePlayer(playerSource.getUUID(), player);
+            source.sendSuccess(() -> Component.literal("Border display: " + (newVal ? "ON" : "OFF")), false);
+        } catch (Exception ex) {
+            LOGGER.error("setBorderShow error: " + ex.getMessage(), ex);
+            source.sendFailure(Component
+                    .literal("setBorderShow error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    // Set border color and save to PlayerData. Valid: blue, yellow, orange, pink,
+    // teal, green, red, purple, white
+    public static int setBorderColor(CommandSourceStack source, String color) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+            PlayerData player = getPlayer(source);
+            if (player == null)
+                return 0;
+            player.setBorderColor(color.toLowerCase());
+            savePlayer(playerSource.getUUID(), player);
+            source.sendSuccess(() -> Component.literal("Border color set to: " + color), false);
+        } catch (Exception ex) {
+            LOGGER.error("setBorderColor error: " + ex.getMessage(), ex);
+            source.sendFailure(Component
+                    .literal("setBorderColor error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }

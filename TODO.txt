@@ -1,95 +1,152 @@
 
-TODO LIST:
-
-TODO BUGS: not saving player coins correctly, not showing. change to just coins.
-    Not showing wallet correctly on overlay
-    Overlay not updating after an action, like buy plot or village?
-    GIVE player a UUID field properly
-
-    fIX GROW VILLAGE AREA TO CATCH 3 SIDES OR 4 SIDES.
-    
+BUGS LIST:   
+    BUG CHECK - Sheep/cows still follow player holding grain even after being bred today. NoLoveTemptGoal patch is confirmed replacing TemptGoal but blocking logic not visibly stopping follow. Need "delegateWants=true | blocked=true" in logs to confirm fix works.
+    BUG CHECK - Lycanites drop halving (onLycanitesDrops): verify "Lycanites drop:" log lines appear after killing Lycanites mobs, and check before/after counts are halved correctly.
+    BUG: Vanilla mob spawner cages (dungeons etc) can be deactivated by placing a chest on or near them — find which mod causes this and remove/disable that mechanic.
 END BUGS AREA
 
 
 GENERAL SOON:
-    DONE NOW Dumb down the regeneration boost.  On timer?, every 5 mins or so remove regen, randomly.
-        - modify to check player sol diversity, and last longer for longer 50 60 70
+    TODO: Village buyable setting — "Lycanites Sanctuary" toggle (purchasable perk or village upgrade).
+          When enabled, Lycanites are allowed to spawn in village chunks normally, BUT are forced to
+          remain permanently peaceful: never attack players, villagers, or animals, even at night.
+          Requires forcing peaceful AI on spawn (remove/cancel hostile goal tasks) and re-applying
+          it on EntityJoinLevel for any Lycanites that enter the village area.
 
-    DONE Add biomes info onto plot info and format and color it.
+    TEST: Veswax block silk touch loot table — mine a veswax block with silk touch pickaxe, confirm block drops. Mine without silk touch, confirm nothing drops.
+    TODO: Create a new special item for structure chests — a puzzle piece or clue item (custom mod item with unique texture/lore) to replace the written book trap. Should hint at a larger mystery/quest chain.
+    TODO: Cursed items — items that display fake high stats/enchants in their tooltip (look amazing) but apply negative or debilitating effects when equipped. Place these in dungeon/structure chests as traps alongside or instead of the written book.
 
-    DONE - make a book with writing in it.
+test minions
+[07:51:04] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] You are now able to summon the Jengu as a temporary minion! You will need a Summoning Item to summon it.
 
-    DONE - place a book in a chest.
 
-    TODO - show a description of village show in town center plot.
+    TODO: test NOCHESTS — DONE. If a structure has no chests, a vanilla chest is placed at center on solid ground then setupSpecialChest runs on it.
+
+
+        extend commands to have after /village structures also 
+        /village structures 1 (or 2-100 whatever)
+        That should load the structure from the structures list at that number
+        Then print out some more debug information about that structure
+        admin command only
+        min max bounding boxes would be good. and exact chunks built on.
+
+    TODO: possibly a command to scan for chests there.
+        How do we tell if chests have been opened or not before?
+
+    TODO: Add an extra bad guy in most all underground structures, first time only when discovered.
+    TODO: Add new loot item to mineshaft chests — potion of mining (haste effect) or similar mining-buff potion.
+    TODO: Add a note, paper or book to a chest in the structure, if no chest add a chest? (only once, when discovered?)
+        make those helper methods?
+
+    TODO: make level 2 farms not destroyo crops when walking on them
+    TODO LATER: make level 3 farms not care about per block planting rules (still has to be any biome the chunk is allowed) 
+
+    TODO Later: Make level 4 farm allow planting of one extra seed, set by owner, they are allowed to plant that extra crop in their farms, set at village level and village command. 
+
+    TODO CHECK - /village info shows net daily coins (earned minus cost), colored green/red.
+    TODO CHECK - Login warns if village treasury can't cover today's upkeep.
+    TODO CHECK - First login shows one-time upkeep explanation message.
+    TODO CHECK - Modded seeds/crops show "Requires: farm plot + biome rules" in tooltip.
+    TODO CHECK - /plot buy places a labeled oak sign one block in front of player.
+    TODO - Add farm plot and nursery plot levels (currently no per-plot levels exist).
+
+    TODO CHECK - Charge coins to enchant tools at enchanting table: base cost 100/200/300 for enchant levels 1/2/3, plus 100 per village level.
+
+    TODO CHECK - Make lava be gathered from a cauldron to a hopper.   
+
+    TODO CHECK - make breeding animals changeable once every two weeks only, if htey change it is locked for two weeks
+
+    TODO CHECK - flag that says every 5 min if im not in hard mode, if only one player on, and it has my name!!!!!!!
+    
+    TODO CHECK - fix cutting table recipes, they are still on simple for stones!
+
+    TODO CHECK: When upgrading we need to autoclaim plots that are surrounded on 4 sides, so we dont get single unclaimed spots. 
+
+TODO: bug can break blocks if super fast in other village some break some dont.
+
+Dont spawn bad guys in top level in city and lwer if bought plot?
+CURRENT SECTION:
+
+    TODO - Market boost tokens: consumable item that targets one market group (food, general, etc.).
+        On use, randomly selects 3 items from that group (repeats allowed) and increases each item's
+        cost by 3 coins. Stacks with existing price. Could be used to simulate demand spikes.
+
+    TODO - Daylight/Nighttime token: consumable item that instantly sets the world time to the
+        start of day (sunrise) or start of night (dusk). Two variants — one per phase.
+        Admin-craftable or loot-only. Sets time via server command equivalent (setDayTime).
+
+    TODO - Multi-layer dungeon tower: a tall structure with distinct floors, each floor using a
+        different dimension/realm layer generated on the fly (overworld stone, nether brick,
+        end-stone, custom, etc.). Players descend (or ascend) through portals or trapdoor shafts
+        between floors. Each layer has its own mob theme, loot tier, and difficulty scaling.
+        Floors generated procedurally or from schematic pool when first entered.
+        Sponsored by Scouter.
+
+
+
+FUTURE STUFF: 
+Dont start yet not fully defined.
+    TODO - create zone? or gameZone db object to save structures chunks and island and lakes and maybe country chunks? x y z
+
+    TODO - levelup village for 9 and 10 should get double chunks added.
+
+    TODO - make a cow that attacks. cant quite needs custom entity.
+
+    DONE - make a skeleton that doesnt attack.
+        - TODO Turn him into an NPC. made test command.
+
+    BUG: finding a structure after claiming doesnt add it to claimed list.
+
+    TODO CHECK - show a description of village show in town center plot.
         only show once an hour, cache show message.
 
     TODO - Create a find caves command - find largest caves in area, save area to DB for mob use.
 
-    DONE? TODO - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
-
-    NOT DONE? - change center plot to a "village center" name.
+    DONE - add bonus on mining 1% per 10,000, right now I am at 50k deepslate and 46k stone, so 5% and 5% bonus, rounded.
+ 
+    TODO - add nursery to keep loaded chunks?  how to test afterwards?  hardcode them for awhile, when entering a nursery chunk reset it?
+       otherwise only growing when nearby, and only helps full time players.
 
     TODO - make tester method to find all nearby biomes to village as well.  Just get center BlockPos for each one out to
         range X, and store them all with village, this will allow us to pick nearby biomes for village quests.
 
-
     TODO - Create a /house command for house gethouse in front of you all allow copy with worlededit? or get dims to call worldedit commands
         push back 3 type command.
         stretch left 2 type command
-
-    TODO - figure out how to control growth for village, population field?  bonus for taking over structures, bonus for villagers (limited maxs)
 
     TODO - have a daily task sign in village center, with a list of tasks that would give more daily XP.
         ie hunt mobs, explore, fix town roads, fix town walls, breed villagers, breed animals, plant trees, plant crops, harvest crops, build a house, build a farm, build a mine, build a nursery, build a port, build a rail station, build a market.
 
     TODO - NPCS maybe save villager names to village to respawn them if we feed and breed a villager?
 
-    DONE - make planting saplings and getting saplings much harder.  easier in nursery.
+    TODO - find and save all proper chunks generated by a structure, right now we are hacky
+    TODO - for all structures, randomly add mobs when crossing chunks, if light is low, try three times maybe?
+            Adds more danger for these areas, many are empty right now.
+            higher chance add spawner - make more mobs if in hard mode.
 
-    HALF -  Make find structures command have a top bottom and all options. optional distance?
-     not quite working on some.
 
-    TODO - Diamond Border change into a toggleAble command.
-
-    TODO - Add clickable link in /player info that goes to the village info automatically.
+    TODO CHECK - Add clickable link in /player info that goes to the village info automatically.
 
     TODO - buyable eggs for villagers if we have less than 3 alive?
 
-    TODO - break up CropsManager into several other things.  should be events or?  check another project?
+    TODO CHECK - break up CropsManager into several other things.  should be events or?  check another project?
 
     // Recipes and boosts and such
-    TODO - make emu and duck eggs usable in cooking.
+    TODO CHECK - make emu and duck eggs usable in cooking.
     TODO - make cows and animals use a new grain per village. alfalfa has a use then.
-    DONE - make tree planting fai often, except fruit ones?
-    DONE - give more bonus fruit for ones in an orchard!  great area to plant.
+    TODO - animate boats have them move each night possibly come to attack or trade.
 
 
 MARKETS - Get them up and fully working.
-  --DONE - Create 4 market type files, listing all items. - JAMES TODO
-  --Pull in 4 market type files. Import to DB
-  --TODO update goods data nad market objects to be right.
-  --DONE - Allow player to browser 4 markets -JAMES
-  --Allow player to sell all in inventory for a market type. -JAMES
-    -- mostly done - check wallet saving.
-  --Graphical UI laters.
-  --TODO Market command Updates prices daily. -JAMES
-    -- auto run
-  --TODO Market command Adds new random items daily. -JAMES
-    -- auto run
+  --TODO - Graphical UI laters.
 
 VILLAGES:
-  --DONE Add coins to village, single value?
-  --DONE Create addCoins() method to village and subtractCoins() method.
-  --DONE Add player putCoins and takeCoins methods
-
-  --DONE Add a setLevel method to village
-  --DONE Add chunks when level is grown
-  --DONE Add chunks randomly along edges, half chance in oceans...
-  --TODO auto grab any with 3-4 of 4 sides added already!  removes holes
-  --TODO ignore (dont shrink, if level is reduced)
-  --TODO Add levelUpVillage() method that adds one level. require growth next
-  --TODO get captured structures in village, must be visited, and plot claimed, can add growth.
+  TODO ignore (dont shrink, if level is reduced)
+  TODO get captured structures in village, must be visited, and plot claimed, can add growth.
+  TODO require growth something to level next
+  TODO - have structures give coins to village, and resources, and add to village growth.
+  TODO - have village record villagers count.
 
 PLAYERS:
     TODO Add level and experience fields.
@@ -100,37 +157,42 @@ PLAYERS:
 
 MAP
 Get a way to show village areas (or others) on JourneyMap
-    --TODO They had a decent integration a couple years back, should be able to use.
+    --TODO CHECK - waypoint and chunk highlight commands added via /farmcraft map
     --REF: https://github.com/TeamJM/journeymap-api/blob/1.20.x_1.9-forge/src/main/java/example/mod/client/plugin/SamplePolygonOverlayFactory.java
     --Similar: https://www.reddit.com/r/feedthebeast/comments/gq172e/this_is_my_mod_mapfrontiers_an_addon_for/
     -- REF: https://teamjm.github.io/journeymap-docs/5.9.x/Tools%20and%20Customisation/integration/
 
 #############################################################
-Adventure Areas
-    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
-    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
-    TODO - Add usage for cooking tools, small amount!   like Oak Posts and axe
+Adventure Project
+
 
 Create find islands and lakes command
     -- TODO MOSTLY DONE Command created -
-    -- TODO Create new area object, or use ChunkData ? need y values.
-    -- TODO Save to database
+    -- TODO Create new area object, Zones, need y values.
+        - Save to database
+    -- Create a find caves command - find largest caves in area, save area to DB for mob use.
+    -- Create a find caves command - find largest caves in area, save area to DB for mob use.
+    -- Create a find caves command - find largest caves in area, save area to DB for mob use.
     -- Create a find caves command - find largest caves in area, save area to DB for mob use.
 
-Find nearby structures
-    -- TODO partially done
+Structures: (dupes above)
+    DONE - Find nearby structures
+    TODO Save structures to database.
+    DONE - Add a command to show all structures in a list.
+    TODO Add a Village command to show list of structures.
+    TODO Save all structures to village.
+    TODO Save when a structure is Visited by player to DB.
+    TODO Save when structure is Claimed on plot in town.
+    TODO Give some kind of reward to village for owning a Structure.
+
 
 NPCS:
-    -- DONE - Locate nearby villagers
-    -- DONE - See if we can get their names.
-        MOD: villagernames-1.20.1-7.1 updating to newest.
-        REF: https://www.curseforge.com/minecraft/mc-mods/villager-names
-    -- DONE make a rename village command
-    -- Possibly give some a description -
+    -- TODO Possibly give npc a description -
         When coming close give a description of the villager.
         but dont spam it, only show once then cache that it was shown, per server login
     -- add extra command to show description
-    -- Have villagers suggest random things to do for the toown
+    TODO - create a guard npc and assign him a bed/house?
+    -- TODO SOON - Have villagers suggest random things to do for the town
        hardcoded list that rotates by day and village id hash
        like: improve roads,
            create market items
@@ -148,9 +210,14 @@ NPCS:
            breed animals
            update port
            etc, make a large list
-    -- connect to outside db or text files?
+    -- DONE connect to outside db or text files? can import/export, use game db scouter madee.
     -- use ai to add descriptions profiles?
     -- Create a mayor?
+    -- DONE - Locate nearby villagers
+    -- DONE - See if we can get their names.
+        MOD: villagernames-1.20.1-7.1 updating to newest.
+        REF: https://www.curseforge.com/minecraft/mc-mods/villager-names
+    -- DONE make a rename village command
     MOBS -
         TODO create a friendly mob npc
         TODO make a mob aggressive
@@ -170,5 +237,3 @@ QUESTS:
     TODO test dialogue
 
 
-DONE LIST:
-       DONE - Add journey map to test builder.

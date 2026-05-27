@@ -12,10 +12,8 @@ TODO
 [SpecialAI](../../AppData/Roaming/.minecraft/config/SpecialAI)
 [solonion.json](../../AppData/Roaming/.minecraft/config/solonion.json)
 
-3. Must copy over new rules here:
-From: TODO url
-To: 
-[harvestcraft_datapack](../../AppData/Roaming/.minecraft/saves/Pymosia/datapacks/harvestcraft_datapack)
+3. harvestcraft_datapack rules are now bundled inside the mod jar — no manual copy needed.
+   (All data files are in src/main/resources/data/ and are included in the Gradle build automatically.)
 
 
 

@@ -1,7 +1,5 @@
 package com.falazar.farmupcraft.client.overlay;
 
-import com.falazar.farmupcraft.currency.CoinStack;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
@@ -11,25 +9,25 @@ import com.falazar.farmupcraft.util.ClientUtils;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraftforge.client.gui.overlay.IGuiOverlay;
 
-import java.util.List;
+import java.text.NumberFormat;
 import java.util.UUID;
 
 public class PlayerDataOverlay {
 
-
-
-
     public static final IGuiOverlay HUD_PLAYER_DATA = (gui, guiGraphics, partialTick, screenWidth, screenHeight) -> {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.level == null) return;
+        if (mc.player == null || mc.level == null)
+            return;
 
         UUID playerUUID = mc.player.getUUID();
         var level = mc.level;
         PlayerData playerData = ModEvents.getPlayerDatabase(level).getData(playerUUID);
-        if (playerData == null) return;  // log error?
+        if (playerData == null)
+            return; // log error?
 
         // Get current chunk and village info
         // TODO helper method.
@@ -42,7 +40,16 @@ public class PlayerDataOverlay {
         String currentVillage = "wilderness";
         // TODO make method
         if (chunkData != null) {
-            if (chunkData.getType() != null) currentPlotType = chunkData.getType();
+            if (chunkData.getType() != null)
+                currentPlotType = chunkData.getType();
+
+            if ("house".equalsIgnoreCase(currentPlotType)) {
+                String ownerName = resolveHouseOwnerName(level, chunkData);
+                if (ownerName != null && !ownerName.isBlank()) {
+                    currentPlotType = ownerName + " house";
+                }
+            }
+
             UUID villageId = chunkData.getVillageId();
             if (villageId != null) {
                 VillageData standingVillage = ModEvents.getVillageDatabase(level).getData(villageId);
@@ -60,7 +67,8 @@ public class PlayerDataOverlay {
         int currentY = paddingTop;
 
         // Show Current village/location player is standing in.
-        guiGraphics.drawString(mc.font, Component.literal("Location: " + currentVillage), paddingLeft, currentY, 0xAAAAAA, true);
+        guiGraphics.drawString(mc.font, Component.literal("Location: " + currentVillage), paddingLeft, currentY,
+                0xAAAAAA, true);
         currentY += lineSpacing;
 
         // Show Plot type.
@@ -68,7 +76,8 @@ public class PlayerDataOverlay {
             currentPlotType = "village unclaimed";
         }
         if (!currentPlotType.equals("None")) {
-            guiGraphics.drawString(mc.font, Component.literal("Plot: " + currentPlotType), paddingLeft, currentY, 0xCCCCCC, true);
+            guiGraphics.drawString(mc.font, Component.literal("Plot: " + currentPlotType), paddingLeft, currentY,
+                    0xCCCCCC, true);
             currentY += lineSpacing;
         }
 
@@ -78,17 +87,24 @@ public class PlayerDataOverlay {
             homeVillage = ModEvents.getVillageDatabase(level).getData(playerData.getHomeVillageUUID());
         }
         String homeVillageText = homeVillage != null ? "Home: " + homeVillage.getName() : "No Village";
-        guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFFFFF, true);
+        guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFD700, true);
         currentY += lineSpacing;
 
-        // TODO1 scouter not showing up now???
-        // Show Coin stack display
-        List<CoinStack> coins = playerData.getWallet().getAllStacks();
-//        for (CoinStack stack : coins) {
-//            String line = stack.getCoin().getDisplayName() + ": " + stack.getAmount();
-//            guiGraphics.drawString(mc.font, Component.literal(line), paddingLeft, currentY, 0xFFD700, true);
-//            currentY += lineSpacing;
-//        }
-        // TEMP HIDE BROKEN
+        guiGraphics.drawString(mc.font, Component.literal("Coins: " + NumberFormat.getInstance().format(playerData.getCoins())), paddingLeft, currentY,
+                0xFFD700, true);
     };
+
+    private static String resolveHouseOwnerName(net.minecraft.client.multiplayer.ClientLevel level, ChunkData chunkData) {
+        UUID ownerUUID = chunkData.getOwnerUUID();
+        if (ownerUUID == null)
+            return null;
+
+        for (Player onlinePlayer : level.players()) {
+            if (ownerUUID.equals(onlinePlayer.getUUID())) {
+                return onlinePlayer.getName().getString();
+            }
+        }
+
+        return null;
+    }
 }

@@ -51,12 +51,30 @@ public class ModEvents {
     private static final DataBaseAccess<String, GoodsData> GOODS_DATA_DATABASE = new DataBaseBuilder<String, GoodsData>(prefix("goods_data_database_NEW"))
             .setKeySerializer(new StringDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(GoodsData.CODEC))
-            .autoSync()  // TODO TEST TODO TEMP DISABLED DUE TO SIZE ISSUES SCOUTER.
+            .autoSync()
             .build();
 
     private static final DataBaseAccess<Integer, WorldData> WORLD_DATA_DATABASE = new DataBaseBuilder<Integer, WorldData>(prefix("world_data_database"))
             .setKeySerializer(new IntDataSerializer())
             .setValueSerializer(new CodecDataSerializer<>(WorldData.CODEC))
+            .build();
+
+    private static final DataBaseAccess<UUID, NpcData> NPC_DATABASE = new DataBaseBuilder<UUID, NpcData>(prefix("npc_database"))
+            .setKeySerializer(new UUIDDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(NpcData.CODEC))
+            .autoSync()
+            .build();
+
+    private static final DataBaseAccess<Long, GameStructureData> GAME_STRUCTURE_DATABASE = new DataBaseBuilder<Long, GameStructureData>(prefix("game_structure_database"))
+            .setKeySerializer(new LongDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(GameStructureData.CODEC))
+            .autoSync()
+            .build();
+
+    private static final DataBaseAccess<UUID, GameZone> GAME_ZONE_DATABASE = new DataBaseBuilder<UUID, GameZone>(prefix("game_zone_database"))
+            .setKeySerializer(new UUIDDataSerializer())
+            .setValueSerializer(new CodecDataSerializer<>(GameZone.CODEC))
+            .autoSync()
             .build();
 
     public static WorldData getWorldData() {
@@ -103,6 +121,26 @@ public class ModEvents {
         return getDatabase(GOODS_DATA_DATABASE);
     }
 
+    public static DataBase<UUID, NpcData> getNpcDatabase() {
+        return getDatabase(NPC_DATABASE);
+    }
+
+    public static DataBase<Long, GameStructureData> getGameStructureDatabase() {
+        return getDatabase(GAME_STRUCTURE_DATABASE);
+    }
+
+    public static DataBase<Long, GameStructureData> getGameStructureDatabase(Level level) {
+        return getDatabase(GAME_STRUCTURE_DATABASE, level);
+    }
+
+    public static DataBase<UUID, GameZone> getGameZoneDatabase() {
+        return getDatabase(GAME_ZONE_DATABASE);
+    }
+
+    public static DataBase<UUID, GameZone> getGameZoneDatabase(Level level) {
+        return getDatabase(GAME_ZONE_DATABASE, level);
+    }
+
     public static <M, V> DataBase<M, V> getDatabase(DataBaseAccess<M, V> access) {
         return getDatabase(access, ServerLifecycleHooks.getCurrentServer().overworld());
     }
@@ -136,6 +174,12 @@ public class ModEvents {
 //                    goodsDb.setDirty();
 
                     DataBaseManager.registerDataBaseAccess(WORLD_DATA_DATABASE.getDatabaseName(), WORLD_DATA_DATABASE);
+
+                    DataBaseManager.registerDataBaseAccess(NPC_DATABASE.getDatabaseName(), NPC_DATABASE);
+                    
+                    DataBaseManager.registerDataBaseAccess(GAME_STRUCTURE_DATABASE.getDatabaseName(), GAME_STRUCTURE_DATABASE);
+                    
+                    DataBaseManager.registerDataBaseAccess(GAME_ZONE_DATABASE.getDatabaseName(), GAME_ZONE_DATABASE);
                 }
         );
 

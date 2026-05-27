@@ -1,16 +1,17 @@
 package com.falazar.farmupcraft.command;
 
 import com.falazar.farmupcraft.currency.Coin;
-import com.falazar.farmupcraft.currency.CurrencyCost;
-import com.falazar.farmupcraft.currency.Wallet;
 import com.falazar.farmupcraft.data.ChunkData;
-import com.falazar.farmupcraft.data.GameStructure;
+import com.falazar.farmupcraft.data.GameStructureData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.database.message.ShowVillageChunksPacket;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.registry.CoinRegistry;
 import com.falazar.farmupcraft.registry.FUCRegistries;
+import com.falazar.farmupcraft.util.AnimalGrainAssigner;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -18,40 +19,54 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
-import net.minecraft.client.Minecraft;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.animal.Animal;
+import net.minecraft.world.entity.animal.Chicken;
+import net.minecraft.world.entity.animal.Cow;
+import net.minecraft.world.entity.animal.Pig;
+import net.minecraft.world.entity.animal.Sheep;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.ai.targeting.TargetingConditions;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.entity.npc.VillagerData;
+import net.minecraft.world.phys.AABB;
 
 import java.text.NumberFormat;
 import java.util.*;
 
-import static com.falazar.farmupcraft.command.PlotCommand.calculatePlotCost;
 import static com.falazar.farmupcraft.command.PlotCommand.getCropsPlanted;
 
 public class VillageCommand {
     public static final CustomLogger LOGGER = new CustomLogger(VillageCommand.class.getSimpleName());
+    private static final String NBT_LAST_BRED = "farmupcraft_last_bred";
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command for "village"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("village");
 
         // Define the "info" sub-commands
-        // If user doesnt add a name, then show their village, else show the named village.
+        // If user doesnt add a name, then show their village, else show the named
+        // village.
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(context -> {
                     // Default behavior when no villageName is provided
@@ -95,7 +110,7 @@ public class VillageCommand {
                             String villageName = StringArgumentType.getString(context, "villageName");
                             return deleteVillage(context.getSource(), villageName);
                         }))
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(deleteBuilder);
 
         // Define the "levelup" sub-command for players current village.
@@ -112,15 +127,16 @@ public class VillageCommand {
                             Integer level = IntegerArgumentType.getInteger(context, "level");
                             return setVillageLevel(context.getSource(), level);
                         }))
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(setLevelBuilder);
 
-        // Define the "rundailyupkeep" sub-command for players current village. ADMIN ONLY!
+        // Define the "rundailyupkeep" sub-command for players current village. ADMIN
+        // ONLY!
         LiteralArgumentBuilder<CommandSourceStack> runDailyUpkeepBuilder = Commands.literal("rundailyupkeep")
                 .executes(context -> {
                     return runVillageDailyUpkeep(context.getSource());
                 })
-                .requires(s -> s.hasPermission(2));  // Adjust permission as needed
+                .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(runDailyUpkeepBuilder);
 
         // Define the "biomes" sub-command
@@ -137,11 +153,152 @@ public class VillageCommand {
                 });
         builder.then(villageFarmsBuilder);
 
+        // Define the "structures" sub-command to show structures in the village
+        LiteralArgumentBuilder<CommandSourceStack> villageStructuresBuilder = Commands.literal("structures")
+                .executes(context -> {
+                    return showVillageStructures(context.getSource(), 20, "all");
+                })
+                .then(Commands.argument("index", IntegerArgumentType.integer(1, 200))
+                        .executes(context -> {
+                            int index = IntegerArgumentType.getInteger(context, "index");
+                            return showVillageStructureDetail(context.getSource(), index, false);
+                        })
+                        .then(Commands.literal("chests")
+                                .executes(context -> {
+                                    int index = IntegerArgumentType.getInteger(context, "index");
+                                    return showVillageStructureDetail(context.getSource(), index, true);
+                                })))
+                .then(Commands.argument("filter", StringArgumentType.word())
+                        .suggests((context, builder2) -> {
+                            builder2.suggest("all");
+                            builder2.suggest("claimed");
+                            builder2.suggest("unclaimed");
+                            return builder2.buildFuture();
+                        })
+                        .executes(context -> {
+                            String filter = StringArgumentType.getString(context, "filter");
+                            return showVillageStructures(context.getSource(), 20, filter);
+                        })
+                        .then(Commands.argument("count", IntegerArgumentType.integer(1, 100))
+                                .executes(context -> {
+                                    String filter = StringArgumentType.getString(context, "filter");
+                                    int count = IntegerArgumentType.getInteger(context, "count");
+                                    return showVillageStructures(context.getSource(), count, filter);
+                                })))
+                .then(Commands.literal("rescan")
+                        .requires(s -> s.hasPermission(2))
+                        .executes(context -> rescanVillageStructures(context.getSource())));
+        builder.then(villageStructuresBuilder);
+
+        // Define the "villagers" sub-command to show nearby villagers
+        LiteralArgumentBuilder<CommandSourceStack> villageVillagersBuilder = Commands.literal("villagers")
+                .executes(context -> {
+                    return findNearVillagers(context.getSource());
+                });
+        builder.then(villageVillagersBuilder);
+
+        // Define the "setanimal" sub-command - set the village breeding animal type.
+        LiteralArgumentBuilder<CommandSourceStack> setAnimalBuilder = Commands.literal("setanimal")
+                .then(Commands.argument("animalType", StringArgumentType.word())
+                        .suggests((context, builder2) -> {
+                            builder2.suggest("cow");
+                            builder2.suggest("sheep");
+                            builder2.suggest("pig");
+                            builder2.suggest("chicken");
+                            return builder2.buildFuture();
+                        })
+                        .executes(context -> {
+                            String animalType = StringArgumentType.getString(context, "animalType");
+                            return setVillageAnimalType(context.getSource(), animalType);
+                        }));
+        builder.then(setAnimalBuilder);
+
+        // Define the "setfounder" sub-command. ADMIN ONLY.
+        LiteralArgumentBuilder<CommandSourceStack> setFounderBuilder = Commands.literal("setfounder")
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .executes(context -> {
+                            String playerName = StringArgumentType.getString(context, "playerName");
+                            return setVillageFounder(context.getSource(), playerName);
+                        }))
+                .requires(s -> s.hasPermission(2));
+        builder.then(setFounderBuilder);
+
+        // Define the "invite" sub-command — send a village invite to an online player.
+        LiteralArgumentBuilder<CommandSourceStack> inviteBuilder = Commands.literal("invite")
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .executes(context -> {
+                            String playerName = StringArgumentType.getString(context, "playerName");
+                            return invitePlayerToVillage(context.getSource(), playerName);
+                        }));
+        builder.then(inviteBuilder);
+
+        // Define the "accept" sub-command — accept a pending village invite.
+        LiteralArgumentBuilder<CommandSourceStack> acceptBuilder = Commands.literal("accept")
+                .executes(context -> acceptVillageInvite(context.getSource()));
+        builder.then(acceptBuilder);
+
+        // Define the "decline" sub-command — decline a pending village invite.
+        LiteralArgumentBuilder<CommandSourceStack> declineBuilder = Commands.literal("decline")
+                .executes(context -> declineVillageInvite(context.getSource()));
+        builder.then(declineBuilder);
+
+        // Define the "animals" sub-command — show grain requirements per animal type.
+        LiteralArgumentBuilder<CommandSourceStack> animalsBuilder = Commands.literal("animals")
+                .executes(context -> showVillageAnimals(context.getSource()));
+        builder.then(animalsBuilder);
+
+        // Define admin utility subcommands.
+        LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
+                .requires(s -> s.hasPermission(2))
+                .then(Commands.literal("regenanimalgrains")
+                        .executes(context -> regenerateVillageAnimalGrains(context.getSource(), null))
+                        .then(Commands.argument("villageName", StringArgumentType.string())
+                                .executes(context -> regenerateVillageAnimalGrains(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "villageName")))))
+                .then(Commands.literal("setfounder")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .executes(context -> setVillageFounder(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "playerName")))))
+                .then(Commands.literal("addmember")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .executes(context -> addMemberToVillage(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "playerName")))))
+                .then(Commands.literal("clearbreeding")
+                        .executes(context -> clearVillageBreedingCooldown(context.getSource(), null))
+                        .then(Commands.argument("villageName", StringArgumentType.string())
+                                .executes(context -> clearVillageBreedingCooldown(
+                                        context.getSource(),
+                                        StringArgumentType.getString(context, "villageName")))));
+        builder.then(adminBuilder);
+
+        // Define the "map" sub-command — show/clear village chunk overlays on
+        // JourneyMap.
+        // /village map → show blue (plot) / green (claimed) overlays
+        // /village map clear → remove all overlays
+        LiteralArgumentBuilder<CommandSourceStack> mapBuilder = Commands.literal("map")
+                .executes(context -> FarmCraftCommand.showVillageChunks(context.getSource()))
+                .then(Commands.literal("clear")
+                        .executes(context -> FarmCraftCommand.clearVillageChunks(context.getSource())));
+        builder.then(mapBuilder);
+
+        // /village chores — redisplay the daily chore suggestions.
+        LiteralArgumentBuilder<CommandSourceStack> choresBuilder = Commands.literal("chores")
+                .executes(context -> {
+                    net.minecraft.server.level.ServerPlayer sp = context.getSource().getPlayerOrException();
+                    com.falazar.farmupcraft.events.ForgeEvents.sendDailyTaskSuggestions(sp);
+                    return 1;
+                });
+        builder.then(choresBuilder);
+
         // Register the main "village" command with the dispatcher
         pDispatcher.register(builder);
     }
 
-    // Given a player command, villageName and their location, buy the village and mark chunks as owned.
+    // Given a player command, villageName and their location, buy the village and
+    // mark chunks as owned.
     public static int buyVillage(CommandSourceStack source, String villageName) {
         try {
             Entity nullablePlayer = source.getEntity();
@@ -151,7 +308,7 @@ public class VillageCommand {
                 return 0;
             }
 
-//            Level level = player.level();
+            // Level level = player.level();
 
             ChunkPos chunkPos = new ChunkPos(player.blockPosition());
             DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
@@ -175,44 +332,44 @@ public class VillageCommand {
                 int distance = Math.abs(closestVillagePos.getX() - player.blockPosition().getX()) +
                         Math.abs(closestVillagePos.getZ() - player.blockPosition().getZ());
                 if (distance < 100) { // TODO make this a config value.
-                    source.sendFailure(Component.literal("Too close to another village: " + closestVillage.getName() + " distance = " + distance));
+                    source.sendFailure(Component.literal(
+                            "Too close to another village: " + closestVillage.getName() + " distance = " + distance));
                     return 0;
                 }
             }
 
             // Step 3: Check if village name is unique.
             if (!isVillageNameUnique(villageName)) {
-                source.sendFailure(Component.literal("Village name " + villageName + " is not unique, please choose another."));
+                source.sendFailure(
+                        Component.literal("Village name " + villageName + " is not unique, please choose another."));
                 return 0;
             }
 
-
-            // STEP 4: Calc cost to buy village.
-//            int cost = calculateVillageCost(village, player, plotType);
-//            if (player.checkPlayerMoney(cost)) {
-//                context.getSource().sendFailure(Component.literal("Player does not have enough money."));
-//                return 0;
-//            }
-            int cost = 500; // TODO remove this and use calc cost.
-//            if (currencyCost.canAfford(wallet)) {
-//                do something
-//            }
-
-            // STEP 5: TODO Subtract money out of player.
-//            player.subtractMoney(cost);
-
+            // STEP 4: Calculate dynamic village buy cost.
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            int cost = calculateVillageBuyCost();
+            if (playerData.getCoins() < cost) {
+                source.sendFailure(Component.literal("Not enough coins to buy a village. Cost: " + cost
+                        + ", you have: " + playerData.getCoins()));
+                return 0;
+            }
 
             // Step 6: TODO Check if player is in another village right now.
             UUID homeVillageId = playerData.getHomeVillageUUID();
-            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
             if (homeVillageId != null) {
-                //  VillageData homeVillage = villageDatabase.getData(homeVillageId);
-                //  if (homeVillage != null) {
-                //      source.sendFailure(Component.literal("Player is already in a village: " + homeVillage.getName()));
-                //      return 0;
-                //  }
+                VillageData homeVillage = villageDatabase.getData(homeVillageId);
+                if (homeVillage != null) {
+                    source.sendFailure(Component.literal("Player is already in a village: " +
+                            homeVillage.getName()));
+                    return 0;
+                }
             }
 
+            // STEP 5: Subtract money from the player.
+            if (!playerData.removeCoins(cost)) {
+                source.sendFailure(Component.literal("Failed to deduct coins for village purchase."));
+                return 0;
+            }
 
             // Step 7: Generate all chunk positions in the radius
             int radius = 5;
@@ -227,28 +384,46 @@ public class VillageCommand {
 
             // Step 8: Create Village object and save it
             UUID villageId = UUID.randomUUID();
-            VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks, true, 0);
+            String founderName = player.getName().getString();
+            VillageData villageData = new VillageData(villageId, villageName, player.chunkPosition(), 1, villageChunks,
+                    true, 0, "2000-01-01", "", "2000-01-01", founderName, new java.util.ArrayList<>());
             villageDatabase.putData(villageId, villageData);
-            LOGGER.info("Village " + villageName + " created with id " + villageId +
+            LOGGER.info("Village " + villageName + " created by " + founderName + " with id " + villageId +
                     " saved with " + villageChunks.size() + " chunks around " + player.blockPosition());
 
             // STEP 9: Buy plot and mark to db.
-            // TODO1 this doesnt buy the plot does it?
             // TODO1 THESE villageId TO USE UUIDS
-
             // Mark chunks to village.
             for (ChunkPos pos : villageChunks) {
                 ChunkData chunk = new ChunkData("village", player.getId(), villageId);
                 chunkDataDatabase.putData(pos.toLong(), chunk);
+
+                // Update structure claim flags for this chunk
+                if (player.level() instanceof ServerLevel serverLevel) {
+                    StructureCommand.updateStructuresInChunk(pos, true, serverLevel);
+                }
             }
+            // Mark the center chunk as village center.
+            ChunkData data = chunkDataDatabase.getData(chunkPos.toLong());
+            data.setType("village center");
+            chunkDataDatabase.putData(chunkPos.toLong(), data);
 
             LOGGER.info("Plot bought at " + chunkPos);
+
+            // Auto-scan for nearby structures in a 30-chunk radius on village creation.
+            if (player.level() instanceof ServerLevel serverLevel) {
+                LOGGER.info("Auto-scanning for structures within 30 chunks of new village " + villageName);
+                StructureCommand.findNearbyStructuresForVillage(
+                        player.blockPosition(), serverLevel, player, villageData, "all", 30);
+            }
             // TODO1 call a set plot method, separate this out.
             // TODO1 add plot to city.
 
-
-            // STEP 10: Add player to village list.
-            // TODO: Implement
+            // STEP 10: Add player to village member list.
+            villageData.addMember(player.getUUID());
+            // Assign grain requirements for this village based on its position.
+            AnimalGrainAssigner.assignGrains(villageData);
+            villageDatabase.putData(villageId, villageData);
 
             // STEP 11: Add village to player.
             playerData.setHomeVillageId(villageId);
@@ -259,6 +434,7 @@ public class VillageCommand {
             // STEP 12: Build a response message and send.
             MutableComponent response = Component.literal("Village bought at " + chunkPos);
             response = response.append(Component.literal(" and created with name " + villageName));
+            response = response.append(Component.literal(" for " + cost + " coins."));
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -268,16 +444,177 @@ public class VillageCommand {
         return 0;
     }
 
+    // Show grain requirements for all farm animals in the player's village.
+    public static int showVillageAnimals(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDb.getData(playerSource.getUUID());
+            if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You don't belong to a village."));
+                return 0;
+            }
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = villageDb.getData(playerData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Village not found."));
+                return 0;
+            }
+            // Assign grains lazily if not yet set.
+            if (!village.hasAnimalGrainsAssigned()) {
+                AnimalGrainAssigner.assignGrains(village);
+                villageDb.putData(village.getUUID(), village);
+            }
+            source.sendSuccess(() -> Component.literal("=== " + village.getName() + " Animal Grain Requirements ===")
+                    .withStyle(ChatFormatting.GOLD), false);
+            java.util.Map<String, java.util.List<String>> map = village.getAnimalGrainsMap();
+            for (String animal : AnimalGrainAssigner.ANIMAL_TYPES) {
+                java.util.List<String> grains = map.getOrDefault(animal, java.util.List.of());
+                String grainsText = grains.stream()
+                        .map(AnimalGrainAssigner::displayName)
+                        .collect(java.util.stream.Collectors.joining(" & "));
+                source.sendSuccess(() -> Component.literal("  " + capitalize(animal) + ": ")
+                        .withStyle(ChatFormatting.YELLOW)
+                        .append(Component.literal(grainsText).withStyle(ChatFormatting.WHITE)), false);
+            }
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in showVillageAnimals: " + e.getMessage());
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty())
+            return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
+    }
+
+    // Admin utility: regenerate animal grain requirements for current or named
+    // village.
+    public static int regenerateVillageAnimalGrains(CommandSourceStack source, String villageName) {
+        try {
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village;
+
+            if (villageName != null && !villageName.isBlank()) {
+                village = findVillageByName(villageName);
+                if (village == null) {
+                    source.sendFailure(Component.literal("Village not found: " + villageName));
+                    return 0;
+                }
+            } else {
+                Entity nullableSummoner = source.getEntity();
+                Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+                if (playerSource == null) {
+                    source.sendFailure(Component.literal(
+                            "From console, provide a village name: /village admin regenanimalgrains <villageName>"));
+                    return 0;
+                }
+
+                PlayerData playerData = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+                if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                    source.sendFailure(Component.literal("You don't belong to a village."));
+                    return 0;
+                }
+
+                village = villageDb.getData(playerData.getHomeVillageUUID());
+                if (village == null) {
+                    source.sendFailure(Component.literal("Village data not found."));
+                    return 0;
+                }
+            }
+
+            AnimalGrainAssigner.assignGrains(village);
+            villageDb.putData(village.getUUID(), village);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Regenerated animal grain requirements for village '" + village.getName() + "'."), true);
+            LOGGER.info("Admin regenerated animal grains for village {} ({})", village.getName(), village.getUUID());
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in regenerateVillageAnimalGrains: {}", e.getMessage(), e);
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    // Admin utility: clear breeding cooldown NBT for farm animals in a local
+    // 5x5 chunk area around the command source chunk (+-2).
+    public static int clearVillageBreedingCooldown(CommandSourceStack source, String villageName) {
+        try {
+            ServerLevel level = source.getLevel();
+            BlockPos sourcePos = BlockPos.containing(source.getPosition());
+            ChunkPos center = new ChunkPos(sourcePos);
+            Set<UUID> seen = new HashSet<>();
+            int clearedCount = 0;
+
+            for (int dx = -2; dx <= 2; dx++) {
+                for (int dz = -2; dz <= 2; dz++) {
+                    ChunkPos cp = new ChunkPos(center.x + dx, center.z + dz);
+                    double minX = cp.getMinBlockX();
+                    double minZ = cp.getMinBlockZ();
+                    double maxX = cp.getMaxBlockX() + 1;
+                    double maxZ = cp.getMaxBlockZ() + 1;
+                    double minY = level.getMinBuildHeight();
+                    double maxY = level.getMaxBuildHeight();
+
+                    AABB box = new AABB(minX, minY, minZ, maxX, maxY, maxZ);
+                    for (Animal animal : level.getEntitiesOfClass(Animal.class, box)) {
+                        if (!isFarmBreedingAnimal(animal) || !seen.add(animal.getUUID())) {
+                            continue;
+                        }
+                        if (animal.getPersistentData().contains(NBT_LAST_BRED)) {
+                            animal.getPersistentData().remove(NBT_LAST_BRED);
+                            clearedCount++;
+                        }
+                    }
+                }
+            }
+
+            int finalClearedCount = clearedCount;
+            source.sendSuccess(() -> Component.literal(
+                    "Cleared breeding cooldown on " + finalClearedCount
+                            + " animals in chunk area +-2 around current position."),
+                    true);
+            LOGGER.info("Admin cleared breeding cooldown on {} animals in 5x5 chunk area around chunk {},{}",
+                    clearedCount, center.x, center.z);
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in clearVillageBreedingCooldown: {}", e.getMessage(), e);
+            source.sendFailure(Component.literal("Error: " + e.getMessage()));
+            return 0;
+        }
+    }
+
+    private static boolean isFarmBreedingAnimal(Animal animal) {
+        return animal instanceof Cow
+                || animal instanceof Sheep
+                || animal instanceof Pig
+                || animal instanceof Chicken;
+    }
+
     // Show the village that current player has home in.
     public static int showVillageInfo(CommandSourceStack source, String villageName) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
 
             DataBase<UUID, PlayerData> playerDataDataBase = ModEvents.getPlayerDatabase();
             PlayerData playerData = playerDataDataBase.getData(playerSource.getUUID());
             VillageData village = null;
-            // Find by name or player data.  (break these two up, might be slightly different later)
+            // Find by name or player data. (break these two up, might be slightly different
+            // later)
             if (villageName == null) {
                 UUID villageId = playerData.getHomeVillageUUID();
                 DataBase<UUID, VillageData> dataBase = ModEvents.getVillageDatabase();
@@ -293,11 +630,17 @@ public class VillageCommand {
             // STEP 1: Build a response message with basic info.
             NumberFormat numberFormat = NumberFormat.getInstance();
             MutableComponent response = Component.literal("")
-                    .append(Component.literal("---------- Village Name: " + village.getName() + " ----------\n").withStyle(ChatFormatting.YELLOW)) // Yellow
+                    .append(Component.literal("---------- Village Name: " + village.getName() + " ----------\n")
+                            .withStyle(ChatFormatting.YELLOW)) // Yellow
                     .append(Component.literal("Level: " + village.getLevel() + " \n")) // White
+                    .append(Component.literal("Range: " + getVillageRadius(village) + " chunks \n")) // White
                     .append(Component.literal("Coins: " + numberFormat.format(village.getCoins()) + " \n")
-                            .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if negative, white otherwise
-                    .append(Component.literal(" at " + village.getPosition().getWorldPosition().toShortString() + " \n")) // White
+                            .withStyle(village.getCoins() < 0 ? ChatFormatting.RED : ChatFormatting.WHITE)) // Red if
+                                                                                                            // negative,
+                                                                                                            // white
+                                                                                                            // otherwise
+                    .append(Component
+                            .literal(" at " + village.getPosition().getWorldPosition().toShortString() + " \n")) // White
                     .append(Component.literal(" with claimed chunks = " + village.getClaimedChunks().size() + "\n")); // White
 
             // STEP 2: Loop over all plots and count them, and farms.
@@ -315,29 +658,65 @@ public class VillageCommand {
 
             // Step 3: Show plot and daily costs.
             int plotCost = PlotCommand.calculatePlotCost(village, "plot");
-            response = response.append(Component.literal(" Plot cost: " + numberFormat.format(plotCost) + " coins. \n"));
+            response = response
+                    .append(Component.literal(" Plot cost: " + numberFormat.format(plotCost) + " coins. \n"));
             int dailyCost = getDailyCost(village);
-            response = response.append(Component.literal(" Daily cost: " + numberFormat.format(dailyCost) + " coins. \n"));
+            response = response
+                    .append(Component.literal(" Daily cost: " + numberFormat.format(dailyCost) + " coins. \n"));
 
-            // STEP 4: Show nearby structures, and claimed ones.
-            // Note some underground are not showing in right area.
-            response = response.append(Component.literal(" Nearby structures: \n"));
-            // TODO add these to village object earlier on in another method, just show them here....
-            // Loop over list: id, show name, position, and if on claimed plot or not.
-            // TODO
-//            List<String, String, ChunkPos, String, Boolean> = village.getNearbyStructures();
-            // Loop over list: id, show name, position, and if on claimed plot or not.
-            // TODO make it its own object instead of inside village?  ya probably?
-            List<GameStructure> structures = getGameStructures(village.getUUID());
-            for (GameStructure structure : structures) {
-                String claimedText = structure.isOnClaimedPlot() ? " (on claimed plot)" : "";
-                response = response.append(Component.literal(" - " + structure.getName() + " at " + structure.getPosition() + claimedText + "\n"));
+            // STEP 4: Show structure count and daily coins earned using helper methods.
+            int claimedStructures = countVillageClaimedStructures(village, playerSource.level());
+            int unclaimedStructures = countVillageUnclaimedStructures(village, playerSource.level());
+            int dailyCoins = claimedStructures * 100;
+            response = response.append(Component.literal(" Claimed structures: " + claimedStructures + "\n"));
+            response = response.append(Component.literal(" Unclaimed structures: " + unclaimedStructures + "\n"));
+            response = response
+                    .append(Component.literal(" Daily coins earned: " + numberFormat.format(dailyCoins) + "\n"));
+            int netDaily = dailyCoins - dailyCost;
+            ChatFormatting netColor = netDaily >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+            response = response.append(Component
+                    .literal(" Net daily: " + (netDaily >= 0 ? "+" : "") + numberFormat.format(netDaily) + " coins\n")
+                    .withStyle(netColor));
+
+            // STEP 5: Show villager count
+            BlockPos villageCenter = village.getPosition().getWorldPosition();
+            int villagerCount = countVillagers(villageCenter, playerSource.level(), 10);
+            response = response.append(Component.literal(" Villagers count: " + villagerCount + "\n"));
+
+            // STEP 6: Show founder.
+            String founder = village.getFounder();
+            if (!founder.isEmpty()) {
+                response = response.append(Component.literal(" Founder: " + founder + "\n"));
             }
-            // visited flag? if a player from city has visited the chunk, maybe...
-            // How to handle underground ones, dont want to give out their locations.
+
+            // STEP 7: Show animal type if set.
+            String animalType = village.getAnimalType();
+            if (!animalType.isEmpty()) {
+                response = response.append(Component.literal(" Breeding animal: " + animalType + "\n"));
+            }
+
+            // STEP 8: Show member list.
+            List<UUID> members = village.getMemberUUIDs();
+            if (!members.isEmpty()) {
+                StringBuilder memberNames = new StringBuilder();
+                for (UUID memberUUID : members) {
+                    if (memberNames.length() > 0)
+                        memberNames.append(", ");
+                    memberNames.append(getPlayerName(source.getServer(), memberUUID));
+                }
+                response = response.append(Component.literal(" Members (" + members.size() + "): " + memberNames + "\n")
+                        .withStyle(ChatFormatting.AQUA));
+            } else {
+                response = response.append(Component.literal(" Members: none\n").withStyle(ChatFormatting.GRAY));
+            }
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+            LOGGER.info(
+                    "DEBUG /village info: name={}, level={}, coins={}, plots={}, farms={}, dailyCost={}, dailyEarned={}, lastRanDaily={}, villagers={}",
+                    village.getName(), village.getLevel(), village.getCoins(),
+                    plotCnt, farmCnt, dailyCost, dailyCoins,
+                    village.getLastRanDaily(), villagerCount);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception in show village info - see logs"));
             ex.printStackTrace();
@@ -345,24 +724,101 @@ public class VillageCommand {
         return 0;
     }
 
+    /**
+     * Resolves a player UUID to a display name.
+     * Checks online players first, then falls back to the server's profile cache
+     * (usercache.json).
+     * Vanilla creates and maintains the cache automatically — no setup needed.
+     *
+     * @param server the Minecraft server instance
+     * @param uuid   the player UUID to look up
+     * @return display name, appended with " (online)" if currently connected, or a
+     *         short UUID if unknown
+     */
+    public static String getPlayerName(net.minecraft.server.MinecraftServer server, UUID uuid) {
+        net.minecraft.server.level.ServerPlayer online = server.getPlayerList().getPlayer(uuid);
+        if (online != null) {
+            return online.getName().getString() + " (online)";
+        }
+        if (server.getProfileCache() != null) {
+            return server.getProfileCache().get(uuid)
+                    .map(com.mojang.authlib.GameProfile::getName)
+                    .orElse(uuid.toString().substring(0, 8) + "...");
+        }
+        return uuid.toString().substring(0, 8) + "...";
+    }
+
     // TODO Create getGameStructures method stub.
-    public static List<GameStructure> getGameStructures(UUID villageId) {
+    public static List<GameStructureData> getGameStructures(UUID villageId) {
         // Get all near the village.
 
         // TODO: Implement logic to return nearby or owned structures
 
         // Fill in two fake ones
         // cemetery and armorers house
-        List<GameStructure> structures = new ArrayList<>();
-        structures.add(new GameStructure("cemetery", "Cemetery", new BlockPos(0, 0, 0), "village", true));
-        structures.add(new GameStructure("armorers_house", "Armorer's House", new BlockPos(1, 1, 1), "village", false));
+        List<GameStructureData> structures = new ArrayList<>();
+        structures.add(new GameStructureData(1L, "Cemetery", new BlockPos(0, 0, 0), "village", true, false));
+        structures.add(new GameStructureData(2L, "Armorer's House", new BlockPos(1, 1, 1), "village", false, false));
 
         return structures;
     }
+
+    public static int getVillageRadius(VillageData village) {
+        return 2 + 3 * village.getLevel();
+    }
+
+    // Runs hourly upkeep for villages of online players only.
+    // Returns the number of villages processed.
+    public static int runOnlinePlayerVillageUpkeep(net.minecraft.server.MinecraftServer server) {
+        int processed = 0;
+        try {
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            Level level = server.overworld();
+
+            // Collect unique village UUIDs from online players.
+            Set<UUID> villageIds = new HashSet<>();
+            for (net.minecraft.server.level.ServerPlayer onlinePlayer : server.getPlayerList().getPlayers()) {
+                PlayerData playerData = playerDatabase.getData(onlinePlayer.getUUID());
+                if (playerData == null || playerData.getHomeVillageUUID() == null)
+                    continue;
+                villageIds.add(playerData.getHomeVillageUUID());
+            }
+
+            if (villageIds.isEmpty()) {
+                LOGGER.info("runOnlinePlayerVillageUpkeep: no online players with a village.");
+                return 0;
+            }
+
+            for (UUID villageId : villageIds) {
+                VillageData village = villageDatabase.getData(villageId);
+                if (village == null)
+                    continue;
+                // Skip if upkeep already ran today for this village.
+                if (village.hasRanTodayAlready()) {
+                    LOGGER.info("runOnlinePlayerVillageUpkeep: {} already ran today, skipping.", village.getName());
+                    continue;
+                }
+                processVillageUpkeep(village, level);
+                processed++;
+            }
+        } catch (Exception ex) {
+            LOGGER.error("runOnlinePlayerVillageUpkeep: exception - " + ex.getMessage());
+            ex.printStackTrace();
+        }
+        return processed;
+    }
+
     public static int getDailyCost(VillageData village) {
-        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 30;
+        int dailyCost = village.getLevel() * 100 + getPlotCount(village) * 15;
 
         return dailyCost;
+    }
+
+    /** Village buy price: base 500 + 200 per existing village in the world. */
+    public static int calculateVillageBuyCost() {
+        int existingVillageCount = ModEvents.getVillageDatabase().getSize();
+        return 500 + (Math.max(0, existingVillageCount) * 200);
     }
 
     public static int getPlotCount(VillageData village) {
@@ -379,7 +835,6 @@ public class VillageCommand {
         return plotCnt;
     }
 
-
     // List all villages in the world.
     public static int listVillages(CommandContext<CommandSourceStack> context) {
         try {
@@ -389,7 +844,7 @@ public class VillageCommand {
                 context.getSource().sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-//            Level level = summoner.level();
+            // Level level = summoner.level();
 
             // TODO load all village from db.
             // TODO MAKE METHOD.
@@ -403,7 +858,7 @@ public class VillageCommand {
             // Build a response message
             MutableComponent response = Component.literal("Village list: \n");
             int index = 1;
-            // What order here?  TODO Make alpha.
+            // What order here? TODO Make alpha.
             for (VillageData village : villageList) {
                 response = response.append(Component.literal(index++
                         + ". " + village.getName() +
@@ -412,9 +867,9 @@ public class VillageCommand {
                         + " with " + village.getClaimedChunks().size() + " chunks, \n"));
                 // TODO1 bug size is not getting right here, or claim got too many.
                 LOGGER.info("DEBUG TODO Village info for: village = " + village.getName()
+                        + ", id = " + village.getUUID()
                         + ", chunks = " + village.getClaimedChunks().stream().count()
-                        + " claimedChunkSet = " + village.getClaimedChunkSet().size()
-                );
+                        + " claimedChunkSet = " + village.getClaimedChunkSet().size());
             }
 
             // TODO1 claimed chunks is wayyyyyy too large.
@@ -462,17 +917,18 @@ public class VillageCommand {
             // TODO remove from player data.
             // TODO NEED player data to get uuid dont have, save to db!!!
             // Loop over all players, if home village is this one, remove it.
-//            DataBase<UUID, PlayerData> playerDataDatabase = ModEvents.getPlayerDatabase();
-//            Collection<PlayerData> playerDataList = playerDataDatabase.getValues();
-//            if (playerDataList != null && !playerDataList.isEmpty()) {
-//                for (PlayerData playerData : playerDataList) {
-//                    if (playerData.getHomeVillageUUID() != null && playerData.getHomeVillageUUID().equals(villageData.getUUID())) {
-//                        playerData.setHomeVillageId(null);
-//                        playerDataDatabase.putData(player.getUUID(), playerData);
-//                    }
-//                }
-//            }
-
+            // DataBase<UUID, PlayerData> playerDataDatabase =
+            // ModEvents.getPlayerDatabase();
+            // Collection<PlayerData> playerDataList = playerDataDatabase.getValues();
+            // if (playerDataList != null && !playerDataList.isEmpty()) {
+            // for (PlayerData playerData : playerDataList) {
+            // if (playerData.getHomeVillageUUID() != null &&
+            // playerData.getHomeVillageUUID().equals(villageData.getUUID())) {
+            // playerData.setHomeVillageId(null);
+            // playerDataDatabase.putData(player.getUUID(), playerData);
+            // }
+            // }
+            // }
 
             // TODO remove chunks data. test
             DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
@@ -486,7 +942,6 @@ public class VillageCommand {
 
             villageDatabase.removeDataAsync(village.getUUID(), null);
             villageDatabase.setDirty();
-
 
             // Build a response message
             MutableComponent response = Component.literal("Village deleted: " + village.getName());
@@ -524,7 +979,8 @@ public class VillageCommand {
 
             // Check if name is unique.
             if (!isVillageNameUnique(villageName)) {
-                source.sendFailure(Component.literal("Village name " + villageName + " is not unique, please choose another."));
+                source.sendFailure(
+                        Component.literal("Village name " + villageName + " is not unique, please choose another."));
                 return 0;
             }
 
@@ -537,6 +993,398 @@ public class VillageCommand {
             MutableComponent response = Component.literal("Village renamed to: " + villageData.getName());
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+    // Village Invite System (in-memory only, 10-minute TTL, no server-restart
+    // persistence)
+    // -------------------------------------------------------------------------
+    private record PendingInvite(UUID villageId, String inviterName, long expiryMs) {
+    }
+
+    /** key = invited player UUID */
+    private static final Map<UUID, PendingInvite> PENDING_INVITES = new HashMap<>();
+
+    /** Remove expired entries (called lazily on invite/accept). */
+    private static void cleanExpiredInvites() {
+        long now = System.currentTimeMillis();
+        PENDING_INVITES.entrySet().removeIf(e -> e.getValue().expiryMs() < now);
+    }
+
+    public static int invitePlayerToVillage(CommandSourceStack source, String targetName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player inviter = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (inviter == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            // Inviter must be in a village.
+            PlayerData inviterData = ModEvents.getPlayerDatabase().getData(inviter.getUUID());
+            if (inviterData == null || inviterData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not in a village."));
+                return 0;
+            }
+
+            VillageData village = ModEvents.getVillageDatabase().getData(inviterData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Could not find your village data."));
+                return 0;
+            }
+
+            // Find the target player online.
+            net.minecraft.server.level.ServerPlayer target = source.getServer().getPlayerList()
+                    .getPlayerByName(targetName);
+            if (target == null) {
+                source.sendFailure(Component.literal("Player '" + targetName + "' is not online."));
+                return 0;
+            }
+
+            // Don't invite yourself.
+            if (target.getUUID().equals(inviter.getUUID())) {
+                source.sendFailure(Component.literal("You cannot invite yourself."));
+                return 0;
+            }
+
+            // Check if target already in a village.
+            PlayerData targetData = ModEvents.getPlayerDatabase().getData(target.getUUID());
+            if (targetData != null && targetData.getHomeVillageUUID() != null
+                    && ModEvents.getVillageDatabase().getData(targetData.getHomeVillageUUID()) != null) {
+                source.sendFailure(Component.literal(targetName + " is already a member of a village."));
+                return 0;
+            }
+
+            cleanExpiredInvites();
+            long expiryMs = System.currentTimeMillis() + 10L * 60 * 1000; // 10 minutes
+            PENDING_INVITES.put(target.getUUID(),
+                    new PendingInvite(village.getUUID(), inviter.getName().getString(), expiryMs));
+
+            LOGGER.info("Invite stored: {} invited {} (uuid={}) to village {}",
+                    inviter.getName().getString(), targetName, target.getUUID(), village.getName());
+
+            // Tell the inviter.
+            source.sendSuccess(() -> Component.literal(
+                    "Invite sent to " + targetName + " to join village '" + village.getName()
+                            + "'. It expires in 10 minutes."),
+                    false);
+
+            // Notify invited player in chat with clickable accept/decline actions.
+            Component inviteMsg = Component.literal(
+                    "[Village] " + inviter.getName().getString() + " invited you to '" + village.getName() + "'. ")
+                    .append(Component.literal("[Yes]")
+                            .withStyle(style -> style.withColor(ChatFormatting.GREEN)
+                                    .withBold(true)
+                                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/village accept"))))
+                    .append(Component.literal(" "))
+                    .append(Component.literal("[No]")
+                            .withStyle(style -> style.withColor(ChatFormatting.RED)
+                                    .withBold(true)
+                                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/village decline"))))
+                    .append(Component.literal(" (expires in 10m)").withStyle(ChatFormatting.GRAY));
+            target.sendSystemMessage(inviteMsg);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static int acceptVillageInvite(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            cleanExpiredInvites();
+            PendingInvite invite = PENDING_INVITES.remove(player.getUUID());
+            if (invite == null) {
+                source.sendFailure(Component.literal("You have no pending village invite (or it has expired)."));
+                return 0;
+            }
+
+            // Double-check target is not already in a village.
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDb.getData(player.getUUID());
+            if (playerData == null) {
+                source.sendFailure(Component.literal("Your player data was not found."));
+                return 0;
+            }
+            if (playerData.getHomeVillageUUID() != null
+                    && ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID()) != null) {
+                source.sendFailure(Component.literal("You are already a member of a village."));
+                return 0;
+            }
+
+            // Ensure village still exists.
+            VillageData village = ModEvents.getVillageDatabase().getData(invite.villageId());
+            if (village == null) {
+                source.sendFailure(Component.literal("The village you were invited to no longer exists."));
+                return 0;
+            }
+
+            // Join the village.
+            playerData.setHomeVillageId(invite.villageId());
+            playerDb.putData(player.getUUID(), playerData);
+            village.addMember(player.getUUID());
+            ModEvents.getVillageDatabase().putData(village.getUUID(), village);
+
+            source.sendSuccess(() -> Component.literal(
+                    "You have joined the village '" + village.getName() + "'! Welcome!")
+                    .withStyle(ChatFormatting.GREEN), false);
+
+            // Broadcast to village members who are online.
+            Component joinMsg = Component.literal("[Village] " + player.getName().getString()
+                    + " has joined the village '" + village.getName() + "'!")
+                    .withStyle(ChatFormatting.YELLOW);
+            for (net.minecraft.server.level.ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+                PlayerData onlineData = playerDb.getData(online.getUUID());
+                if (onlineData != null && invite.villageId().equals(onlineData.getHomeVillageUUID())) {
+                    online.sendSystemMessage(joinMsg);
+                }
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    public static int declineVillageInvite(CommandSourceStack source) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player player = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (player == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            cleanExpiredInvites();
+            PendingInvite removed = PENDING_INVITES.remove(player.getUUID());
+            if (removed == null) {
+                source.sendFailure(Component.literal("You have no pending village invite."));
+                return 0;
+            }
+
+            source.sendSuccess(() -> Component.literal("Village invite declined.").withStyle(ChatFormatting.YELLOW),
+                    false);
+
+            VillageData village = ModEvents.getVillageDatabase().getData(removed.villageId());
+            if (village != null) {
+                Component declineMsg = Component.literal("[Village] " + player.getName().getString()
+                        + " declined an invite to join '")
+                        .append(Component.literal(village.getName()))
+                        .append(Component.literal("'."))
+                        .withStyle(ChatFormatting.RED);
+
+                DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+                for (net.minecraft.server.level.ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+                    PlayerData onlineData = playerDb.getData(online.getUUID());
+                    if (onlineData != null && removed.villageId().equals(onlineData.getHomeVillageUUID())) {
+                        online.sendSystemMessage(declineMsg);
+                    }
+                }
+            }
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // -------------------------------------------------------------------------
+
+    private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken");
+
+    // Sets the village's allowed breeding animal type. Can only be changed once
+    // every two weeks.
+    public static int setVillageAnimalType(CommandSourceStack source, String animalType) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            if (!VALID_ANIMAL_TYPES.contains(animalType.toLowerCase())) {
+                source.sendFailure(Component.literal("Invalid animal type. Must be: cow, sheep, pig, or chicken."));
+                return 0;
+            }
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData villageData = villageDatabase.getData(player.getHomeVillageUUID());
+            if (villageData == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // Enforce once-per-two-weeks limit (skip for creative/admin).
+            if (!playerSource.isCreative() && !villageData.canChangeAnimalType()) {
+                source.sendFailure(Component.literal(
+                        "Village animal type was recently changed. You can change it again after 14 days. Last changed: "
+                                + villageData.getLastAnimalTypeChange()));
+                return 0;
+            }
+
+            String lower = animalType.toLowerCase();
+            villageData.setAnimalType(lower);
+            villageData.setLastAnimalTypeChange(java.time.LocalDate.now().toString());
+            villageDatabase.putData(villageData.getUUID(), villageData);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Village breeding animal set to: " + lower + ". Only " + lower + "s may be bred in pastures."),
+                    false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Sets the village founder. Admin only.
+    public static int setVillageFounder(CommandSourceStack source, String playerName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Player not found."));
+                return 0;
+            }
+
+            PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData villageData = villageDatabase.getData(player.getHomeVillageUUID());
+            if (villageData == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            UUID targetUuid = null;
+            String normalizedFounderName = playerName;
+
+            ServerPlayer onlineTarget = source.getServer().getPlayerList().getPlayerByName(playerName);
+            if (onlineTarget != null) {
+                targetUuid = onlineTarget.getUUID();
+                normalizedFounderName = onlineTarget.getName().getString();
+            } else {
+                Optional<com.mojang.authlib.GameProfile> profile = source.getServer().getProfileCache().get(playerName);
+                if (profile.isPresent()) {
+                    targetUuid = profile.get().getId();
+                    normalizedFounderName = profile.get().getName();
+                }
+            }
+
+            if (targetUuid == null) {
+                source.sendFailure(Component.literal("Could not resolve player '" + playerName + "'."));
+                return 0;
+            }
+
+            boolean inMemberList = villageData.isMember(targetUuid);
+            PlayerData targetPlayerData = ModEvents.getPlayerDatabase().getData(targetUuid);
+            boolean hasMatchingHomeVillage = targetPlayerData != null
+                    && villageData.getUUID().equals(targetPlayerData.getHomeVillageUUID());
+            if (!inMemberList && !hasMatchingHomeVillage) {
+                source.sendFailure(Component.literal(
+                        "Player '" + normalizedFounderName + "' is not in village '" + villageData.getName() + "'."));
+                return 0;
+            }
+
+            villageData.setFounder(normalizedFounderName);
+            villageDatabase.putData(villageData.getUUID(), villageData);
+            final String founderNameFinal = normalizedFounderName;
+            source.sendSuccess(() -> Component.literal("Village founder set to: " + founderNameFinal), false);
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("Exception thrown - see log"));
+            ex.printStackTrace();
+        }
+        return 0;
+    }
+
+    // Admin: force-add a player to the command user's village.
+    public static int addMemberToVillage(CommandSourceStack source, String playerName) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player actor = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (actor == null) {
+                source.sendFailure(Component.literal("Only a player can use this command."));
+                return 0;
+            }
+
+            DataBase<UUID, PlayerData> playerDb = ModEvents.getPlayerDatabase();
+            PlayerData actorData = playerDb.getData(actor.getUUID());
+            if (actorData == null || actorData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not in a village."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDb = ModEvents.getVillageDatabase();
+            VillageData village = villageDb.getData(actorData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("Could not find your village data."));
+                return 0;
+            }
+
+            UUID targetUuid = null;
+            String normalizedName = playerName;
+            ServerPlayer onlineTarget = source.getServer().getPlayerList().getPlayerByName(playerName);
+            if (onlineTarget != null) {
+                targetUuid = onlineTarget.getUUID();
+                normalizedName = onlineTarget.getName().getString();
+            } else {
+                Optional<com.mojang.authlib.GameProfile> profile = source.getServer().getProfileCache().get(playerName);
+                if (profile.isPresent()) {
+                    targetUuid = profile.get().getId();
+                    normalizedName = profile.get().getName();
+                }
+            }
+
+            if (targetUuid == null) {
+                source.sendFailure(Component.literal("Could not resolve player '" + playerName + "'."));
+                return 0;
+            }
+
+            PlayerData targetData = playerDb.getData(targetUuid);
+            if (targetData == null) {
+                if (onlineTarget != null) {
+                    targetData = new PlayerData(onlineTarget.getId(), targetUuid, null, 0);
+                } else {
+                    source.sendFailure(Component.literal(
+                            "Player data for '" + normalizedName + "' was not found. Have them join first."));
+                    return 0;
+                }
+            }
+
+            UUID targetVillageId = targetData.getHomeVillageUUID();
+            if (targetVillageId != null && !targetVillageId.equals(village.getUUID())) {
+                VillageData targetVillage = villageDb.getData(targetVillageId);
+                String targetVillageName = targetVillage != null ? targetVillage.getName() : targetVillageId.toString();
+                source.sendFailure(Component.literal(
+                        normalizedName + " is already in village '" + targetVillageName + "'."));
+                return 0;
+            }
+
+            targetData.setHomeVillageId(village.getUUID());
+            playerDb.putData(targetUuid, targetData);
+
+            village.addMember(targetUuid);
+            villageDb.putData(village.getUUID(), village);
+
+            PENDING_INVITES.remove(targetUuid);
+
+            final String targetNameFinal = normalizedName;
+            source.sendSuccess(
+                    () -> Component.literal("Added " + targetNameFinal + " to village '" + village.getName() + "'."),
+                    false);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -582,6 +1430,7 @@ public class VillageCommand {
             VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
 
             int currLevel = village.getLevel();
+            int newLevel = currLevel + 1;
 
             // STEP 2: Check if already max level.
             if (currLevel >= 10) {
@@ -589,34 +1438,86 @@ public class VillageCommand {
                 return 0;
             }
 
-            // STEP 3: Check cost to level up.
-            // TODO check if can afford.
-            int levelUpCost = currLevel * 200;
-            // todo helper method.
-            Level level = playerSource.level();
-            Registry<Coin> coinRegistry = level.registryAccess().registryOrThrow(FUCRegistries.Keys.COIN);
-            Coin bronzeCoin = coinRegistry.get(CoinRegistry.BRONZE_COIN);
-            if (!player.getWallet().hasEnough(bronzeCoin, levelUpCost)) {
-                source.sendFailure(Component.literal("Not enough coins to level up village. Cost is " + levelUpCost));
+            // STEP 3: Check all requirements for leveling up.
+            boolean failedChecks = false;
+            MutableComponent failureMessages = Component.literal("");
+
+            // a. Check cost to level up
+            int levelUpCost = currLevel * 300;
+            if (player.getCoins() < levelUpCost) {
+                failedChecks = true;
+                failureMessages = failureMessages.append(
+                        Component.literal("Not enough coins to level up village. Cost is " + levelUpCost + " coins\n"));
+            }
+
+            // b. Check minimum villagers requirement
+            BlockPos villageCenter = village.getPosition().getWorldPosition();
+            int requiredVillagers = newLevel * 2;
+            int currentVillagers = countVillagers(villageCenter, playerSource.level(), 10);
+            if (currentVillagers < requiredVillagers) {
+                failedChecks = true;
+                failureMessages = failureMessages
+                        .append(Component.literal("Not enough villagers to level up village. Need " + requiredVillagers
+                                + " villagers, have " + currentVillagers + "\n"));
+            }
+
+            // c. Check minimum claimed structures requirement
+            int requiredStructures = newLevel * 2 - 2;
+            int currentClaimedStructures = countVillageClaimedStructures(village, playerSource.level());
+            if (currentClaimedStructures < requiredStructures) {
+                failedChecks = true;
+                failureMessages = failureMessages
+                        .append(Component.literal("Not enough claimed structures to level up village. Need "
+                                + requiredStructures + " claimed structures, have " + currentClaimedStructures + "\n"));
+            }
+
+            // d. If any checks failed, show all messages and return
+            if (failedChecks) {
+                source.sendFailure(failureMessages);
                 return 0;
             }
-            // STEP 4: Subtract money out of player.  TODO helper method hide this???
-            player.getWallet().remove(bronzeCoin, levelUpCost);
-            ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
 
-            // check any other requirements.
+            // STEP 4: Subtract money out of player. TODO helper method hide this???
+            player.removeCoins(levelUpCost);
+            ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
 
             // STEP 5: Update level in db.
             village.setLevel(currLevel + 1);
 
             // STEP 6: Add new chunks.
             int newChunksCount = addNewVillageChunks(village, playerSource);
-
             villageDatabase.putData(village.getUUID(), village);
+
+            // STEP 7: Find already-visited SURFACE structures now inside the newly claimed
+            // chunks.
+            // Underground structures (Y < 60) are secrets — don't spoil them here.
+            List<String> newlyFoundStructureNames = new ArrayList<>();
+            if (playerSource.level() instanceof ServerLevel serverLevel) {
+                var structureDb = ModEvents.getGameStructureDatabase(serverLevel);
+                DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+                for (Long structureId : structureDb.getKeys()) {
+                    GameStructureData sd = structureDb.getData(structureId);
+                    if (sd == null || !sd.wasVisited())
+                        continue;
+                    // Skip underground structures — they are secrets!
+                    if (sd.getCenterPos().getY() < 60)
+                        continue;
+                    ChunkPos sc = new ChunkPos(sd.getCenterPos());
+                    ChunkData cd = chunkDb.getData(sc.toLong());
+                    if (cd != null && village.getUUID().equals(cd.getVillageId())) {
+                        newlyFoundStructureNames.add(sd.getName());
+                    }
+                }
+            }
 
             // Build a response message
             MutableComponent response = Component.literal("Village leveled up to: " + village.getLevel());
             response = response.append(Component.literal(", and added " + newChunksCount + " new chunks. \n"));
+            if (!newlyFoundStructureNames.isEmpty()) {
+                response = response.append(Component.literal(
+                        "Structures now in village: " + String.join(", ", newlyFoundStructureNames) + "\n")
+                        .withStyle(ChatFormatting.GREEN));
+            }
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -649,22 +1550,27 @@ public class VillageCommand {
         // Add them randomly along the edge of current chunks.
         int tries = 0;
         // Calculate the range based on the village level
-        int range = 8 + 3 * village.getLevel();
+        int range = getVillageRadius(village);
         while (chunksCount > 0 && tries < 5000) {
             tries++;
 
-            // Generate random x and z positions within the range, centered around the current position
+            // Generate random x and z positions within the range, centered around the
+            // current position
             int x = centerChunkPos.x + (int) ((Math.random() * 2 - 1) * range);
             int z = centerChunkPos.z + (int) ((Math.random() * 2 - 1) * range);
             ChunkPos chunkPos = new ChunkPos(x, z);
 
+            // TODO MAKE METHOD.
             // RULE 1: Must be touching claims.
             if (!touchingVillageChunk(village, chunkPos)) {
-//                LOGGER.info("DEBUG not adding chunk not near claims... " + chunkPos.toString());
+                // LOGGER.info("DEBUG not adding chunk not near claims... " +
+                // chunkPos.toString());
                 continue;
             }
 
-//            LOGGER.info("DEBUG Checking from " + centerChunkPos.toString() + "  at chunkPos = " + chunkPos.toString() + ", chunksCount = " + chunksCount + ", tries = " + tries);
+            // LOGGER.info("DEBUG Checking from " + centerChunkPos.toString() + " at
+            // chunkPos = " + chunkPos.toString() + ", chunksCount = " + chunksCount + ",
+            // tries = " + tries);
 
             // RULE 2: If an ocean chunk 2/3 chance skip it and continue.
             Holder<Biome> biome = playerSource.level().getBiome(chunkPos.getWorldPosition());
@@ -681,6 +1587,7 @@ public class VillageCommand {
             if (village.getClaimedChunks().contains(chunkPos)) {
                 continue;
             }
+
             // RULE 3: If claimed by another village 50% chance to take it over.
             // If taking over another village chunk send text to world chat now.
             // Get chunk village.
@@ -688,7 +1595,8 @@ public class VillageCommand {
             if (chunkData != null) {
                 VillageData otherVillage = villageDatabase.getData(chunkData.getVillageId());
                 if (otherVillage != null && !otherVillage.getUUID().equals(villageId)) {
-                    LOGGER.info("DEBUG: Checking other village owns it... at " + chunkPos.toString() + ", other village = " + otherVillage.getName());
+                    LOGGER.info("DEBUG: Checking other village owns it... at " + chunkPos.toString()
+                            + ", other village = " + otherVillage.getName());
                     if (Math.random() < 0.5) {
                         LOGGER.info("DEBUG SKIPPING chunk owned by another village: " + otherVillage.getName());
                         continue;
@@ -705,11 +1613,14 @@ public class VillageCommand {
                     villageDatabase.putData(otherVillage.getUUID(), otherVillage);
                     village.addClaimedChunk(chunkPos);
                     villageDatabase.putData(village.getUUID(), otherVillage);
+                    // NOTE: Do NOT updateStructuresInChunk on takeover — only plot buys claim
+                    // structures.
 
                     // Add world chat message. Show center chunk pos.
                     MutableComponent message = Component.literal("Village " + village.getName()
                             + " took over " + otherVillage.getName() + " chunk"
-                            + " at " + chunkPos.getMiddleBlockPosition(64).getX() + ", " + chunkPos.getMiddleBlockPosition(64).getZ());
+                            + " at " + chunkPos.getMiddleBlockPosition(64).getX() + ", "
+                            + chunkPos.getMiddleBlockPosition(64).getZ());
                     message.withStyle(ChatFormatting.RED);
                     playerSource.sendSystemMessage(message);
                     chunksCount--;
@@ -722,7 +1633,9 @@ public class VillageCommand {
             ChunkData chunk = new ChunkData("village", player.getId(), villageId);
             chunkDatabase.putData(chunkPos.toLong(), chunk);
             village.addClaimedChunk(chunkPos);
-            // TODO PUT BACK
+            // NOTE: Do NOT call updateStructuresInChunk here — village expansion should
+            // never auto-claim structures. Structures become claimed only when a player
+            // explicitly buys a plot on the chunk.
 
             chunksCount--;
         } // while
@@ -736,12 +1649,115 @@ public class VillageCommand {
             message.withStyle(ChatFormatting.RED);
             playerSource.sendSystemMessage(message);
         }
+        villageDatabase.putData(village.getUUID(), village); // Save back.
 
-        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
-        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
-        // TODO make a cleanup method that auto claims any chunk that has 3+ of four sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four
+        // sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four
+        // sides claimed, makes sure there are no islands!!!
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four
+        // sides claimed, makes sure there are no islands!!!
+
+        cleanupVillageChunks(playerSource);
 
         return newChunksCount;
+    }
+
+    // TODO make this a command to test it with...
+    // dont actually claim until test is good and clear.
+    public static int cleanupVillageChunks(Player playerSource) {
+        // TODO make a cleanup method that auto claims any chunk that has 3+ of four
+        // sides claimed, makes sure there are no islands!!!
+        // Loop over all chunks in the area near village by radius,
+        // and check if they have 3+ sides claimed.
+        // If so, claim them also.
+        // DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+        DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
+        VillageData village = villageDatabase.getData(playerData.getHomeVillageUUID());
+
+        int cleanedUpCount = 0;
+        int radius = 10 + 3 * village.getLevel(); // Increase radius with level.
+
+        for (int y = -radius; y <= radius; y++) {
+            for (int x = -radius; x <= radius; x++) {
+                ChunkPos chunkPos = new ChunkPos(village.getPosition().x + x, village.getPosition().z + y);
+
+                // Check if chunk is already claimed.
+                if (village.getClaimedChunks().contains(chunkPos)) {
+                    continue; // Skip already claimed chunks.
+                }
+
+                // Check how many sides are claimed.
+                int sidesClaimed = 0;
+                // Check all 4 horizontal sides of the chunk.
+                for (Direction direction : Direction.Plane.HORIZONTAL) {
+                    ChunkPos neighborChunk = new ChunkPos(chunkPos.x + direction.getStepX(),
+                            chunkPos.z + direction.getStepZ());
+                    if (village.getClaimedChunks().contains(neighborChunk)) {
+                        sidesClaimed++;
+                    }
+                }
+
+                // If all 4 sides are claimed, auto-claim this chunk (it's fully surrounded).
+                if (sidesClaimed >= 4) {
+                    LOGGER.info(
+                            "DEBUG Reclaiming surrounded chunk " + chunkPos.toString() + " with all 4 sides claimed.");
+
+                    DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+                    ChunkData existing = chunkDatabase.getData(chunkPos.toLong());
+                    // Only claim if unclaimed or belongs to this village already.
+                    if (existing == null || village.getUUID().equals(existing.getVillageId())) {
+                        ChunkData chunkData = new ChunkData("village", playerData.getId(), village.getUUID());
+                        chunkDatabase.putData(chunkPos.toLong(), chunkData);
+                        village.addClaimedChunk(chunkPos);
+
+                        // Update structure claim flags for this chunk.
+                        if (playerSource.level() instanceof ServerLevel serverLevel) {
+                            StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
+                        }
+
+                        cleanedUpCount++;
+                    }
+                }
+            }
+        }
+
+        // Save the updated village data.
+        villageDatabase.putData(village.getUUID(), village);
+
+        return cleanedUpCount;
+    }
+
+    // Shared helper: calculate and charge upkeep for a single village. Returns
+    // coins charged.
+    public static int processVillageUpkeep(VillageData village, Level level) {
+        int dailyCost = getDailyCost(village);
+        int claimedStructures = countVillageClaimedStructures(village, level);
+        int dailyCoins = claimedStructures * 100;
+        int net = dailyCoins - dailyCost;
+        if (net >= 0) {
+            village.addCoins(net);
+        } else {
+            village.subtractCoins(-net);
+        }
+        village.markDailyRanToday(); // stamp the date so we don't charge again today
+        ModEvents.getVillageDatabase().putData(village.getUUID(), village);
+        String netStr = net >= 0 ? "+" + net : String.valueOf(net);
+        LOGGER.info("Village upkeep: {} net={} coins (earned={}, cost={}).",
+                village.getName(), netStr, dailyCoins, dailyCost);
+
+        // Broadcast upkeep result to all online players.
+        ChatFormatting netColor = net >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED;
+        Component broadcastMsg = Component.literal("[Village] " + village.getName()
+                + " daily upkeep: net " + netStr + " coins (earned=" + dailyCoins + ", cost=" + dailyCost + ")")
+                .withStyle(netColor);
+        if (level.getServer() != null) {
+            level.getServer().getPlayerList().broadcastSystemMessage(broadcastMsg, false);
+        }
+
+        return net;
     }
 
     public static int runVillageDailyUpkeep(CommandSourceStack source) {
@@ -749,20 +1765,14 @@ public class VillageCommand {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
 
-            // Load village from db that villager is in.
+            // Load village from db that player is in.
             PlayerData player = ModEvents.getPlayerDatabase().getData(playerSource.getUUID());
-            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
-            VillageData village = villageDatabase.getData(player.getHomeVillageUUID());
+            VillageData village = ModEvents.getVillageDatabase().getData(player.getHomeVillageUUID());
 
-            // TODO run daily upkeep.
-            // TODO TEST
-            // Subtract daily upkeep cost from village coins.
-            int dailyCost = getDailyCost(village);
-            village.subtractCoins(dailyCost);
-            villageDatabase.putData(village.getUUID(), village);
+            // Calculate and charge upkeep via shared helper.
+            int totalCost = processVillageUpkeep(village, playerSource.level());
 
-            // Build a response message.
-            MutableComponent response = Component.literal("Village daily upkeep ran, charged " + dailyCost + " coins.");
+            MutableComponent response = Component.literal("Village daily upkeep ran, charged " + totalCost + " coins.");
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
         } catch (Exception ex) {
@@ -772,7 +1782,8 @@ public class VillageCommand {
         return 0;
     }
 
-    // Method to loop over all chunks in a village, and get the center spot biome there.
+    // Method to loop over all chunks in a village, and get the center spot biome
+    // there.
     // Then unique and sort count the list.
     // Then show the list of biomes.
     // Two methods, one to get one to show, later can store on an object.
@@ -795,14 +1806,14 @@ public class VillageCommand {
             VillageData villageData = villageDataDB.getData(playerData.getHomeVillageUUID());
 
             // Get the list of biomes in the village.
-            Map<String, Integer> biomes = getVillageBiomes(villageData);
+            Map<String, Integer> biomes = getVillageBiomes(villageData, source.getLevel());
 
             // Show the list of biomes.
             // TODO first line yellow.
             MutableComponent response = Component.literal("Biomes in village: ");
             for (Map.Entry<String, Integer> entry : biomes.entrySet()) {
                 String biome = entry.getKey();
-                // Remove mod tag, dont need really.  With regex all before the ":"
+                // Remove mod tag, dont need really. With regex all before the ":"
                 String biomeName = biome.toString().replaceAll("^[^:]+:", "");
 
                 int count = entry.getValue();
@@ -817,12 +1828,15 @@ public class VillageCommand {
         return 0;
     }
 
-    public static Map<String, Integer> getVillageBiomes(VillageData villageData) {
+    public static Map<String, Integer> getVillageBiomes(VillageData villageData, Level level) {
         if (villageData == null) {
             LOGGER.error("Village data is null, cannot get biomes.");
             return Collections.emptyMap();
         }
-        Level level = Minecraft.getInstance().level;
+        if (level == null) {
+            LOGGER.error("Level is null, cannot get village biomes.");
+            return Collections.emptyMap();
+        }
 
         // Loop over each chunk in territory.
         // Get the biome for each chunk.
@@ -848,7 +1862,7 @@ public class VillageCommand {
 
             // Add to a count of biomes hash.
             String biomeString = biomeName.toString();
-            LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeString);
+            // LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeString);
             if (biomeCounts.containsKey(biomeString)) {
                 // Increment the count for this biome
                 biomeCounts.put(biomeString, biomeCounts.get(biomeString) + 1);
@@ -861,11 +1875,11 @@ public class VillageCommand {
         // Sort the map by count in descending order
         Map<String, Integer> sortedBiomeCounts = biomeCounts.entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
-                .collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()), LinkedHashMap::putAll);
+                .collect(LinkedHashMap::new, (map, entry) -> map.put(entry.getKey(), entry.getValue()),
+                        LinkedHashMap::putAll);
 
         return sortedBiomeCounts;
     }
-
 
     public static int showVillagefarms(CommandSourceStack source) {
         try {
@@ -904,16 +1918,12 @@ public class VillageCommand {
                 LOGGER.info("DEBUG Chunk " + chunkPos.toString() + " has height " + height);
                 // TODO TEST
 
-
-                // Get all biomes in this chunk at surface level.
-                // todo make another helper that actually has the count also!!!
+                // Get all biomes in this chunk at surface level with counts.
                 // TODO this is showing lush caves, our y value is still off somehow....
-                 PlotCommand.getChunkBiomes(blockPos, level)
-                        .forEach((biomeName) -> {
-//                            response.append(Component.literal(biomeName + " (" + biomeCount + "), "));
-                            response.append(Component.literal(biomeName + ", "));
-                        });
-                 // TODO add line break..
+                PlotCommand.getChunkBiomes(blockPos, level)
+                        .forEach((biomeName, count) -> response
+                                .append(Component.literal(biomeName + " (" + count + "), ")));
+                // TODO add line break..
 
                 BlockPos cropBlockPos = chunkPos.getMiddleBlockPosition(height);
                 String crops = getCropsPlanted(cropBlockPos, level);
@@ -923,8 +1933,8 @@ public class VillageCommand {
                     response.append(Component.literal(" with no crops planted.\n"));
                 }
             }
-            // Show all veggies you can or cannot plant?  thats alot, sub command?
-            // And currently planted counts :}  if on flat farm.
+            // Show all veggies you can or cannot plant? thats alot, sub command?
+            // And currently planted counts :} if on flat farm.
 
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
@@ -978,7 +1988,6 @@ public class VillageCommand {
         return false;
     }
 
-
     // TODO MOVE these over to a manager.
     // Get closest village to location.
     public static VillageData getClosestVillage(BlockPos pos) {
@@ -1022,14 +2031,874 @@ public class VillageCommand {
     }
 
     public static String findVillageByChunkPos(ChunkPos chunkPos) {
-        DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
-        ChunkData chunkData = dataBase.getData(chunkPos.toLong());
+        DataBase<Long, ChunkData> chunkDataDatabase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = chunkDataDatabase.getData(chunkPos.toLong());
         if (chunkData == null) {
             return null;
         }
-//        return chunkData.getType();
 
-        VillageData village = ModEvents.getVillageDatabase().getData(chunkData.getVillageId());
-        return village != null ? village.getName() : null;
+        DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase();
+        VillageData village = villageDataDB.getData(chunkData.getVillageId());
+        if (village == null) {
+            return null;
+        }
+
+        return village.getName();
+    }
+
+    /**
+     * Shows structures within the player's village (where chunk data exists).
+     * Only shows structures that are in chunks claimed by the player's village.
+     */
+    public static int showVillageStructures(CommandSourceStack source, int count, String filter) {
+        try {
+            // Validate filter parameter
+            if (!"all".equals(filter) && !"claimed".equals(filter) && !"unclaimed".equals(filter)) {
+                source.sendFailure(Component.literal("Invalid filter: " + filter + ". Use: all, claimed, unclaimed"));
+                return 0;
+            }
+
+            Entity nullablePlayer = source.getEntity();
+            Player playerSource = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("This command can only be used by a player."));
+                return 0;
+            }
+
+            ServerLevel world = (ServerLevel) source.getLevel();
+            var gameStructureDatabase = ModEvents.getGameStructureDatabase(world);
+
+            if (gameStructureDatabase.getSize() == 0) {
+                source.sendSystemMessage(
+                        Component.literal("No structures found in database.").withStyle(ChatFormatting.YELLOW));
+                return 0;
+            }
+
+            // Get player's village data
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
+            if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not part of a village."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData village = villageDatabase.getData(playerData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // Get village position for distance calculation
+            BlockPos villagePos = village.getPosition().getWorldPosition();
+
+            // STEP 2: Get list of structures in the village
+            List<Map.Entry<Long, GameStructureData>> structuresList = getVillageStructuresList(village, world);
+            if (structuresList.isEmpty()) {
+                source.sendSystemMessage(
+                        Component.literal("No structures found in your village.").withStyle(ChatFormatting.YELLOW));
+                return 0;
+            }
+
+            // STEP 2.5: Apply filter if specified
+            if (!"all".equals(filter)) {
+                List<Map.Entry<Long, GameStructureData>> filteredList = new ArrayList<>();
+                for (Map.Entry<Long, GameStructureData> entry : structuresList) {
+                    GameStructureData structureData = entry.getValue();
+                    boolean isClaimed = structureData.isOnClaimedPlot();
+
+                    if ("claimed".equals(filter) && isClaimed) {
+                        filteredList.add(entry);
+                    } else if ("unclaimed".equals(filter) && !isClaimed) {
+                        filteredList.add(entry);
+                    }
+                }
+                structuresList = filteredList;
+
+                if (structuresList.isEmpty()) {
+                    source.sendSystemMessage(Component.literal("No " + filter + " structures found in your village.")
+                            .withStyle(ChatFormatting.YELLOW));
+                    return 0;
+                }
+            }
+
+            // STEP 3: Sort by distance from current player position.
+            BlockPos playerPos = playerSource.blockPosition();
+            structuresList
+                    .sort(Comparator.comparingDouble(entry -> entry.getValue().getCenterPos().distSqr(playerPos)));
+
+            // STEP 4: Show the structures in nice format.
+            String filterText = "all".equals(filter) ? "" : " (" + filter + ")";
+            source.sendSystemMessage(Component.literal("Structures in village '" + village.getName() + "'" + filterText
+                    + " (showing first " + count + " by distance):").withStyle(ChatFormatting.GOLD));
+            int displayed = 0;
+
+            // Get player's current chunk position for comparison
+            ChunkPos playerChunk = new ChunkPos(playerSource.blockPosition());
+
+            for (Map.Entry<Long, GameStructureData> entry : structuresList) {
+                if (displayed >= count)
+                    break;
+
+                Long structureId = entry.getKey();
+                GameStructureData structureData = entry.getValue();
+
+                // Calculate distance for display (from player position)
+                int distance = (int) Math.sqrt(structureData.getCenterPos().distSqr(playerPos));
+
+                // Check if player is standing in the same chunk as this structure
+                ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
+                boolean isPlayerInSameChunk = playerChunk.equals(structureChunk);
+
+                MutableComponent message = Component.literal(
+                        (displayed + 1) + ". " + structureData.getName() +
+                                ": " + structureData.getCenterPos().toShortString() +
+                                " d=" + distance);
+
+                // Color the entire line light blue if player is in the same chunk
+                if (isPlayerInSameChunk) {
+                    message = message.withStyle(ChatFormatting.AQUA);
+                } else {
+                    message = message.withStyle(ChatFormatting.WHITE);
+                }
+
+                // STEP 5: Add status with conditional color.
+                String status = "";
+                if (structureData.isOnClaimedPlot())
+                    status = " CLAIMED";
+                else if (structureData.wasVisited())
+                    status = " VISITED";
+                if (!status.isEmpty()) {
+                    ChatFormatting statusColor;
+                    if (structureData.isOnClaimedPlot() && structureData.wasVisited()) {
+                        statusColor = ChatFormatting.GREEN; // Both claimed and visited
+                    } else if (structureData.isOnClaimedPlot() || structureData.wasVisited()) {
+                        statusColor = ChatFormatting.YELLOW; // Either claimed or visited
+                    } else {
+                        statusColor = ChatFormatting.WHITE; // Neither claimed nor visited
+                    }
+                    message.append(Component.literal(status).withStyle(statusColor));
+                }
+
+                // Log all fields with id and type
+                LOGGER.info("VillageStructureData: " + structureData.getName() + " (" + structureData.getType()
+                        + ") at " + structureData.getCenterPos().toShortString() + " ID: " + structureId + " d="
+                        + distance + status);
+
+                source.sendSystemMessage(message);
+                displayed++;
+            }
+
+            source.sendSystemMessage(
+                    Component
+                            .literal("Total structures in village" + filterText + ": " + structuresList.size() + " (of "
+                                    + gameStructureDatabase.getSize() + " total in database)")
+                            .withStyle(ChatFormatting.GREEN));
+
+            return 0;
+
+        } catch (Exception ex) {
+            LOGGER.error("Error showing village structures: " + ex.getMessage());
+            ex.printStackTrace();
+            source.sendFailure(Component.literal("Error showing village structures: " + ex.getMessage()));
+            return 0;
+        }
+    }
+
+    // Admin command: show detailed debug info for the Nth structure in the village
+    // list.
+    public static int showVillageStructureDetail(CommandSourceStack source, int index, boolean searchChests) {
+        try {
+            Entity nullablePlayer = source.getEntity();
+            Player playerSource = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("This command can only be used by a player."));
+                return 0;
+            }
+
+            ServerLevel world = (ServerLevel) source.getLevel();
+
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
+            if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not part of a village."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData village = villageDatabase.getData(playerData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // Get same sorted list as showVillageStructures (all, sorted by distance from
+            // player)
+            List<Map.Entry<Long, GameStructureData>> structuresList = getVillageStructuresList(village, world);
+            BlockPos playerPos = playerSource.blockPosition();
+            structuresList
+                    .sort(Comparator.comparingDouble(entry -> entry.getValue().getCenterPos().distSqr(playerPos)));
+
+            if (index < 1 || index > structuresList.size()) {
+                source.sendFailure(Component.literal(
+                        "Index " + index + " out of range. Village has " + structuresList.size()
+                                + " structure(s) in the list."));
+                return 0;
+            }
+
+            Map.Entry<Long, GameStructureData> entry = structuresList.get(index - 1);
+            Long structureId = entry.getKey();
+            GameStructureData s = entry.getValue();
+
+            int distance = (int) Math.sqrt(s.getCenterPos().distSqr(playerPos));
+
+            source.sendSystemMessage(
+                    Component.literal("=== Structure #" + index + " ===").withStyle(ChatFormatting.GOLD));
+            source.sendSystemMessage(Component.literal("Name:   " + s.getName()).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(Component.literal("Type:   " + s.getType()).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(Component.literal("ID:     " + structureId).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(
+                    Component.literal("Center: " + s.getCenterPos().toShortString() + "  (d=" + distance + ")")
+                            .withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(Component.literal("Claimed:" + s.isOnClaimedPlot() + "  Visited:" + s.wasVisited())
+                    .withStyle(ChatFormatting.WHITE));
+
+            // Bounding box
+            if (s.hasBoundingBox()) {
+                BlockPos mn = s.getMinPos();
+                BlockPos mx = s.getMaxPos();
+                int sizeX = mx.getX() - mn.getX();
+                int sizeY = mx.getY() - mn.getY();
+                int sizeZ = mx.getZ() - mn.getZ();
+                source.sendSystemMessage(Component.literal(
+                        "BBox:   min=" + mn.toShortString() + "  max=" + mx.toShortString())
+                        .withStyle(ChatFormatting.AQUA));
+                source.sendSystemMessage(Component.literal(
+                        "Size:   " + sizeX + "x" + sizeY + "x" + sizeZ).withStyle(ChatFormatting.AQUA));
+            } else {
+                source.sendSystemMessage(
+                        Component.literal("BBox:   (not stored — run /village structures rescan to repopulate)")
+                                .withStyle(ChatFormatting.YELLOW));
+            }
+
+            // Chunks: prefer exact piece-level chunk list, fall back to bbox range
+            if (s.hasChunkPositions()) {
+                List<Long> chunks = s.getChunkPositions();
+                source.sendSystemMessage(Component.literal(
+                        "Chunks: " + chunks.size() + " chunk(s) (from structure pieces):")
+                        .withStyle(ChatFormatting.AQUA));
+                StringBuilder chunkList = new StringBuilder();
+                for (Long packed : chunks) {
+                    ChunkPos cp = new ChunkPos(packed);
+                    if (chunkList.length() > 0)
+                        chunkList.append("  ");
+                    chunkList.append("[").append(cp.x).append(",").append(cp.z).append("]");
+                }
+                source.sendSystemMessage(Component.literal("  " + chunkList).withStyle(ChatFormatting.AQUA));
+            } else if (s.hasBoundingBox()) {
+                BlockPos mn = s.getMinPos();
+                BlockPos mx = s.getMaxPos();
+                int minCX = mn.getX() >> 4;
+                int minCZ = mn.getZ() >> 4;
+                int maxCX = mx.getX() >> 4;
+                int maxCZ = mx.getZ() >> 4;
+                int chunkCount = (maxCX - minCX + 1) * (maxCZ - minCZ + 1);
+                source.sendSystemMessage(Component.literal(
+                        "Chunks: " + chunkCount + " chunk(s) bbox range [" + minCX + "," + minCZ + "] to [" + maxCX
+                                + "," + maxCZ + "] (rescan for exact)")
+                        .withStyle(ChatFormatting.YELLOW));
+            } else {
+                ChunkPos structureChunk = new ChunkPos(s.getCenterPos());
+                source.sendSystemMessage(Component.literal(
+                        "Chunk:  [" + structureChunk.x + "," + structureChunk.z
+                                + "] (center chunk only — rescan to populate)")
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+
+            // Chest search — only if requested and structure is small enough.
+            if (searchChests) {
+                scanAndShowStructureChests(source, s, world);
+            }
+
+            LOGGER.info("showVillageStructureDetail: #{} {} ({}) id={} center={} min={} max={} claimed={} visited={}",
+                    index, s.getName(), s.getType(), structureId,
+                    s.getCenterPos().toShortString(),
+                    s.hasBoundingBox() ? s.getMinPos().toShortString() : "none",
+                    s.hasBoundingBox() ? s.getMaxPos().toShortString() : "none",
+                    s.isOnClaimedPlot(), s.wasVisited());
+
+            return 1;
+        } catch (Exception ex) {
+            LOGGER.error("Error in showVillageStructureDetail: ", ex);
+            source.sendFailure(Component.literal("Exception — see log"));
+            return 0;
+        }
+    }
+
+    /**
+     * Scans a structure's bounding box for chest/barrel blocks and prints them to
+     * chat.
+     * Skips if bbox is missing or the structure covers 50+ chunks.
+     */
+    public static void scanAndShowStructureChests(CommandSourceStack source, GameStructureData s,
+            ServerLevel world) {
+        if (!s.hasBoundingBox()) {
+            source.sendSystemMessage(
+                    Component.literal("Chests: no bbox stored — run /village structures rescan first.")
+                            .withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        int chunkCount;
+        if (s.hasChunkPositions()) {
+            chunkCount = s.getChunkPositions().size();
+        } else {
+            BlockPos mn = s.getMinPos();
+            BlockPos mx = s.getMaxPos();
+            chunkCount = ((mx.getX() >> 4) - (mn.getX() >> 4) + 1)
+                    * ((mx.getZ() >> 4) - (mn.getZ() >> 4) + 1);
+        }
+
+        if (chunkCount >= 90) {
+            source.sendSystemMessage(Component.literal(
+                    "Chests: structure too large (" + chunkCount + " chunks ≥ 90) — skipping scan.")
+                    .withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        source.sendSystemMessage(
+                Component.literal("Chests: scanning " + chunkCount + " chunk(s)...").withStyle(ChatFormatting.AQUA));
+        BlockPos mn = s.getMinPos();
+        BlockPos mx = s.getMaxPos();
+        List<BlockPos> foundChests = new ArrayList<>();
+        for (int bx = mn.getX(); bx <= mx.getX(); bx++) {
+            for (int bz = mn.getZ(); bz <= mx.getZ(); bz++) {
+                for (int by = mn.getY(); by <= mx.getY(); by++) {
+                    BlockPos scanPos = new BlockPos(bx, by, bz);
+                    net.minecraft.world.level.block.Block blk = world.getBlockState(scanPos).getBlock();
+                    if (com.falazar.farmupcraft.StructureManager.isStructureChest(blk)) {
+                        foundChests.add(scanPos.immutable());
+                    }
+                }
+            }
+        }
+
+        if (foundChests.isEmpty()) {
+            source.sendSystemMessage(Component.literal("Chests: none found.").withStyle(ChatFormatting.AQUA));
+        } else {
+            source.sendSystemMessage(
+                    Component.literal("Chests: " + foundChests.size() + " found:").withStyle(ChatFormatting.AQUA));
+            for (BlockPos cp : foundChests) {
+                MutableComponent chestMsg = Component.literal("  " + cp.toShortString())
+                        .withStyle(ChatFormatting.AQUA)
+                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                "/tp " + cp.getX() + " " + cp.getY() + " " + cp.getZ())));
+                source.sendSystemMessage(chestMsg);
+            }
+
+            // Always persist scanned chest count so spawn rates are accurate.
+            var structureDb = ModEvents.getGameStructureDatabase(world);
+            if (s.getTotalChestCount() != foundChests.size()) {
+                s.setTotalChestCount(foundChests.size());
+                structureDb.putData(s.getId(), s);
+                structureDb.setDirty();
+            }
+
+            // Auto-setup special chest if structure not yet visited and has <=5 chests.
+            if (!s.wasVisited() && !s.hasSpecialChest()) {
+                LOGGER.info("Auto-triggering setupSpecialChest for structure {} ({}) — {} chest(s) found",
+                        s.getName(), s.getId(), foundChests.size());
+                boolean placed = setupSpecialChest(world, s, foundChests, structureDb);
+                if (placed) {
+                    source.sendSystemMessage(Component.literal(
+                            "Special chest planted in " + s.getName() + "!")
+                            .withStyle(ChatFormatting.DARK_RED));
+                }
+            } else if (s.hasSpecialChest()) {
+                source.sendSystemMessage(Component.literal(
+                        "Special chest already set at " + s.getSpecialChestPos().toShortString()
+                                + " — opened: " + s.isSpecialChestOpened())
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+        }
+    }
+
+    /**
+     * Places a written-book trap item in the first chest of a structure and
+     * records the chest position in the DB. Returns true if placed successfully.
+     */
+    public static boolean setupSpecialChest(ServerLevel world, GameStructureData s,
+            List<BlockPos> chestPositions, DataBase<Long, GameStructureData> structureDb) {
+        if (chestPositions.isEmpty())
+            return false;
+        if (s.wasVisited()) {
+            LOGGER.info("setupSpecialChest: skipping {} — already visited", s.getName());
+            return false;
+        }
+        if (s.hasSpecialChest()) {
+            LOGGER.info("setupSpecialChest: skipping {} — already has special chest", s.getName());
+            return false;
+        }
+
+        // Pick a random chest so structures don't always trap the same one.
+        BlockPos chestPos = chestPositions.get(new java.util.Random().nextInt(chestPositions.size()));
+        net.minecraft.world.level.block.entity.BlockEntity be = world.getBlockEntity(chestPos);
+        if (!(be instanceof net.minecraft.world.Container)) {
+            LOGGER.warn("setupSpecialChest: block entity at {} is not a Container", chestPos);
+            return false;
+        }
+
+        // Persist the chest position immediately so the trap is armed even before the
+        // book is written.
+        s.setSpecialChestPos(chestPos);
+        structureDb.putData(s.getId(), s);
+        structureDb.setDirty();
+        LOGGER.info("setupSpecialChest: placed trap chest at {} for structure {} ({})",
+                chestPos, s.getName(), s.getId());
+
+        // DEBUG: notify Bosspanda when a special chest is placed.
+        for (net.minecraft.server.level.ServerPlayer online : world.getServer().getPlayerList().getPlayers()) {
+            if (com.falazar.farmupcraft.ChunkManager.isDebugPlayer(online)) {
+                online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "[DEBUG] Special chest + book placed in " + s.getName()
+                                + " at " + chestPos.toShortString())
+                        .withStyle(net.minecraft.ChatFormatting.LIGHT_PURPLE));
+            }
+        }
+
+        // Try the pre-generated notes cache first; only fall back to a live AI call
+        // if the cache is empty. This avoids connection failures and is much faster.
+        final String structureName = s.getName();
+        String cachedNote = com.falazar.farmupcraft.util.NpcDataLoader.popThreatNote();
+        if (cachedNote != null) {
+            // Use the cached note synchronously — no async needed.
+            LOGGER.info("setupSpecialChest: using cached threat note for {} ({} remaining in cache).",
+                    structureName, com.falazar.farmupcraft.util.NpcDataLoader.getThreatNoteCacheSize());
+            final String noteTitleSync = "A Strange Note";
+            final String noteBodySync = cachedNote;
+            world.getServer().execute(() -> {
+                net.minecraft.world.level.block.entity.BlockEntity beSync = world.getBlockEntity(chestPos);
+                if (!(beSync instanceof net.minecraft.world.Container containerSync)) {
+                    LOGGER.warn("setupSpecialChest: chest at {} gone before cached note could be written", chestPos);
+                    return;
+                }
+                net.minecraft.world.item.ItemStack bookSync = new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.WRITTEN_BOOK);
+                net.minecraft.nbt.CompoundTag tagSync = bookSync.getOrCreateTag();
+                tagSync.putString("title", noteTitleSync);
+                tagSync.putString("author", "???");
+                net.minecraft.nbt.ListTag pagesSync = new net.minecraft.nbt.ListTag();
+                pagesSync.add(net.minecraft.nbt.StringTag.valueOf(
+                        net.minecraft.network.chat.Component.Serializer.toJson(
+                                net.minecraft.network.chat.Component.literal(noteBodySync))));
+                tagSync.put("pages", pagesSync);
+                tagSync.putInt("generation", 0);
+                containerSync.setItem(0, bookSync);
+                beSync.setChanged();
+                world.blockEntityChanged(chestPos);
+                LOGGER.info("setupSpecialChest: cached book written in chest at {}", chestPos);
+            });
+            return true;
+        }
+
+        // Cache is empty — ask Ollama for a custom threat note async; fall back to a
+        // random hardcoded one on failure.
+        com.falazar.farmupcraft.AIManager.generateChestThreatNote(structureName)
+                .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .whenComplete((aiText, err) -> {
+                    String noteTitle;
+                    String noteBody;
+                    final boolean aiFailure = (err != null || aiText == null || aiText.isBlank());
+                    if (aiFailure) {
+                        LOGGER.warn("setupSpecialChest: AI note failed ({}), using fallback",
+                                err != null ? err.getMessage() : "empty");
+                        String[][] threats = {  
+                                { "Scrawled Note",
+                                        "You should not have come here. These ruins are MINE. Leave now and perhaps I will let you keep your wretched life... perhaps." },
+                                { "Warning",
+                                        "I watched you from the shadows. Every step you took. Every chest you opened. You are being hunted. Run." },
+                                { "A Torn Page",
+                                        "My patience has limits, little thief. Touch one more thing in this place and I will make an example of you that your companions will not soon forget." },
+                                { "Ravings",
+                                        "They said I was mad for claiming this place. They laughed. They are gone now. YOU will not laugh." },
+                                { "Scrawled in Blood",
+                                        "This is your only warning. The next visitor who disturbs my collection will find more than a note waiting for them." },
+                                { "Crumpled Letter",
+                                        "Do you feel that? That cold dread creeping up your spine? Good. That means you understand what is coming for you." },
+                                { "The Master's Words",
+                                        "I have killed adventurers stronger than you. I have claimed fortresses greater than this. You. Are. Nothing." },
+                        };
+                        int pick = new java.util.Random().nextInt(threats.length);
+                        noteTitle = threats[pick][0];
+                        noteBody = threats[pick][1];
+                    } else {
+                        noteTitle = "A Strange Note";
+                        noteBody = aiText.trim();
+                        LOGGER.info("setupSpecialChest: AI note for {}: {}", structureName, noteBody);
+                    }
+
+                    // Write the book on the server thread.
+                    world.getServer().execute(() -> {
+                        if (aiFailure) {
+                            for (net.minecraft.server.level.ServerPlayer online : world.getServer().getPlayerList()
+                                    .getPlayers()) {
+                                if (com.falazar.farmupcraft.ChunkManager.isDebugPlayer(online)) {
+                                    online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                                            "[DEBUG] AI chest note FAILED for " + structureName + " — using fallback")
+                                            .withStyle(net.minecraft.ChatFormatting.RED));
+                                }
+                            }
+                        }
+                        net.minecraft.world.level.block.entity.BlockEntity beLate = world.getBlockEntity(chestPos);
+                        if (!(beLate instanceof net.minecraft.world.Container containerLate)) {
+                            LOGGER.warn("setupSpecialChest: chest at {} gone by the time AI responded", chestPos);
+                            return;
+                        }
+                        net.minecraft.world.item.ItemStack book2 = new net.minecraft.world.item.ItemStack(
+                                net.minecraft.world.item.Items.WRITTEN_BOOK);
+                        net.minecraft.nbt.CompoundTag tag2 = book2.getOrCreateTag();
+                        tag2.putString("title", noteTitle);
+                        tag2.putString("author", "???");
+                        net.minecraft.nbt.ListTag pages2 = new net.minecraft.nbt.ListTag();
+                        pages2.add(net.minecraft.nbt.StringTag.valueOf(
+                                net.minecraft.network.chat.Component.Serializer.toJson(
+                                        net.minecraft.network.chat.Component.literal(noteBody))));
+                        tag2.put("pages", pages2);
+                        tag2.putInt("generation", 0);
+                        containerLate.setItem(0, book2);
+                        beLate.setChanged();
+                        world.blockEntityChanged(chestPos);
+                        LOGGER.info("setupSpecialChest: book written in chest at {}", chestPos);
+                    });
+                });
+        return true;
+    }
+
+    // Helper method to get structures in the village
+    public static List<Map.Entry<Long, GameStructureData>> getVillageStructuresList(VillageData village, Level level) {
+        List<Map.Entry<Long, GameStructureData>> structuresList = new ArrayList<>();
+        for (Long structureId : ModEvents.getGameStructureDatabase(level).getKeys()) {
+            GameStructureData structureData = ModEvents.getGameStructureDatabase(level).getData(structureId);
+            if (structureData == null) {
+                continue;
+            }
+
+            // TODO need to show these sometimes, add another filter for this method...
+
+            // Skip underground structures (below Y=60) unless they have been visited
+            if (structureData.getCenterPos().getY() < 60 && !structureData.wasVisited()) {
+                continue;
+            }
+
+            // Check if this structure's chunk belongs to THIS village specifically.
+            ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
+            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+            ChunkData chunkData = chunkDatabase.getData(structureChunk.toLong());
+
+            // Only include structures in chunks owned by this village (not any village).
+            if (chunkData != null && village.getUUID().equals(chunkData.getVillageId())) {
+                structuresList.add(new AbstractMap.SimpleEntry<>(structureId, structureData));
+            }
+        }
+        return structuresList;
+    }
+
+    /**
+     * Counts structures in the village based on the specified filter.
+     * 
+     * @param village The village to count structures for
+     * @param level   The server level for database access
+     * @param filter  The filter to apply ("claimed", "unclaimed", or "all")
+     * @return The number of structures matching the filter
+     */
+    public static int countVillageStructures(VillageData village, Level level, String filter) {
+        List<Map.Entry<Long, GameStructureData>> structuresList = getVillageStructuresList(village, level);
+
+        if ("all".equals(filter)) {
+            return structuresList.size();
+        }
+
+        int count = 0;
+        for (Map.Entry<Long, GameStructureData> entry : structuresList) {
+            GameStructureData structureData = entry.getValue();
+            boolean isClaimed = structureData.isOnClaimedPlot();
+
+            if ("claimed".equals(filter) && isClaimed) {
+                count++;
+            } else if ("unclaimed".equals(filter) && !isClaimed) {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * Counts how many structures in the village are claimed.
+     * 
+     * @param village The village to count claimed structures for
+     * @param level   The server level for database access
+     * @return The number of claimed structures in the village
+     */
+    public static int countVillageClaimedStructures(VillageData village, Level level) {
+        int claimedCount = countVillageStructures(village, level, "claimed");
+
+        // NOTICE: Includes the village center.
+        return claimedCount;
+    }
+
+    /**
+     * Counts how many structures in the village are unclaimed.
+     * 
+     * @param village The village to count unclaimed structures for
+     * @param level   The server level for database access
+     * @return The number of unclaimed structures in the village
+     */
+    public static int countVillageUnclaimedStructures(VillageData village, Level level) {
+        return countVillageStructures(village, level, "unclaimed");
+    }
+
+    /**
+     * Admin: re-evaluates isOnClaimedPlot for every structure in the DB.
+     * Clears the flag for any structure whose chunk is no longer a plot
+     * (i.e. chunk has no data or its type is "village").
+     */
+    public static int rescanVillageStructures(CommandSourceStack source) {
+        try {
+            Entity nullablePlayer = source.getEntity();
+            Player playerSource = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Must be run by a player."));
+                return 0;
+            }
+
+            ServerLevel world = (ServerLevel) source.getLevel();
+            var structureDb = ModEvents.getGameStructureDatabase(world);
+
+            // Count missing bbox/chunks before scan so we can report how many were
+            // backfilled.
+            long missingBbox = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasBoundingBox())
+                    .count();
+            long missingChunks = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasChunkPositions())
+                    .count();
+            LOGGER.info("[Rescan] Before scan: {} structure(s) missing bbox, {} missing chunkPositions",
+                    missingBbox, missingChunks);
+            source.sendSystemMessage(Component.literal(
+                    "[Structures Rescan] DB has " + structureDb.getSize() + " structure(s). "
+                            + missingBbox + " missing bbox, " + missingChunks + " missing chunks. Running scan...")
+                    .withStyle(ChatFormatting.YELLOW));
+
+            // Run the real structure scan — this calls processStructureStart which now
+            // backfills bbox + chunkPositions for existing entries.
+            List<com.falazar.farmupcraft.command.StructureCommand.StructureInfo> found = StructureCommand
+                    .findNearbyStructuresForVillage(
+                            playerSource.blockPosition(), world, playerSource, null, "all", 64);
+
+            LOGGER.info("[Rescan] Scan complete. Found {} structure(s) in area.", found.size());
+
+            // Report what's still missing after the scan.
+            long stillMissingBbox = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasBoundingBox())
+                    .count();
+            long stillMissingChunks = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasChunkPositions())
+                    .count();
+            LOGGER.info("[Rescan] After scan: {} still missing bbox, {} still missing chunkPositions",
+                    stillMissingBbox, stillMissingChunks);
+
+            source.sendSystemMessage(Component.literal(
+                    "[Structures Rescan] Done. Scanned " + found.size() + " structure(s) in area. "
+                            + "Still missing bbox: " + stillMissingBbox + ", chunks: " + stillMissingChunks + ".")
+                    .withStyle(ChatFormatting.GREEN));
+            return 1;
+        } catch (Exception ex) {
+            LOGGER.error("[Rescan] Exception: ", ex);
+            source.sendFailure(Component.literal("Rescan failed: " + ex.getMessage()));
+            return 0;
+        }
+    }
+
+    /**
+     * Finds and displays nearby villagers within a specified chunk radius.
+     * 
+     * @param source The command source
+     * @return 0 on success
+     */
+    public static int findNearVillagers(CommandSourceStack source) {
+        Entity nullableSummoner = source.getEntity();
+        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+        if (playerSource == null) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+
+        // RULE: Player MUST be standing within village chunks.
+        if (!isPlayerInVillage(source.getLevel(), playerSource)) {
+            source.sendFailure(Component.literal("You must be standing within a village chunk to use this command."));
+            return 0;
+        }
+
+        // Get list of nearby villagers with default 10 chunk radius
+        List<LivingEntity> villagersList = getVillagersInVillage(playerSource, source.getLevel(), 10);
+
+        int count = villagersList.size();
+        MutableComponent response = Component.literal("Found " + count + " villagers nearby.");
+        source.sendSuccess(() -> response, false);
+
+        // Sort villagers by distance
+        List<LivingEntity> sortedList = new ArrayList<>(villagersList);
+        sortedList.sort(Comparator.comparingDouble(v -> v.distanceToSqr(playerSource)));
+
+        // Show details for each villager
+        for (LivingEntity v : sortedList) {
+            LOGGER.info("\nLIST Villager found: ");
+            LOGGER.info("Villager name: *" + v.getName().getString() + "*");
+            LOGGER.info("Villager position: " + v.blockPosition());
+
+            // Get villager data
+            Villager villager = (Villager) v;
+            VillagerData d = villager.getVillagerData();
+            String profession = d.getProfession().toString();
+            String type = d.getType().toString();
+            LOGGER.info("Villager type: " + type);
+
+            // Calculate distance
+            BlockPos villagerPos = v.blockPosition();
+            int distance = Math.abs(villagerPos.getX() - playerSource.blockPosition().getX()) +
+                    Math.abs(villagerPos.getY() - playerSource.blockPosition().getY()) +
+                    Math.abs(villagerPos.getZ() - playerSource.blockPosition().getZ());
+
+            // Log name + UUID so you can copy them for npcData/ profile files.
+            LOGGER.info("Villager: name='{}', uuid={}, profession={}", v.getName().getString(), villager.getUUID(),
+                    profession);
+
+            // Chat shows name, profession, coordinates, and a clickable [TP] link in
+            // creative.
+            boolean lowY = villagerPos.getY() < 55;
+            String lowYTag = lowY ? " (LOW Y!)" : "";
+            MutableComponent villagerResponse = Component
+                    .literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance
+                            + " [" + villagerPos.getX() + "," + villagerPos.getY() + "," + villagerPos.getZ() + "]"
+                            + lowYTag);
+            if (lowY) {
+                // Warning: villager is below target Y level.
+                villagerResponse.withStyle(ChatFormatting.GOLD);
+            }
+            // Append a clickable [TP] link in creative mode.
+            if (playerSource instanceof ServerPlayer sp && sp.getAbilities().instabuild) {
+                String tpCmd = "/tp " + villagerPos.getX() + " " + villagerPos.getY() + " " + villagerPos.getZ();
+                MutableComponent tpLink = Component.literal(" [TP]")
+                        .withStyle(s -> s
+                                .withColor(ChatFormatting.AQUA)
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, tpCmd)));
+                villagerResponse.append(tpLink);
+            }
+            // Show/Hide name tag toggle for this individual villager
+            String vName = v.getName().getString();
+            boolean nameVisible = v.isCustomNameVisible();
+            String showCmd = "/npc showname \"" + vName + "\"";
+            String hideCmd = "/npc hidename \"" + vName + "\"";
+            MutableComponent showLink = Component.literal(nameVisible ? " [Hide]" : " [Show]")
+                    .withStyle(s -> s
+                            .withColor(nameVisible ? ChatFormatting.RED : ChatFormatting.GREEN)
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                    nameVisible ? hideCmd : showCmd))
+                            .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                    net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                    Component.literal(nameVisible
+                                            ? "Hide " + vName + "'s name tag"
+                                            : "Show " + vName + "'s name tag"))));
+            villagerResponse.append(showLink);
+            source.sendSuccess(() -> villagerResponse, false);
+        }
+
+        return 0;
+    }
+
+    /**
+     * Gets a list of nearby villagers within a specified chunk radius.
+     * 
+     * @param centerPos      The center position to search around
+     * @param level          The level to search in
+     * @param radiusInChunks The radius to search in chunks
+     * @return List of nearby villagers
+     */
+    public static List<LivingEntity> getVillagersList(BlockPos centerPos, Level level, int radiusInChunks) {
+        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting()
+                .ignoreLineOfSight();
+        List<? extends LivingEntity> list = level.getNearbyEntities(
+                Villager.class,
+                playersTarget,
+                null, // No specific entity to exclude
+                new net.minecraft.world.phys.AABB(centerPos).inflate(radiusInChunks * 16) // Convert chunks to blocks
+        );
+        return new ArrayList<>(list);
+    }
+
+    /**
+     * Gets villagers within a chunk radius that belong to the given player's home
+     * village.
+     * Excludes any villager not currently standing in a chunk claimed by that
+     * village.
+     */
+    public static List<LivingEntity> getVillagersInVillage(Player player, Level level, int radiusInChunks) {
+        List<LivingEntity> all = getVillagersList(player.blockPosition(), level, radiusInChunks);
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        java.util.UUID homeVillageUUID = (playerData != null) ? playerData.getHomeVillageUUID() : null;
+        if (homeVillageUUID == null)
+            return all;
+        DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
+        return all.stream()
+                .filter(v -> {
+                    ChunkPos vChunk = new ChunkPos(v.blockPosition());
+                    ChunkData cd = chunkDb.getData(vChunk.toLong());
+                    return cd != null && homeVillageUUID.equals(cd.getVillageId());
+                })
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * Counts the number of villagers within a specified chunk radius.
+     * 
+     * @param centerPos      The center position to search around
+     * @param level          The level to search in
+     * @param radiusInChunks The radius to search in chunks
+     * @return The number of villagers
+     */
+    public static int countVillagers(BlockPos centerPos, Level level, int radiusInChunks) {
+        List<LivingEntity> villagersList = getVillagersList(centerPos, level, radiusInChunks);
+        return villagersList.size();
+    }
+
+    /**
+     * Checks if a player is standing within their home village chunk.
+     * 
+     * @param level  The level to check in
+     * @param player The player to check for
+     * @return true if the player is in their home village chunk, false otherwise
+     */
+    public static boolean isPlayerInVillage(Level level, Player player) {
+        ChunkPos playerChunk = new ChunkPos(player.blockPosition());
+        DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+        ChunkData chunkData = chunkDatabase.getData(playerChunk.toLong());
+
+        // Check if the chunk has data
+        if (chunkData == null) {
+            return false;
+        }
+
+        // Check if the chunk belongs to the player's home village
+        PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        if (playerData == null || playerData.getHomeVillageUUID() == null) {
+            return false;
+        }
+
+        return chunkData.getVillageId().equals(playerData.getHomeVillageUUID());
     }
 }

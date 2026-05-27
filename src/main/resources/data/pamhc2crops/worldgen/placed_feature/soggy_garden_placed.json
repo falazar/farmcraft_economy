@@ -1,0 +1,14 @@
+{
+  "feature": "pamhc2crops:soggy_garden",
+  "placement": [
+    { "type": "minecraft:heightmap", "heightmap": "MOTION_BLOCKING" },
+    {
+      "type": "minecraft:block_predicate_filter",
+      "predicate": {
+        "type": "minecraft:would_survive",
+        "state": { "Name": "pamhc2crops:aridgarden" }
+      }
+    },
+    { "type": "minecraft:rarity_filter", "chance": 50 }
+  ]
+}

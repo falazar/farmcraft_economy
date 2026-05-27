@@ -5,9 +5,11 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "farmupcraft.refmap.json",
   "mixins": [
+    "EnchantmentMenuMixin"
   ],
   "client": [
-    "client.LevelRendererMixin"
+    "client.LevelRendererMixin",
+    "client.CookwareItemStackMixin"
   ],
   "injectors": {
     "defaultRequire": 1

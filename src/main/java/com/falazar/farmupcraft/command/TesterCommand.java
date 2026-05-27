@@ -1,5 +1,10 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.data.GameZone;
+import com.falazar.farmupcraft.data.PlayerData;
+import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -47,8 +52,10 @@ import net.minecraftforge.registries.ForgeRegistries;
 import java.util.*;
 
 /**
- * TestCommand is a command class that provides various test commands for debugging and development purposes.
- * It includes commands to show plot information, player data, and other test functionalities.
+ * TestCommand is a command class that provides various test commands for
+ * debugging and development purposes.
+ * It includes commands to show plot information, player data, and other test
+ * functionalities.
  */
 public class TesterCommand {
     public static final CustomLogger LOGGER = new CustomLogger(TesterCommand.class.getSimpleName());
@@ -72,14 +79,16 @@ public class TesterCommand {
         LiteralArgumentBuilder<CommandSourceStack> islandsBuilder = Commands.literal("islandsAndLakes")
                 .executes(context -> {
                     // Default distance of 10 if no argument is provided
-                    return showIslandsAndLakes(context.getSource(), 10);
+                    return scanForIslandsAndLakes(context.getSource(), 10);
                 })
-                .then(Commands.argument("distance", IntegerArgumentType.integer(1, 100)) // Add a distance argument with a range
+                .then(Commands.argument("distance", IntegerArgumentType.integer(1, 100)) // Add a distance argument with
+                                                                                         // a range
                         .executes(context -> {
-                            int distance = IntegerArgumentType.getInteger(context, "distance"); // Retrieve the distance value
-                            return showIslandsAndLakes(context.getSource(), distance); // Pass the distance to the method
-                        })
-                );
+                            int distance = IntegerArgumentType.getInteger(context, "distance"); // Retrieve the distance
+                                                                                                // value
+                            return scanForIslandsAndLakes(context.getSource(), distance); // Pass the distance to the
+                                                                                          // method
+                        }));
         builder.then(islandsBuilder);
 
         // Define the "findvillagers" sub-command
@@ -102,30 +111,12 @@ public class TesterCommand {
                                     String newName = StringArgumentType.getString(context, "newName");
                                     // Call the renameVillager method with the old and new names
                                     return renameVillager(context.getSource(), oldName, newName);
-                                })
-                        )
-                );
+                                })));
         builder.then(renameVillagerBuilder);
 
-        // Define the "findStructures" sub-command, ADMIN permissions only!
-        LiteralArgumentBuilder<CommandSourceStack> findStructuresBuilder = Commands.literal("findstructures")
-                .requires(stack -> stack.hasPermission(2)) // Require permission level 2
-                .then(Commands.argument("filter", StringArgumentType.word()) // Add a string argument
-                        .suggests((context, suggestionBuilder) -> {
-                            // Provide suggestions for the argument
-                            return net.minecraft.commands.SharedSuggestionProvider.suggest(new String[]{"upper", "lower", "all"}, suggestionBuilder);
-                        })
-                        .executes(context -> {
-                            // Get the filter argument
-                            String filter = StringArgumentType.getString(context, "filter");
-                            findNearbyStructures(context.getSource(), filter); // Pass the filter to the method
-                            return 0;
-                        })
-                );
-        builder.then(findStructuresBuilder);
-
         // Define the "findneareststructure" sub-command, ADMIN permissions only!
-        LiteralArgumentBuilder<CommandSourceStack> findNearestStructureBuilder = Commands.literal("findneareststructure")
+        LiteralArgumentBuilder<CommandSourceStack> findNearestStructureBuilder = Commands
+                .literal("findneareststructure")
                 .requires(stack -> stack.hasPermission(2)) // Require permission level 2
                 .executes(context -> {
                     // Call the method to find the nearest structure
@@ -135,7 +126,8 @@ public class TesterCommand {
         builder.then(findNearestStructureBuilder);
 
         // Define the "testcloseststructure" sub-command, ADMIN permissions only!
-        LiteralArgumentBuilder<CommandSourceStack> testClosestStructureBuilder = Commands.literal("testcloseststructure")
+        LiteralArgumentBuilder<CommandSourceStack> testClosestStructureBuilder = Commands
+                .literal("testcloseststructure")
                 .requires(stack -> stack.hasPermission(2)) // Require permission level 2
                 .executes(context -> {
                     // Call the method to find the closest structure
@@ -155,64 +147,71 @@ public class TesterCommand {
                 });
         builder.then(findChestsBuilder);
 
-
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
     }
 
-
-    // Find the closest structure to the player.
-    // Add a written book to a chest.
+    // OLD - Find the closest structure to the player and add a written book to a
+    // chest.
+    // REPLACED BY: VillageCommand.setupSpecialChest + scanAndShowStructureChests
     public static int testClosestStructure(CommandSourceStack source) {
         try {
-
             // Get the player's current position
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             BlockPos playerPos = playerSource.blockPosition();
 
             // STEP 1: Find the nearest structure
-            Map.Entry<String, Long> nearestStructure = findNearestStructure(playerPos, (ServerLevel) source.getLevel(), source);
+            Map.Entry<String, Long> nearestStructure = findNearestStructure(playerPos, (ServerLevel) source.getLevel(),
+                    source);
             LOGGER.info("Nearest structure key(type?): " + nearestStructure.getKey());
             LOGGER.info("Nearest structure value: " + nearestStructure.getValue());
 
             // Load structure and show it.
-//            BoundingBox boundingBox = loadStructure(source, nearestStructure.getKey(), nearestStructure.getValue());
-//            LOGGER.info("Bounding box: " + boundingBox);
+            // BoundingBox boundingBox = loadStructure(source, nearestStructure.getKey(),
+            // nearestStructure.getValue());
+            // LOGGER.info("Bounding box: " + boundingBox);
 
             // STEP 2: Find all chests now.
-            //findChestsInStructure(source, nearestStructure.getKey(), nearestStructure.getValue());
+            // findChestsInStructure(source, nearestStructure.getKey(),
+            // nearestStructure.getValue());
 
             // STEP 2: Find closest chest now, also does barrels.
-            BlockPos nearestContainer = findNearestChestInStructure(source, nearestStructure.getKey(), nearestStructure.getValue());
+            BlockPos nearestContainer = findNearestChestInStructure(source, nearestStructure.getKey(),
+                    nearestStructure.getValue());
             LOGGER.info("Nearest chest found at " + nearestContainer);
             if (nearestContainer.equals(null)) {
-                source.sendSystemMessage(Component.literal("No chests found in the structure.").withStyle(ChatFormatting.RED));
+                source.sendSystemMessage(
+                        Component.literal("No chests found in the structure.").withStyle(ChatFormatting.RED));
                 return 0;
             }
 
             // STEP 4: Create a book with writing in it.
             // Create a book item and put it in the chest.
-//            Item bookItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation("book"));
-//            ItemStack bookStack = new ItemStack(bookItem);
+            // Item bookItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation("book"));
+            // ItemStack bookStack = new ItemStack(bookItem);
             Item bookItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation("minecraft:written_book"));
             ItemStack bookStack = new ItemStack(bookItem);
             // Set the book's title and author
             bookStack.getOrCreateTag().putString("title", "Family History");
-//            bookStack.getOrCreateTag().putString("author", playerSource.getName().getString());
+            // bookStack.getOrCreateTag().putString("author",
+            // playerSource.getName().getString());
             bookStack.getOrCreateTag().putString("author", "Corbin Eldrin");
 
             // Add some pages to the book
-//            List<Component> pages = new ArrayList<>();
-//            pages.add(Component.literal("This is a test book."));
-//            pages.add(Component.literal("Page 2: More test content."));
-//            pages.add(Component.literal("Page 3: Even more test content."));
+            // List<Component> pages = new ArrayList<>();
+            // pages.add(Component.literal("This is a test book."));
+            // pages.add(Component.literal("Page 2: More test content."));
+            // pages.add(Component.literal("Page 3: Even more test content."));
 
             // Add some pages to the book
             ListTag pages = new ListTag();
-            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal("We, the Eldrin Family, carved this life from the jade cliffs, yet the stone remembers the sacrifices made to appease its hunger."))));
-            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal("The mystic lake offers solace, but its depths hold reflections of horrors we dared not speak, only to pass them down in our blood."))));
-            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal("This book is a testament not of glory, but of the burden carried by each Eldrin, a legacy entwined with the shadowed fate of this mountain."))));
+            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal(
+                    "We, the Eldrin Family, carved this life from the jade cliffs, yet the stone remembers the sacrifices made to appease its hunger."))));
+            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal(
+                    "The mystic lake offers solace, but its depths hold reflections of horrors we dared not speak, only to pass them down in our blood."))));
+            pages.add(StringTag.valueOf(Component.Serializer.toJson(Component.literal(
+                    "This book is a testament not of glory, but of the burden carried by each Eldrin, a legacy entwined with the shadowed fate of this mountain."))));
 
             // Attach the pages to the book
             bookStack.getOrCreateTag().put("pages", pages);
@@ -223,13 +222,12 @@ public class TesterCommand {
             if (!(blockEntity instanceof ChestBlockEntity || blockEntity instanceof BarrelBlockEntity)) {
                 LOGGER.error("Block entity at " + nearestContainer + " is not a chest.");
                 // Say what it is.
-                LOGGER.info( "Block entity at " + nearestContainer + " is a " + blockEntity.getType().toString());
+                LOGGER.info("Block entity at " + nearestContainer + " is a " + blockEntity.getType().toString());
                 return 0;
             }
             // Cast to ChestBlockEntity or BarrelBlockEntity and insert.
 
             RandomizableContainerBlockEntity containerEntity = (RandomizableContainerBlockEntity) blockEntity;
-//            ChestBlockEntity chestEntity = (ChestBlockEntity) blockEntity;
             // TODO make helper method.
             // Add the book to the chest inventory
             for (int i = 0; i < containerEntity.getContainerSize(); i++) {
@@ -243,182 +241,16 @@ public class TesterCommand {
             containerEntity.setChanged();
 
             // Message chat to say location and that book was added.
-            source.sendSystemMessage(Component.literal("Added book to chest at " + nearestContainer.toShortString()).withStyle(ChatFormatting.GOLD));
+            source.sendSystemMessage(Component.literal("Added book to chest at " + nearestContainer.toShortString())
+                    .withStyle(ChatFormatting.GOLD));
         } catch (Exception e) {
             LOGGER.error("Error finding closest structure: " + e.getMessage());
-            source.sendSystemMessage(Component.literal("Error finding closest structure: " + e.getMessage()).withStyle(ChatFormatting.RED));
+            source.sendSystemMessage(Component.literal("Error finding closest structure: " + e.getMessage())
+                    .withStyle(ChatFormatting.RED));
         }
 
         return 0;
     }
-
-
-    // Find nearby structures
-    // NOTE: working for mineshafts and villages and ruined portals, need to test more for new mod structures.... hmmm
-    // NOTE dragon nest doesnt seem to show up here drats.
-    public static int findNearbyStructures(CommandSourceStack source, String filter) {
-        // REF: https://github.com/someaddons/structureessentials/blob/1.20.1/src/main/java/com/structureessentials/command/Command.java
-
-        final ServerLevel world = source.getLevel();
-        final Map<Structure, LongSet> structures = new HashMap<>();
-
-        // STEP 1: Loop nearby area, 10x10 chunk area.
-        final ChunkPos start = new ChunkPos(BlockPos.containing(source.getPosition()));
-        for (int x = -5; x < 5; x++) {
-            for (int z = -5; z < 5; z++) {
-                for (final Map.Entry<Structure, LongSet> entry : world.structureManager()
-                        .getAllStructuresAt(new BlockPos((start.x + x) << 4, 0, (start.z + z) << 4))
-                        .entrySet()) {
-                    structures.computeIfAbsent(entry.getKey(), k -> new LongOpenHashSet(entry.getValue())).addAll(entry.getValue());
-                }
-            }
-        }
-
-        source.sendSystemMessage(Component.literal("Structures nearby: ").withStyle(ChatFormatting.GOLD));
-
-        // STEP 2: Loop over all structures found, put in our list.
-        LOGGER.info("STEP 2 loop over structures....");
-        Map<BlockPos, String> structurePositions = new HashMap<>();
-        for (Map.Entry<Structure, LongSet> structureEntry : structures.entrySet()) {
-            world.structureManager().fillStartsForStructure(structureEntry.getKey(), structureEntry.getValue(),
-                    structureStart ->
-                    {
-                        String type = source.registryAccess().registry(Registries.STRUCTURE).get().getKey(structureEntry.getKey()).toString();
-                        structurePositions.put(structureStart.getBoundingBox().getCenter(), type);
-                        // This seems to indicate we have bounding box and such on things?  hmmm
-                        // How do we save a single structure?
-                        // by type and longset.
-                        LOGGER.info("Type = " + type);
-                        LOGGER.info("key = " + structureEntry.getKey()
-                                + " longset=" + structureEntry.getValue().toString());
-                        LOGGER.info("Bounds = " + structureStart.getBoundingBox().toString());
-                        LOGGER.info("");
-                        // if cemetery, save some stuff to use for later.
-                    }
-            );
-        }
-
-        /*  NOTES:
-
- Type = structory:graveyard
- key = net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@3a553e5e
- longset={270582939571}
- Bounds = BoundingBox{minX=-1244, minY=64, minZ=980, maxX=-1198, maxY=93, maxZ=1025}
-         */
-
-        LOGGER.info("TEST 2: Find structure.");
-        // Hardcoded 2 ids from earlier.
-        String structureType = "structory:graveyard";
-        Long structureLong = 270582939571L;
-
-        // TODO TEST METHOD.
-        loadStructure(source, structureType, structureLong);
-
-
-        // TODO what else can we get from this structure info?
-        // need size and desc and as much as possible
-
-        // TODO ability to show ONLY the closest so I cant cheat much???
-
-        // STEP 3: Sort list by distance then add fancy clickables.
-        final List<Map.Entry<BlockPos, String>> sortedStructures = new ArrayList<>(structurePositions.entrySet());
-        sortedStructures.sort(Comparator.comparingDouble(p -> p.getKey().distSqr(BlockPos.containing(source.getPosition()))));
-        // Show count.
-        source.sendSystemMessage(Component.literal("Found " + sortedStructures.size() + " structures nearby.").withStyle(ChatFormatting.GOLD));
-
-        /* example
-
-[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:171] Type = bettermineshafts:mineshaft_jungle
-07:55:14.362
-game
-[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:172] key = com.yungnickyoung.minecraft.bettermineshafts.world.BetterMineshaftStructure@37e152ff longset={-412316860221, -390842023739}
-07:55:14.362
-game
-[07:55:14] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:174]
-Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=-1429}
-
-         */
-
-        // STEP 4: Show results list.
-//        LOGGER.info("DEBUG filter = " + filter);
-        // Simple version with dist and tp.
-        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
-            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
-
-            if (filter.equals("upper") && structureEntry.getKey().getY() <= 60) {
-//                LOGGER.info("Skipping structure at Y=" + structureEntry.getKey().getY() + " because it is below 60.");
-                continue; // Skip if below 60
-            } else if (filter.equals("lower") && structureEntry.getKey().getY() > 60) {
-//                LOGGER.info("Skipping structure at Y=" + structureEntry.getKey().getY() + " because it is above 60.");
-                continue; // Skip if above 60
-            }
-
-            // NOTICE: mineshafts and at least one dungeon have INCORRECT y value, need to dig deeper, they show at like 128 or something instead of underground,
-            // annoying.
-
-            source.sendSystemMessage(Component.literal(
-                            sortedStructures.indexOf(structureEntry) + 1 + ". " +
-                                    structureEntry.getValue())
-                    .append(Component.literal(" " +
-                            "a. " + structureEntry.getKey().toShortString() + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
-                                return style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-                                        "/tp " + structureEntry.getKey().getX() + " "
-                                                + structureEntry.getKey().getY() + " "
-                                                + structureEntry.getKey().getZ()));
-                            }
-                    )));
-        }
-
-        // we get name and key, thats it, what other call do we need to get object?
-
-        // TEST 2: Fancier version with bounding.
-        // This doesnt seem to have an entry for all of them.
-        // Scratch this one.
-//        for (final Map.Entry<BlockPos, String> structureEntry : sortedStructures) {
-//            int dist = (int) Math.sqrt(structureEntry.getKey().distSqr(BlockPos.containing(source.getPosition())));
-//
-//            // Convert the structure name (String) to a Structure object
-//            ResourceLocation structureKey = new ResourceLocation(structureEntry.getValue());
-//            Optional<Structure> structureOptional = source.registryAccess()
-//                    .registry(Registries.STRUCTURE)
-//                    .flatMap(registry -> registry.getOptional(structureKey));
-//
-//            if (structureOptional.isEmpty()) {
-//                source.sendSystemMessage(Component.literal("Structure not found: " + structureEntry.getValue()).withStyle(ChatFormatting.RED));
-//                continue;
-//            }
-//
-//            Structure structure = structureOptional.get();
-//
-//            // Retrieve the StructureStart for the structure
-//            world.structureManager().fillStartsForStructure(
-//                    structure, // Use the Structure object here
-//                    new LongOpenHashSet(Collections.singleton(ChunkPos.asLong(structureEntry.getKey().getX() >> 4, structureEntry.getKey().getZ() >> 4))),
-//                    structureStart -> {
-//                        // Get the bounding box of the structure
-//                        var boundingBox = structureStart.getBoundingBox();
-//                        int width = boundingBox.getXSpan();
-//                        int height = boundingBox.getYSpan();
-//                        int depth = boundingBox.getZSpan();
-//
-//                        // Send the structure info to the player
-//                        source.sendSystemMessage(
-//                                Component.literal(structureEntry.getValue())
-//                                        .append(Component.literal("b. " + structureEntry.getKey().toShortString() + " d=" + dist))
-//                                        .append(Component.literal(" Size: " + width + "x" + height + "x" + depth).withStyle(ChatFormatting.GREEN))
-//                                        .withStyle(ChatFormatting.YELLOW)
-//                                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-//                                                "/tp " + structureEntry.getKey().getX() + " "
-//                                                        + structureEntry.getKey().getY() + " "
-//                                                        + structureEntry.getKey().getZ())))
-//                        );
-//                    }
-//            );
-//        }
-
-        return 0;
-    }
-
 
     // Find nearby structure from command, call method and write to chat.
     public static int findNearestStructureCom(CommandSourceStack source) {
@@ -428,17 +260,21 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
         BlockPos playerPos = playerSource.blockPosition();
 
         // Find the nearest structure
-        Map.Entry<String, Long> nearestStructure = findNearestStructure(playerPos, (ServerLevel) source.getLevel(), source);
+        Map.Entry<String, Long> nearestStructure = findNearestStructure(playerPos, (ServerLevel) source.getLevel(),
+                source);
         LOGGER.info("Nearest structure key(type?): " + nearestStructure.getKey());
         LOGGER.info("Nearest structure value: " + nearestStructure.getValue());
 
         // Show the result in chat
-        source.sendSystemMessage(Component.literal("Nearest structure: " + nearestStructure.getKey() + " ID: " + nearestStructure.getValue()).withStyle(ChatFormatting.GOLD));
+        source.sendSystemMessage(Component
+                .literal("Nearest structure: " + nearestStructure.getKey() + " ID: " + nearestStructure.getValue())
+                .withStyle(ChatFormatting.GOLD));
 
         return 0;
     }
 
-    public static Map.Entry<String, Long> findNearestStructure(BlockPos blockPos, ServerLevel world, CommandSourceStack source) {
+    public static Map.Entry<String, Long> findNearestStructure(BlockPos blockPos, ServerLevel world,
+            CommandSourceStack source) {
         final Map<Structure, LongSet> structures = new HashMap<>();
         final ChunkPos start = new ChunkPos(BlockPos.containing(source.getPosition()));
 
@@ -448,7 +284,8 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
                 for (final Map.Entry<Structure, LongSet> entry : world.structureManager()
                         .getAllStructuresAt(new BlockPos((start.x + x) << 4, 0, (start.z + z) << 4))
                         .entrySet()) {
-                    structures.computeIfAbsent(entry.getKey(), k -> new LongOpenHashSet(entry.getValue())).addAll(entry.getValue());
+                    structures.computeIfAbsent(entry.getKey(), k -> new LongOpenHashSet(entry.getValue()))
+                            .addAll(entry.getValue());
                 }
             }
         }
@@ -458,12 +295,13 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
         for (Map.Entry<Structure, LongSet> structureEntry : structures.entrySet()) {
             world.structureManager().fillStartsForStructure(structureEntry.getKey(), structureEntry.getValue(),
                     structureStart -> {
-                        String type = source.registryAccess().registry(Registries.STRUCTURE).get().getKey(structureEntry.getKey()).toString();
+                        String type = source.registryAccess().registry(Registries.STRUCTURE).get()
+                                .getKey(structureEntry.getKey()).toString();
                         for (long id : structureEntry.getValue()) {
-                            structurePositions.put(structureStart.getBoundingBox().getCenter(), new AbstractMap.SimpleEntry<>(type, id));
+                            structurePositions.put(structureStart.getBoundingBox().getCenter(),
+                                    new AbstractMap.SimpleEntry<>(type, id));
                         }
-                    }
-            );
+                    });
         }
 
         // STEP 3: Find the nearest structure
@@ -473,13 +311,14 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
                 .orElse(null); // Return null if no structures are found
     }
 
-
     // TODO make a method for chunk load entering the structure we know
     // send chat message for now to test. any chunk.
 
-
     // TODO call this with /tester chest
     public static BoundingBox loadStructure(CommandSourceStack source, String structureType, Long structureLong) {
+        // TODO phase out source to make generic.
+        // TODO phase out source to make generic.
+        // TODO phase out source to make generic.
         // TODO phase out source to make generic.
 
         // Define the ResourceLocation for the structure
@@ -521,23 +360,30 @@ Bounds = BoundingBox{minX=3085, minY=-26, minZ=-1537, maxX=3214, maxY=320, maxZ=
         LOGGER.info("Load: Retrieved BoundingBox: " + boundingBox);
         return boundingBox;
 
-        /* notes
-
-        [10:52:58] [Server thread/INFO] [co.fa.fa.ut.CustomLogger/]: [INFO] [farmupcraft] [TesterCommand:181]
-        TEST 2: Find structure.
-10:52:58.267
-game
-TEST 2 Structure: net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@5b9eafd8
-TEST 2 LongSet: {270582939571}
-StructureStart found: net.minecraft.world.level.levelgen.structure.StructureStart@3a23a503
-BoundingBox: BoundingBox{minX=-1244, minY=64, minZ=980, maxX=-1198, maxY=93, maxZ=1025}
-Center: BlockPos{x=-1221, y=79, z=1003}
-WORKS!
-Stretches out to chunk areas.
+        /*
+         * notes
+         * 
+         * [10:52:58] [TesterCommand:181]
+         * TEST 2: Find structure.
+         * 10:52:58.267
+         * game
+         * TEST 2 Structure:
+         * net.minecraft.world.level.levelgen.structure.structures.JigsawStructure@
+         * 5b9eafd8
+         * TEST 2 LongSet: {270582939571}
+         * StructureStart found:
+         * net.minecraft.world.level.levelgen.structure.StructureStart@3a23a503
+         * BoundingBox: BoundingBox{minX=-1244, minY=64, minZ=980, maxX=-1198, maxY=93,
+         * maxZ=1025}
+         * Center: BlockPos{x=-1221, y=79, z=1003}
+         * WORKS!
+         * Stretches out to chunk areas.
          */
 
     }
 
+    // OLD - Find all chests in a structure by type/id.
+    // REPLACED BY: VillageCommand.scanAndShowStructureChests
     public static int findChestsInStructure(CommandSourceStack source, String type, Long id) {
         // TODO find all chests in the nearest structure.
         // TODO find all chests in a structure.
@@ -546,8 +392,9 @@ Stretches out to chunk areas.
 
         // Hardcoded 2 ids from earlier.
         // Graveyard near Faewild.
-//        loadStructure(source, "structory:graveyard", 270582939571L);
-//        BoundingBox boundingBox = loadStructure(source, "structory:graveyard", 270582939571L);
+        // loadStructure(source, "structory:graveyard", 270582939571L);
+        // BoundingBox boundingBox = loadStructure(source, "structory:graveyard",
+        // 270582939571L);
         BoundingBox boundingBox = loadStructure(source, type, id);
 
         // Loop over all blocks here and look for a chest, doublechest, or barrel
@@ -635,7 +482,8 @@ Stretches out to chunk areas.
         Level level = source.getLevel();
 
         // STEP 1: Scan for any villager in 10 chunk radius.
-        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting().ignoreLineOfSight();
+        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting()
+                .ignoreLineOfSight();
         List<? extends LivingEntity> list = level.getNearbyEntities(
                 Villager.class,
                 playersTarget,
@@ -651,29 +499,33 @@ Stretches out to chunk areas.
         List<LivingEntity> sortedList = new ArrayList<>(list);
         sortedList.sort(Comparator.comparingDouble(v -> v.distanceToSqr(playerSource)));
 
-
         // STEP 3: Show, Loop over all villagers, give name and UUID and position.
         for (LivingEntity v : sortedList) {
             LOGGER.info("\nLIST Villager found: ");
-//            LOGGER.info("Villager UUID: " + v.getUUID());
-//            LOGGER.info("Villagers found: " + v.getScoreboardName()); uuid
+            // LOGGER.info("Villager UUID: " + v.getUUID());
+            // LOGGER.info("Villagers found: " + v.getScoreboardName()); uuid
             LOGGER.info("Villager name: *" + v.getName().getString() + "*"); // Gives us their proper custom name! woot
             LOGGER.info("Villager position: " + v.blockPosition());
-//            LOGGER.info("Villager type: " + v.getType().toString()); villager
+            // LOGGER.info("Villager type: " + v.getType().toString()); villager
 
             // STEP 4: Grab villager and extra info we want.
             Villager villager = (Villager) v;
             VillagerData d = villager.getVillagerData();
             String profession = d.getProfession().toString();
             String type = d.getType().toString();
-//            LOGGER.info("Villager profession: " + profession);
-            LOGGER.info("Villager type: " + type);  // plains and ? regular people?
+            // LOGGER.info("Villager profession: " + profession);
+            LOGGER.info("Villager type: " + type); // plains and ? regular people?
             // Find distance from me, approx, use manhattan distance.
             BlockPos villagerPos = v.blockPosition();
-            int distance = Math.abs(villagerPos.getX() - playerPos.getX()) + Math.abs(villagerPos.getY() - playerPos.getY()) + Math.abs(villagerPos.getZ() - playerPos.getZ());
+            int distance = Math.abs(villagerPos.getX() - playerPos.getX())
+                    + Math.abs(villagerPos.getY() - playerPos.getY()) + Math.abs(villagerPos.getZ() - playerPos.getZ());
+
+            // Plot context: own chunk type, or nearest typed neighbor.
+            String plotContext = com.falazar.farmupcraft.VillagerManager.getVillagerPlotContextStatic(villager);
 
             // Send to chat now name and profession.
-            response = Component.literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance);
+            response = Component.literal(
+                    " - " + v.getName().getString() + " (" + profession + ") [" + plotContext + "] d=" + distance);
             MutableComponent finalResponse1 = response;
             source.sendSuccess(() -> finalResponse1, false);
             // TODO say direction too?
@@ -681,21 +533,22 @@ Stretches out to chunk areas.
             // todo show position.
             // Todo can we show what village they are in, reg minecraft, then ours?
 
-
             // can we change the name manually and give them a last name or something?
-            // NOTE: Name doesnt match exactly?  space or hidden char???
+            // NOTE: Name doesnt match exactly? space or hidden char???
             String villagerName = v.getName().getString().trim(); // Get the name and trim whitespace
             if (villagerName.equals("Alaina Fae")) {
                 LOGGER.info("DEBUG Found exact string Alaina Fae, Success!");
                 source.sendSystemMessage(Component.literal("DEBUG Found exact string Alaina Fae, Success!"));
             }
 
-//            if (v.getName().toString().contains("Alaina") || v.getName().toString().contains("Liberty")) {
-//                LOGGER.info("DEBUG Found Alaina, changing name to TEST NAME");
-//                villager.setCustomName(Component.literal("Alaina Fae"));
-//                LOGGER.info("DEBUG Found her new name = " + villager.getName().getString());
-//                source.sendSystemMessage( Component.literal("DEBUG Found Alaina, changing name to TEST NAME"));
-//            }
+            // if (v.getName().toString().contains("Alaina") ||
+            // v.getName().toString().contains("Liberty")) {
+            // LOGGER.info("DEBUG Found Alaina, changing name to TEST NAME");
+            // villager.setCustomName(Component.literal("Alaina Fae"));
+            // LOGGER.info("DEBUG Found her new name = " + villager.getName().getString());
+            // source.sendSystemMessage( Component.literal("DEBUG Found Alaina, changing
+            // name to TEST NAME"));
+            // }
 
             // TODO what event triggers when we are near a villager?
             // none create our own.
@@ -714,13 +567,13 @@ Stretches out to chunk areas.
         Level level = source.getLevel();
 
         // Scan for any villager in 20 chunk radius
-        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting().ignoreLineOfSight();
+        TargetingConditions playersTarget = TargetingConditions.forNonCombat().ignoreInvisibilityTesting()
+                .ignoreLineOfSight();
         List<? extends LivingEntity> list = level.getNearbyEntities(
                 Villager.class,
                 playersTarget,
                 playerSource,
-                new net.minecraft.world.phys.AABB(playerPos).inflate(320)
-        );
+                new net.minecraft.world.phys.AABB(playerPos).inflate(320));
 
         int count = list.size();
         LOGGER.info(" DEBUG: Found " + count + " villagers nearby.");
@@ -763,256 +616,292 @@ Stretches out to chunk areas.
         return 0;
     }
 
-    public static int showIslandsAndLakes(CommandSourceStack source, int distance) {
-        // STEP 1: Get current location of the player.
-        Entity nullableSummoner = source.getEntity();
-        Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-
-        ChunkPos chunkPos = playerSource.chunkPosition();
-        LOGGER.info("DEBUG ChunkPos for player is " + chunkPos);
-
-        // Create a double array of ints variable size
-        // This will be a grid of 1s and 0s for land and water.
-        // The size of the grid is 2 * distance + 1
-        int[][] grid = new int[2 * distance + 1][2 * distance + 1];
-
-        // STEP 2: Loop in a square around the player X distance.
-        for (int z = -distance; z <= distance; z++) {
-            LOGGER.info("\nDEBUG z=" + z);
-            for (int x = -distance; x <= distance; x++) {
-                // Get the chunk position.
-                ChunkPos chunk = new ChunkPos(chunkPos.x + x, chunkPos.z + z);
-//                LOGGER.info("DEBUG ChunkPos for player is " + chunk);
-                // Get the chunk data.
-                ServerLevel level = (ServerLevel) source.getLevel();
-
-                // STEP 3: Get the biome for each chunk.
-                // Get the biome for the chunk center.
-                BlockPos blockPos = chunk.getMiddleBlockPosition(64); // default height notice.
-
-                // Get height at that position.
-                int height = level.getHeight(Heightmap.Types.MOTION_BLOCKING, blockPos.getX(), blockPos.getZ()) - 1;
-                blockPos = new BlockPos(blockPos.getX(), height, blockPos.getZ());
-
-                Biome biome = level.getBiome(blockPos).value();
-                ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
-                if (biomeName == null) {
-                    LOGGER.info("Error: Biome name is null for chunk " + chunk);
-                    continue;
-                }
-                LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeName);
-                // TODO Can map show chunks???
-
-                // STEP 4: Mark grid data 1 for land types and 0 for water types.
-                boolean isWater = biomeName.getPath().contains("ocean") || biomeName.getPath().contains("river");
-
-                // Check for actual water block also.
-                if (!isWater) {
-                    // If water or ice block, it is water.
-                    final BlockState blockState = level.getBlockState(blockPos);
-//                    LOGGER.info("DEBUG BlockState for blockPos " + blockPos.toShortString() + " is " + blockState);
-
-                    if (blockState.is(Blocks.WATER) || blockState.is(Blocks.ICE)) {
-//                        LOGGER.info("DEBUG BlockState for chunk " + chunk.toString() + " is WATER WE FOUND = " + blockState);
-                        isWater = true;
-                    }
-                }
-
-                if (isWater) {
-                    grid[x + distance][z + distance] = 0; // set water
-                } else {
-                    // mark 2 for plains
-                    // mark 3 for forest
-                    // mark 1 for rest
-                    if (biomeName.getPath().contains("plains")) {
-                        grid[x + distance][z + distance] = 2; // plains
-                    } else if (biomeName.getPath().contains("forest")) {
-                        grid[x + distance][z + distance] = 3; // forest
-                    } else {
-                        // mark 1 for all other land types
-                        grid[x + distance][z + distance] = 1; // land
-                    }
-                }
-
+    // A section of methods to help find all islands and lakes on the map.
+    public static int scanForIslandsAndLakes(CommandSourceStack source, int chunkScanRadius) {
+        try {
+            // Get the player's current position
+            Entity nullableSummoner = source.getEntity();
+            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (playerSource == null) {
+                source.sendSystemMessage(
+                        Component.literal("This command can only be used by a player.").withStyle(ChatFormatting.RED));
+                return 0;
             }
+
+            ChunkPos chunkPos = playerSource.chunkPosition();
+            // this pos is wrong wtf???? 1 off?????
+            BlockPos startBlock = chunkPos.getMiddleBlockPosition(64);
+            // Offset by -4 blocks in X and Z to align grid with chunk boundaries
+            startBlock = new BlockPos(startBlock.getX() - 4, startBlock.getY(), startBlock.getZ() - 4);
+
+            LOGGER.info("\n\nCalling showIslandsAndLakes now with chunkScanRadius " + chunkScanRadius + " around chunk "
+                    + chunkPos + " and startBlock " + startBlock);
+
+            // STEP 1: Define the step size for grid resolution
+            // int stepSize = 16; // Check every 16 blocks
+            int stepSize = 8; // Check every 8 blocks
+
+            // STEP 2: Build the grid of land and water types
+            int[][] grid = buildLandWaterGrid(startBlock, chunkScanRadius, source.getLevel(), stepSize);
+
+            // STEP 3: Then show the grid (for debugging)
+            LOGGER.info("DEBUG Showing grid now: ");
+            // LOGGER.info(Arrays.deepToString(grid)); // temp to show.
+            showGrid(grid, startBlock, chunkScanRadius, stepSize);
+
+            // STEP 4: Find lakes and islands in the grid
+            // A lake is a 0 surrounded by 1s.
+            // An island is a 1 surrounded by 0s.
+            String answer = findLakesAndIslandsInGrid(grid, startBlock, chunkScanRadius, source, stepSize);
+
+            // STEP 5: Show the list of lakes and islands found.
+            // TODO later save these into the DB and allow naming.
+            // STEP 5: Show the results
+            source.sendSystemMessage(Component.literal(answer).withStyle(ChatFormatting.GREEN));
+
+            return 1;
+        } catch (Exception e) {
+            LOGGER.error("Error in scanForIslandsAndLakes: " + e.getMessage(), e);
+            source.sendSystemMessage(Component.literal("Error: " + e.getMessage()).withStyle(ChatFormatting.RED));
+            return 0;
         }
-
-        // STEP 5: Then show the grid (for debugging)
-        showGrid(grid, chunkPos, distance);
-
-
-        // STEP 6: Algorithm to look for lakes and islands with this grid data.
-        // floodfill fun!
-        // Loop over the grid and find lakes and islands.
-        // A lake is a 0 surrounded by 1s.
-        // An island is a 1 surrounded by 0s.
-        String answer = findLakesAndIslands(grid, chunkPos, distance);
-
-
-        // STEP 7: Show the list of lakes and islands found.
-        // TODO later save these into the DB and allow naming.
-        MutableComponent response = Component.literal(answer);
-        source.sendSuccess(() -> response, false);
-
-        return 0;
     }
 
-    private static void showGrid(int[][] grid, ChunkPos chunkPos, int distance) {
+    private static void showGrid(int[][] grid, BlockPos startBlock, int distance, int stepSize) {
+        LOGGER.info(
+                "DEBUG Grid data for islands and lakes with radius " + distance + " around startBlock " + startBlock);
+        // Print the grid with column numbers (z values)
+        StringBuilder header = new StringBuilder("    "); // 4 spaces for row numbers
+        int blockDistance = distance * 16;
+        int steps = blockDistance / stepSize;
 
-        LOGGER.info("DEBUG Grid data for islands and lakes:");
-        // Print the grid with column numbers (x values)
-        StringBuilder header = new StringBuilder("   "); // Padding for row numbers
-        for (int j = 0; j < grid[0].length; j++) {
-            header.append(j - distance + chunkPos.x).append(" "); // Add column number
+        // DEBUG SPOT
+        StringBuilder header2 = new StringBuilder("    "); // 4 spaces for row numbers
+        for (int x = 0; x < grid[0].length; x++) {
+            int chunkX = ((x - steps) * stepSize) / 16 + startBlock.getX() / 16;
+            LOGGER.info("DEBUG chunkX = " + chunkX + " = ((x - steps) * stepSize) / 16 + startBlock.getX() =  ((" + x
+                    + " - " + steps + ") * " + stepSize + ") / 16 + " + startBlock.getX());
+            header2.append(x).append(" "); // Add chunk position
+        }
+        LOGGER.info(header2.toString());
+
+        for (int x = 0; x < grid.length; x++) {
+            // int chunkX = ((x - steps) * stepSize) / 16.0 + chunkPos.x;
+            int chunkX = (int) (((x - steps) * stepSize) / 16.0 + startBlock.getX() / 16);
+            header.append(chunkX).append(" "); // Add chunk position
         }
         LOGGER.info(header.toString());
 
-        // Print the grid with row numbers (z values)
-        for (int i = 0; i < grid.length; i++) {
+        // Print each row with row numbers (x values)
+        for (int z = 0; z < grid.length; z++) {
             StringBuilder row = new StringBuilder();
-            row.append(i - distance + chunkPos.z).append(": "); // Add row number at the start
-            for (int j = 0; j < grid[i].length; j++) {
-                row.append(grid[j][i]).append(" "); // Access transposed grid values
+            int chunkZ = ((z - steps) * stepSize) / 16 + startBlock.getZ() / 16;
+            row.append(String.format("%3d ", chunkZ)); // Add row number (chunk z position)
+
+            for (int x = 0; x < grid[z].length; x++) {
+                switch (grid[z][x]) {
+                    case 0:
+                        row.append(" W "); // Water
+                        break;
+                    case 1:
+                        row.append(" L "); // Land
+                        break;
+                    case 2:
+                        row.append(" P "); // Plains
+                        break;
+                    case 3:
+                        row.append(" F "); // Forest
+                        break;
+                    default:
+                        row.append(" ? "); // Unknown
+                        break;
+                }
             }
             LOGGER.info(row.toString());
         }
     }
 
+    /**
+     * Builds a 2D grid representing land and water types around a center chunk.
+     * 
+     * @param centerChunk     The center chunk position
+     * @param chunkScanRadius The radius around the center chunk to scan
+     * @param level           The server level for biome and block data
+     * @param stepSize        The step size for grid resolution
+     * @return A 2D 0 based grid where: 0=water, 1=land, 2=plains, 3=forest
+     */
+    private static int[][] buildLandWaterGrid(BlockPos startBlock, int chunkScanRadius, ServerLevel level,
+            int stepSize) {
+        // Use stepSize for grid resolution
+        int blockDistance = chunkScanRadius * 16; // Convert chunk distance to block distance
+        int steps = blockDistance / stepSize; // Number of steps in each direction
+        LOGGER.info("DEBUG steps = " + steps + " = blockDistance / stepSize = " + blockDistance + " / " + stepSize);
+        int gridSize = (2 * steps) + 1; // Grid size based on steps
+        // int gridSize = (2 * steps) + 1 + 4; // Grid size based on steps debug testing
+        int[][] grid = new int[gridSize][gridSize];
+
+        // Get the center block position, offset to align with chunk boundaries
+        // BlockPos centerBlock = centerChunk.getMiddleBlockPosition(64);
+        // Offset by -4 blocks in X and Z to align grid with chunk boundaries
+        // centerBlock = new BlockPos(centerBlock.getX() - 4, centerBlock.getY(),
+        // centerBlock.getZ() - 4);
+        LOGGER.info("DEBUG startBlock started at is = " + startBlock);
+
+        // Loop in a square around the center block with stepSize intervals
+        for (int z = -steps; z <= steps; z++) {
+            for (int x = -steps; x <= steps; x++) {
+                // Calculate the actual block position
+                int blockX = startBlock.getX() + (x * stepSize);
+                int blockZ = startBlock.getZ() + (z * stepSize);
+
+                // STEP 1: Get height at that position, then biome.
+                int height = level.getHeight(Heightmap.Types.MOTION_BLOCKING, blockX, blockZ) - 1;
+                BlockPos blockPos = new BlockPos(blockX, height, blockZ);
+                Biome biome = level.getBiome(blockPos).value();
+                ResourceLocation biomeName = level.registryAccess().registryOrThrow(Registries.BIOME).getKey(biome);
+                if (biomeName == null) {
+                    LOGGER.info("Error: Biome name is null for position " + blockPos);
+                    continue;
+                }
+
+                // STEP 2: Determine if this is water based on biome.
+                // boolean isWater = biomeName.getPath().contains("ocean") ||
+                // biomeName.getPath().contains("river");
+                boolean isWater = false;
+                // River marked had a whole ton of actual land blocks, look for actual water
+                // instead.
+
+                final BlockState blockState = level.getBlockState(blockPos);
+                if (blockState.is(Blocks.WATER) || blockState.is(Blocks.ICE)) {
+                    isWater = true;
+                } else {
+                    // Notice: it also has a lake on the edge of an area that had a bridge over the
+                    // water, not really a lake....
+                    // Check water at the 62 level.
+                    BlockPos blockPos62 = new BlockPos(blockPos.getX(), 62, blockPos.getZ());
+                    BlockState blockState62 = level.getBlockState(blockPos62);
+                    if (blockState62.is(Blocks.WATER) || blockState62.is(Blocks.ICE)) {
+                        isWater = true;
+                    }
+                }
+
+                // STEP 3: Set grid value based on land/water type
+                // Calculate grid position 0 based grid.
+                int gridX = x + steps;
+                int gridZ = z + steps;
+                if (isWater) {
+                    grid[gridZ][gridX] = 0; // water
+                    LOGGER.info("DEBUG2 Setting blockx,z=" + blockX + "," + blockZ + " to grid[" + gridZ + "][" + gridX
+                            + "] = " + grid[gridZ][gridX]);
+                } else {
+                    // Different land types for better visualization
+                    if (biomeName.getPath().contains("plains")) {
+                        grid[gridZ][gridX] = 2; // plains
+                    } else if (biomeName.getPath().contains("forest")) {
+                        grid[gridZ][gridX] = 3; // forest
+                    } else {
+                        grid[gridZ][gridX] = 1; // other land
+                    }
+                }
+                // LOGGER.info("DEBUG2 Setting grid[" + gridZ + "][" + gridX + "] to " +
+                // grid[gridZ][gridX]);
+            }
+        }
+
+        return grid;
+    }
 
     // Helper class to store flood-fill results
     private static class FloodFillResult {
         boolean touchesEdge;
         int size;
+        List<ChunkPos> chunkPositions;
 
-        FloodFillResult(boolean touchesEdge, int size) {
+        FloodFillResult(boolean touchesEdge, int size, List<ChunkPos> chunkPositions) {
             this.touchesEdge = touchesEdge;
             this.size = size;
+            this.chunkPositions = chunkPositions;
         }
     }
 
-    private static int[][] copyGrid(int[][] grid) {
-        int rows = grid.length;
-        int cols = grid[0].length;
-        int[][] gridCopy = new int[rows][cols];
-        for (int i = 0; i < rows; i++) {
-            System.arraycopy(grid[i], 0, gridCopy[i], 0, cols);
-        }
-        return gridCopy;
-    }
+    // NOTICE may not work perfectly since a lot of "lakes" are water in an actual
+    // plains biome!!! may need to check water blocks instead????
 
-    // NOTICE may not work perfectly since a lot of "lakes" are water in an actual plains biome!!!  may need to check water blocks instead????
+    public static String findLakesAndIslandsInGrid(int[][] grid, BlockPos startBlock, int chunkScanRadius,
+            CommandSourceStack source, int stepSize) {
+        int cols = grid.length;
+        int rows = grid[0].length;
 
-    // Helper method to perform flood-fill and return the result
-    private static FloodFillResult floodFillWithEdgeAndSize(int[][] grid, boolean[][] visited, int x, int z, int targetValue, int distance) {
-        // Create a copy of the grid
-        int[][] gridCopy = copyGrid(grid);
-//        LOGGER.info("DEBUG FloodFillWithEdgeAndSize starting at x=" + x + ", z=" + z + ", targetValue=" + targetValue);
-
-        int rows = grid.length;
-        int cols = grid[0].length;
-        boolean touchesEdge = false;
-        int size = 0;
-
-        // Use a stack for iterative flood-fill
-        Stack<int[]> stack = new Stack<>();
-        stack.push(new int[]{x, z});
-
-        while (!stack.isEmpty()) {
-            int[] cell = stack.pop();
-            int cx = cell[0];
-            int cz = cell[1];
-//            LOGGER.info("DEBUG FloodFillWithEdgeAndSize processing cell at cx=" + cx + ", cy=" + cy);
-
-            // Skip if out of bounds, already visited, or not matching the target value
-            if (cx < 0 || cz < 0 || cx >= rows || cz >= cols) {
-                touchesEdge = true;
-                continue;
-            }
-
-            // If we are looking for water and hit any land
-            if (targetValue == 0 && gridCopy[cx][cz] != 0) {
-                continue;
-            }
-            // If we are looking for land and hit any water
-            if (targetValue != 0 && gridCopy[cx][cz] == 0) {
-                continue;
-            }
-
-            // If already done
-            if (gridCopy[cx][cz] == -1) {
-                continue;
-            }
-
-            // Mark as visited.
-            visited[cx][cz] = true;
-
-            // Mark the cell as processed by changing its value (optional)
-            gridCopy[cx][cz] = -1; // Mark as processed (use a special value)
-
-            // Increment the size of the region
-            size++;
-
-            // Add neighbors to the stack
-            stack.push(new int[]{cx + 1, cz});
-            stack.push(new int[]{cx - 1, cz});
-            stack.push(new int[]{cx, cz + 1});
-            stack.push(new int[]{cx, cz - 1});
-        }
-
-        // DEBUG show grid!
-        // Uncomment this to see the text output of the grid to debug easily.
-//        if (!touchesEdge) {
-//            ChunkPos centerChunk = new ChunkPos(x, z);
-//            showGrid(gridCopy, centerChunk, distance);
-//        }
-
-        // TODO Save and return all chunks on the island.
-        // TODO get and add center of island blockpos.
-        // TODO get and add biome list strings.
-        // Note: Diagonals not exactly perfect, thin lands.
-        // probbly count diagonals as well.
-
-        return new FloodFillResult(touchesEdge, size);
-    }
-
-    public static String findLakesAndIslands(int[][] grid, ChunkPos centerChunk, int distance) {
-        int rows = grid.length;
-        int cols = grid[0].length;
-
-        boolean[][] visited = new boolean[rows][cols];
+        boolean[][] visited = new boolean[cols][rows]; // should be same num
         int lakeCount = 0;
         int islandCount = 0;
 
         LOGGER.info("DEBUG starting flood fill: ");
 
+        // Loop over each cell in our grid.
         for (int j = 0; j < cols; j++) {
-            // Loop through the grid
-            LOGGER.info("DEBUG flood fill at j=" + j);
-
             for (int i = 0; i < rows; i++) {
-                // If the cell is not visited, start a flood-fill
-                if (visited[i][j]) {
+                // If the cell is already visited, skip it.
+                if (visited[j][i]) {
                     continue;
                 }
 
-                int targetValue = grid[i][j];
-                int waterOrLand = targetValue == 0 ? 0 : 1; // 1 for land, 0 for water
-                FloodFillResult result = floodFillWithEdgeAndSize(grid, visited, i, j, waterOrLand, distance);
-                // TODO record each object here for later use
+                // TODO maybe for the starting one it must be at least 3/4 spots of water or
+                // land to count?
+                // todo catches some boats as islands, fun :{ }
+                // if ocean keep ocean biome? no? one island says its entirely ocean, meh...
+                // Check for deep water? no hmmm
+                // mushroom island says there is a lake, not one,., odd, catches an underwater
+                // lake there, meh, how to skippy?
 
-                if (!result.touchesEdge) {
-                    ChunkPos chunkPos = new ChunkPos(centerChunk.x + (i - distance), centerChunk.z + (j - distance));
-                    if (targetValue == 0) {
-                        lakeCount++;
-                        LOGGER.info("Lake #" + lakeCount + " found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
-                                " with size " + result.size);
-                    } else {
-                        islandCount++;
-                        LOGGER.info("Island #" + islandCount + " found at ChunkPos " + chunkPos + " at x,z = " + chunkPos.getMiddleBlockPosition(64).toShortString() +
-                                " with size " + result.size);
+                int targetValue = grid[j][i];
+                // LOGGER.info("DEBUG3 about to floodfill with targetValue = " + targetValue + "
+                // at j,i = " + j + "," + i);
+                FloodFillResult result = floodFillWithEdgeAndSize(grid, visited, i, j, targetValue, chunkScanRadius,
+                        startBlock, stepSize);
+
+                // If area touches edge, skip it.
+                if (result.touchesEdge) {
+                    continue;
+                }
+
+                // Use the first chunk position from the result for the center
+                // Size 1 ignore, tiny.
+                if (result.chunkPositions.isEmpty() || result.chunkPositions.size() < 2) {
+                    continue;
+                }
+
+                // Create a proper GameZone object from the result.
+                // Dont save if a 2 chunk lake
+                if (result.chunkPositions.size() <= 2 && targetValue == 0) {
+                    // NOOP
+                } else {
+                    GameZone.ZoneType zoneType = (targetValue == 0) ? GameZone.ZoneType.LAKE : GameZone.ZoneType.ISLAND;
+                    GameZone gameZone = GameZone.fromChunks(result.chunkPositions, zoneType);
+                    LOGGER.info("Created GameZone: " + gameZone);
+
+                    // Check for duplicates before saving
+                    try {
+                        DataBase<UUID, GameZone> gameZoneDb = ModEvents.getGameZoneDatabase();
+
+                        // Check if a GameZone with the same center already exists
+                        boolean isDuplicate = gameZoneDb.getValues().stream()
+                                .anyMatch(existingZone -> existingZone.getCenter().equals(gameZone.getCenter()));
+
+                        if (isDuplicate) {
+                            LOGGER.info("Skipping duplicate GameZone with center: " + gameZone.getCenter());
+                        } else {
+                            gameZoneDb.putData(gameZone.getUuid(), gameZone);
+                            LOGGER.info("Saved GameZone to database: " + gameZone.getName());
+                        }
+                    } catch (Exception e) {
+                        LOGGER.error("Failed to save GameZone to database: " + e.getMessage());
                     }
                 }
 
+                int[] counts = showIslandLakeOutput(source, result, targetValue, lakeCount, islandCount);
+                lakeCount = counts[0];
+                islandCount = counts[1];
             }
         }
 
@@ -1020,9 +909,146 @@ Stretches out to chunk areas.
         LOGGER.info("Number of lakes: " + lakeCount);
         LOGGER.info("Number of islands: " + islandCount);
 
+        // example from house 10 radius was finding 4 lakes, kinda conencted.
+        // now finding 2 lakes 2 islands, a bit off still, with 8 block step size.
+
         // Return that text to show to player.
         return "Number of lakes: " + lakeCount + "\n" +
                 "Number of islands: " + islandCount;
     }
 
+    // Helper method to perform flood-fill and return the result
+    private static FloodFillResult floodFillWithEdgeAndSize(int[][] grid, boolean[][] visited, int x, int z,
+            int targetValue, int chunkScanRadius, BlockPos startBlock, int stepSize) {
+        int rows = grid.length;
+        int cols = grid[0].length;
+        boolean touchesEdge = false;
+        int size = 0;
+        // BlockPos centerBlock = centerChunk.getMiddleBlockPosition(64); // dpoes this
+        // need to be a pos, passed in????
+
+        List<ChunkPos> chunkPositions = new ArrayList<>();
+
+        // Block interval for coordinate conversion
+        int blockDistance = chunkScanRadius * 16;
+        int steps = blockDistance / stepSize;
+
+        // Use a stack for iterative flood-fill
+        Stack<int[]> stack = new Stack<>();
+        stack.push(new int[] { x, z });
+
+        while (!stack.isEmpty()) {
+            int[] cell = stack.pop();
+            int cx = cell[0];
+            int cz = cell[1]; // regular style x,z
+
+            // Skip if out of bounds
+            if (cx < 0 || cz < 0 || cx >= rows || cz >= cols) {
+                touchesEdge = true;
+                continue;
+            }
+
+            // Skip if already visited.
+            if (visited[cz][cx]) {
+                continue;
+            }
+
+            // Handle different land types: 0=water, 1=land, 2=plains, 3=forest
+            // Only continue flood-fill if the current cell matches our target type
+            if (targetValue == 0 && grid[cz][cx] == 0) {
+                // Looking for water and found water - continue flood-fill
+            } else if (targetValue != 0 && grid[cz][cx] != 0) {
+                // Looking for land and found land - continue flood-fill
+            } else {
+                // Mismatch - skip this cell
+                continue;
+            }
+
+            // We found a new good connected grid cell.
+            // Mark as visited
+            visited[cz][cx] = true;
+            size++;
+
+            // Add this chunk as a connected one.
+            // Convert grid coordinates to chunk coordinates
+            // Grid coordinates are relative to center with stepSize steps
+            // SAMPLE:
+            // DEBUG2 Setting blockx,z=-1532,964 to grid[4][4] = 0
+            // DEBUG2 Setting blockx,z=-1532,972 to grid[5][4] = 0
+            int blockXOffset = (cx - steps) * stepSize; // (4 - 4) * 8 = 0
+            int blockZOffset = (cz - steps) * stepSize; // (5 - 4) * 8 = 8
+            // LOGGER.info("DEBUG5 blockXOffset = " + blockXOffset + " = (cx - steps) *
+            // stepSize = " + (cx - steps) + " * " + stepSize);
+            int actualBlockX = startBlock.getX() + blockXOffset;
+            int actualBlockZ = startBlock.getZ() + blockZOffset;
+            ChunkPos actualChunkPos = new ChunkPos(actualBlockX >> 4, actualBlockZ >> 4); // Convert block coords to
+                                                                                          // chunk coords
+            // LOGGER.info("DEBUG4 actualChunkPos = " + actualChunkPos + " = new ChunkPos("
+            // + actualBlockX + " >> 4, " + actualBlockZ + " >> 4)");
+            // Only add unique chunk positions
+            if (!chunkPositions.contains(actualChunkPos)) {
+                chunkPositions.add(actualChunkPos);
+            }
+
+            // Add neighbors to the stack. (x,y push here)
+            stack.push(new int[] { cx + 1, cz }); // East
+            stack.push(new int[] { cx - 1, cz }); // West
+            stack.push(new int[] { cx, cz + 1 }); // South
+            stack.push(new int[] { cx, cz - 1 }); // North
+        }
+
+        return new FloodFillResult(touchesEdge, size, chunkPositions);
+    }
+
+    private static int[] showIslandLakeOutput(CommandSourceStack source, FloodFillResult result, int targetValue,
+            int lakeCount, int islandCount) {
+        // Get the first chunk position from the result.
+        ChunkPos chunkPos = result.chunkPositions.get(0);
+        BlockPos centerPos = chunkPos.getMiddleBlockPosition(64);
+        // TODO record each chunk here for later use.
+
+        // Build chunk coordinate list
+        StringBuilder chunkList = new StringBuilder();
+        for (ChunkPos cp : result.chunkPositions) {
+            chunkList.append("(").append(cp.x).append(",").append(cp.z).append(") ");
+        }
+
+        if (targetValue == 0) {
+            lakeCount++;
+            LOGGER.info(
+                    "Lake #" + lakeCount + " found at ChunkPos " + chunkPos + " at x,z = " + centerPos.toShortString() +
+                            " with size " + result.size + " chunks: " + result.chunkPositions.size());
+
+            // Send clickable message to chat
+            MutableComponent lakeMessage = Component
+                    .literal("Lake #" + lakeCount + " found at " + centerPos.toShortString() +
+                            " (size: " + result.size + " chunks: " + result.chunkPositions.size() + ")")
+                    .withStyle(ChatFormatting.AQUA);
+            lakeMessage.withStyle(style -> style.withClickEvent(
+                    new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                            "/tp " + centerPos.getX() + " " + centerPos.getY() + " " + centerPos.getZ())));
+            source.sendSystemMessage(lakeMessage);
+
+        } else {
+            islandCount++;
+            LOGGER.info("Island #" + islandCount + " found at ChunkPos " + chunkPos + " at x,z = "
+                    + centerPos.toShortString() +
+                    " with size " + result.size + " chunks: " + result.chunkPositions.size());
+
+            // Send clickable message to chat
+            MutableComponent islandMessage = Component
+                    .literal("Island #" + islandCount + " found at " + centerPos.toShortString() +
+                            " (size: " + result.size + " chunks: " + result.chunkPositions.size() + ")")
+                    .withStyle(ChatFormatting.GREEN);
+            islandMessage.withStyle(style -> style.withClickEvent(
+                    new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                            "/tp " + centerPos.getX() + " " + centerPos.getY() + " " + centerPos.getZ())));
+            source.sendSystemMessage(islandMessage);
+        }
+
+        // Send chunk coordinates (common for both lakes and islands)
+        source.sendSystemMessage(Component.literal("  Chunks: " + chunkList.toString()).withStyle(ChatFormatting.GRAY));
+
+        return new int[] { lakeCount, islandCount };
+    }
 }
