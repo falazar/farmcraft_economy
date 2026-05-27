@@ -156,6 +156,16 @@ public class CropsManager {
         if (instance == null)
             return;
 
+        // STEP 6: Level 3+ farm plots use loose biome check — crop allowed if valid in
+        // ANY biome in this chunk.
+        ChunkData farmChunkData = ChunkManager.getPlot(clickedPos);
+        int plotLevel = farmChunkData != null ? farmChunkData.getPlotLevel() : 1;
+        if (plotLevel >= 3 && event.getLevel() instanceof ServerLevel serverLvl) {
+            if (isCropAllowedInAnyChunkBiome(manager, stack, clickedPos, plotLevel, serverLvl, player)) {
+                return; // allowed
+            }
+        }
+
         // Check if the crop is allowed in the biome
         if (!isCropAllowed(manager, instance, stack, biome, event)) {
             // Cancel event and return now.
@@ -255,6 +265,9 @@ public class CropsManager {
         // Get farm plot level.
         ChunkData farmChunk = ChunkManager.getPlot(clickedPos);
         int farmLevel = farmChunk != null ? farmChunk.getPlotLevel() : 1;
+        // TODO too high, hmm need to add a failure here -30% level one -20 -10 for a
+        // non harvest chance
+
         // Level 1 = no bonus, Level 2 = +20%, Level 3 = +40%, Level 4 = +60%.
         int bonusChance = farmLevel <= 1 ? 0 : (farmLevel - 1) * 20;
         if (bonusChance <= 0)
@@ -471,6 +484,52 @@ public class CropsManager {
     // Given a crop stack item, and biome, check if it is allowed to be planted
     // here.
     // Show crop info data if not allowed.
+    /**
+     * Returns all distinct biome Holders present in the chunk at the given
+     * position,
+     * sampled across every block column at Y-1 (farmland level).
+     * Matches the logic used by PlotCommand.getChunkBiomes.
+     */
+    public static Set<Holder<Biome>> getDistinctChunkBiomes(BlockPos pos, ServerLevel level) {
+        ChunkPos chunkPos = new ChunkPos(pos);
+        int biomeY = pos.getY() - 1;
+        Set<Holder<Biome>> found = new LinkedHashSet<>();
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                found.add(level.getBiome(new BlockPos(chunkPos.x * 16 + x, biomeY, chunkPos.z * 16 + z)));
+            }
+        }
+        return found;
+    }
+
+    /**
+     * Scans all biomes in the player's current chunk and returns true if the given
+     * crop is allowed in ANY of those biomes. Used for level 3+ farm plot loose
+     * biome rules.
+     */
+    private static boolean isCropAllowedInAnyChunkBiome(BiomeRulesManager manager, ItemStack stack,
+            BlockPos pos, int plotLevel, ServerLevel level, Player player) {
+        Set<Holder<Biome>> biomesInChunk = getDistinctChunkBiomes(pos, level);
+        Set<String> allBiomeNames = new LinkedHashSet<>();
+        for (Holder<Biome> chunkBiome : biomesInChunk) {
+            ResourceLocation bName = level.registryAccess()
+                    .registryOrThrow(Registries.BIOME).getKey(chunkBiome.value());
+            if (bName != null)
+                allBiomeNames.add(bName.getPath());
+            BiomeRulesInstance chunkInstance = manager.getBiomeRules(chunkBiome);
+            if (chunkInstance != null && chunkInstance.biomeHasCrops(stack)) {
+                LOGGER.info("DEBUG: Level {} farm loose biome check — allowed {} via biome {}",
+                        plotLevel, stack.getHoverName().getString(), bName);
+                return true;
+            }
+        }
+        // Not allowed — log all distinct biomes found in this chunk
+        LOGGER.info("DEBUG: Level {} farm loose biome check — DENIED {} in chunk [{},{}]. All biomes: {}",
+                plotLevel, stack.getHoverName().getString(),
+                new ChunkPos(pos).x, new ChunkPos(pos).z, allBiomeNames);
+        return false;
+    }
+
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack,
             Holder<Biome> biome, PlayerInteractEvent event) {
         // This crop is allowed here in this biome, return now and allow planting. Else
@@ -811,14 +870,38 @@ public class CropsManager {
         if (seedStack.isEmpty() || !seedStack.is(com.falazar.farmupcraft.util.FUCTags.VANILLA_AND_MODDED_CROPS))
             return;
 
+        // Derive the crop (harvest) item from the block registry name using pam HC2
+        // naming convention:
+        // pamhc2crops:pamelderberrycrop -> pamhc2crops:elderberryitem
+        net.minecraft.world.item.ItemStack cropStack = net.minecraft.world.item.ItemStack.EMPTY;
+        net.minecraft.resources.ResourceLocation blockRl = net.minecraftforge.registries.ForgeRegistries.BLOCKS
+                .getKey(state.getBlock());
+        if (blockRl != null) {
+            String blockPath = blockRl.getPath();
+            String modid = blockRl.getNamespace();
+            if (blockPath.startsWith("pam"))
+                blockPath = blockPath.substring(3);
+            if (blockPath.endsWith("crop"))
+                blockPath = blockPath.substring(0, blockPath.length() - 4);
+            net.minecraft.resources.ResourceLocation cropRl = new net.minecraft.resources.ResourceLocation(modid,
+                    blockPath + "item");
+            net.minecraft.world.item.Item cropItem = net.minecraftforge.registries.ForgeRegistries.ITEMS
+                    .getValue(cropRl);
+            if (cropItem != null && cropItem != net.minecraft.world.item.Items.AIR) {
+                cropStack = new net.minecraft.world.item.ItemStack(cropItem);
+            }
+        }
+
         // Show seed name in chat always
         mc.player.displayClientMessage(
                 net.minecraft.network.chat.Component.literal("Seed: ").withStyle(net.minecraft.ChatFormatting.GOLD)
                         .append(seedStack.getDisplayName().copy().withStyle(net.minecraft.ChatFormatting.WHITE)),
                 false);
 
-        // Move seed from inventory to active hotbar slot (no item creation).
-        pickItemFromInventory(mc.player.getInventory(), seedStack);
+        // Move crop item (harvest product) from inventory to active hotbar slot; fall
+        // back to seed if crop not found.
+        net.minecraft.world.item.ItemStack pickTarget = !cropStack.isEmpty() ? cropStack : seedStack;
+        pickItemFromInventory(mc.player.getInventory(), pickTarget);
         event.setCanceled(true);
     }
 
@@ -843,14 +926,16 @@ public class CropsManager {
         if (foundSlot == -1)
             return; // not in inventory — chat message already shown
 
+        // Send the server-bound pick packet so the server does the real swap and syncs
+        // back. Directly mutating the client inventory causes ghost items.
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.getConnection() != null) {
+            mc.getConnection().send(
+                    new net.minecraft.network.protocol.game.ServerboundPickItemPacket(foundSlot));
+        }
+        // Optimistic client-side selection for immediate hotbar highlight feedback.
         if (foundSlot < 9) {
-            // Already in hotbar — just select that slot
             inv.selected = foundSlot;
-        } else {
-            // In main inventory — swap with current hotbar slot
-            net.minecraft.world.item.ItemStack hotbarStack = inv.getItem(inv.selected);
-            inv.setItem(inv.selected, inv.getItem(foundSlot));
-            inv.setItem(foundSlot, hotbarStack);
         }
     }
 
@@ -904,7 +989,8 @@ public class CropsManager {
 
     private static boolean isVillageMember(Player player, ChunkData chunkData) {
         java.util.UUID chunkVillageId = chunkData.getVillageId();
-        if (chunkVillageId == null) return true;
+        if (chunkVillageId == null)
+            return true;
         PlayerData playerData = ModEvents.getPlayerDatabase().getData(player.getUUID());
         return playerData != null && chunkVillageId.equals(playerData.getHomeVillageUUID());
     }

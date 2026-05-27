@@ -1,9 +1,11 @@
 package com.falazar.farmupcraft.command;
 
 import com.falazar.farmupcraft.data.ChunkData;
+import com.falazar.farmupcraft.data.GameStructureData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.data.WorldData;
+import net.minecraft.core.BlockPos;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.database.message.AddJMWaypointPacket;
 import com.falazar.farmupcraft.database.message.EDBMessages;
@@ -133,6 +135,9 @@ public class FarmCraftCommand {
                                 .then(Commands.literal("clear")
                                                 .executes(context -> clearAllMapOverlays(context.getSource()))));
 
+                // /structure detail <N> [chests] and /structure setupspecialchest
+                // (moved to StructureCommand)
+
                 pDispatcher.register(builder);
 
                 // /farmcraft admin settings - view/toggle world settings (admin only)
@@ -163,6 +168,20 @@ public class FarmCraftCommand {
                                                                                                 .executes(context -> setAdminSetting(
                                                                                                                 context.getSource(),
                                                                                                                 "useBiomeCropRules",
+                                                                                                                com.mojang.brigadier.arguments.BoolArgumentType
+                                                                                                                                .getBool(context,
+                                                                                                                                                "value")))))
+                                                                // /farmcraft admin settings lycaniteLightBlock
+                                                                // <true|false>
+                                                                // When ON (default), Lycanites mobs cannot spawn
+                                                                // at block-light >= 8 (vanilla-like torchlight rule).
+                                                                .then(Commands.literal("lycaniteLightBlock")
+                                                                                .then(Commands.argument("value",
+                                                                                                com.mojang.brigadier.arguments.BoolArgumentType
+                                                                                                                .bool())
+                                                                                                .executes(context -> setAdminSetting(
+                                                                                                                context.getSource(),
+                                                                                                                "lycaniteLightBlock",
                                                                                                                 com.mojang.brigadier.arguments.BoolArgumentType
                                                                                                                                 .getBool(context,
                                                                                                                                                 "value"))))))));
@@ -198,13 +217,6 @@ public class FarmCraftCommand {
                                         .append(Component.literal(worldData.getLastRanMarketDaily() + "\n")
                                                         .withStyle(
                                                                         worldData.hasMarketRanTodayAlready()
-                                                                                        ? ChatFormatting.GREEN
-                                                                                        : ChatFormatting.RED))
-                                        .append(Component.literal("Last village daily: ")
-                                                        .withStyle(ChatFormatting.WHITE))
-                                        .append(Component.literal(worldData.getLastRanVillageDaily() + "\n")
-                                                        .withStyle(
-                                                                        worldData.hasVillageRanTodayAlready()
                                                                                         ? ChatFormatting.GREEN
                                                                                         : ChatFormatting.RED));
 
@@ -415,6 +427,10 @@ public class FarmCraftCommand {
                                 .append(Component.literal("useBiomeCropRules: ").withStyle(ChatFormatting.WHITE))
                                 .append(Component.literal(String.valueOf(worldData.isUseBiomeCropRules()) + "\n")
                                                 .withStyle(worldData.isUseBiomeCropRules() ? ChatFormatting.GREEN
+                                                                : ChatFormatting.RED))
+                                .append(Component.literal("lycaniteLightBlock: ").withStyle(ChatFormatting.WHITE))
+                                .append(Component.literal(String.valueOf(worldData.isLycaniteLightBlock()) + "\n")
+                                                .withStyle(worldData.isLycaniteLightBlock() ? ChatFormatting.GREEN
                                                                 : ChatFormatting.RED));
                 source.sendSuccess(() -> response, false);
                 return 1;
@@ -428,6 +444,8 @@ public class FarmCraftCommand {
                         worldData.setUseVillageFarms(value);
                 } else if (setting.equals("useBiomeCropRules")) {
                         worldData.setUseBiomeCropRules(value);
+                } else if (setting.equals("lycaniteLightBlock")) {
+                        worldData.setLycaniteLightBlock(value);
                 } else {
                         source.sendFailure(Component.literal("Unknown setting: " + setting));
                         return 0;
@@ -436,5 +454,186 @@ public class FarmCraftCommand {
                 source.sendSuccess(() -> Component.literal("Set " + setting + " = " + value)
                                 .withStyle(ChatFormatting.GREEN), true);
                 return 1;
+        }
+
+        /**
+         * Shows detail for the Nth nearest structure (across ALL structures in the DB,
+         * not filtered to the player's village). If searchChests=true also scans for
+         * chest blocks inside the structure's bounding box.
+         */
+        public static int showNearestStructureDetail(CommandSourceStack source, int index, boolean searchChests) {
+                try {
+                        Entity nullablePlayer = source.getEntity();
+                        Player playerSource = nullablePlayer instanceof Player p ? p : null;
+                        if (playerSource == null) {
+                                source.sendFailure(Component.literal("Must be run by a player."));
+                                return 0;
+                        }
+                        net.minecraft.server.level.ServerLevel world = source.getLevel();
+                        var structureDb = ModEvents.getGameStructureDatabase(world);
+
+                        if (structureDb.getSize() == 0) {
+                                source.sendSystemMessage(
+                                                Component.literal("No structures in database.")
+                                                                .withStyle(ChatFormatting.YELLOW));
+                                return 0;
+                        }
+
+                        // Collect all structures and sort by distance from player.
+                        BlockPos playerPos = playerSource.blockPosition();
+                        java.util.List<java.util.Map.Entry<Long, GameStructureData>> all = new ArrayList<>();
+                        for (Long id : structureDb.getKeys()) {
+                                GameStructureData sd = structureDb.getData(id);
+                                if (sd != null)
+                                        all.add(java.util.Map.entry(id, sd));
+                        }
+                        all.sort(java.util.Comparator
+                                        .comparingDouble(e -> e.getValue().getCenterPos().distSqr(playerPos)));
+
+                        if (index < 1 || index > all.size()) {
+                                source.sendFailure(Component.literal(
+                                                "Index " + index + " out of range — DB has " + all.size()
+                                                                + " structure(s)."));
+                                return 0;
+                        }
+
+                        java.util.Map.Entry<Long, GameStructureData> entry = all.get(index - 1);
+                        Long structureId = entry.getKey();
+                        GameStructureData s = entry.getValue();
+                        int distance = (int) Math.sqrt(s.getCenterPos().distSqr(playerPos));
+
+                        source.sendSystemMessage(
+                                        Component.literal("=== Structure #" + index + " of " + all.size()
+                                                        + " (nearest) ===")
+                                                        .withStyle(ChatFormatting.GOLD));
+                        source.sendSystemMessage(
+                                        Component.literal("Name:   " + s.getName()).withStyle(ChatFormatting.WHITE));
+                        source.sendSystemMessage(
+                                        Component.literal("Type:   " + s.getType()).withStyle(ChatFormatting.WHITE));
+                        source.sendSystemMessage(
+                                        Component.literal("ID:     " + structureId).withStyle(ChatFormatting.WHITE));
+                        source.sendSystemMessage(
+                                        Component.literal("Center: " + s.getCenterPos().toShortString() + "  (d="
+                                                        + distance + ")")
+                                                        .withStyle(ChatFormatting.WHITE));
+                        source.sendSystemMessage(
+                                        Component.literal("Claimed:" + s.isOnClaimedPlot() + "  Visited:"
+                                                        + s.wasVisited())
+                                                        .withStyle(ChatFormatting.WHITE));
+
+                        // Bounding box
+                        if (s.hasBoundingBox()) {
+                                BlockPos mn = s.getMinPos();
+                                BlockPos mx = s.getMaxPos();
+                                source.sendSystemMessage(
+                                                Component.literal("BBox:   min=" + mn.toShortString() + "  max="
+                                                                + mx.toShortString())
+                                                                .withStyle(ChatFormatting.AQUA));
+                                source.sendSystemMessage(
+                                                Component.literal("Size:   " + (mx.getX() - mn.getX()) + "x"
+                                                                + (mx.getY() - mn.getY()) + "x"
+                                                                + (mx.getZ() - mn.getZ()))
+                                                                .withStyle(ChatFormatting.AQUA));
+                        } else {
+                                source.sendSystemMessage(
+                                                Component.literal(
+                                                                "BBox:   (missing — run /village structures rescan near this location)")
+                                                                .withStyle(ChatFormatting.YELLOW));
+                        }
+
+                        // Chunk list
+                        if (s.hasChunkPositions()) {
+                                java.util.List<Long> chunks = s.getChunkPositions();
+                                StringBuilder sb = new StringBuilder();
+                                for (Long packed : chunks) {
+                                        ChunkPos cp = new ChunkPos(packed);
+                                        if (sb.length() > 0)
+                                                sb.append("  ");
+                                        sb.append("[").append(cp.x).append(",").append(cp.z).append("]");
+                                }
+                                source.sendSystemMessage(Component.literal("Chunks: " + chunks.size() + " — " + sb)
+                                                .withStyle(ChatFormatting.AQUA));
+                        }
+
+                        // Special chest info
+                        if (s.hasSpecialChest()) {
+                                source.sendSystemMessage(Component.literal(
+                                                "SpecialChest: " + s.getSpecialChestPos().toShortString()
+                                                                + "  opened=" + s.isSpecialChestOpened()
+                                                                + "  totalChests=" + s.getTotalChestCount())
+                                                .withStyle(ChatFormatting.LIGHT_PURPLE));
+                        } else {
+                                source.sendSystemMessage(
+                                                Component.literal("SpecialChest: none set")
+                                                                .withStyle(ChatFormatting.GRAY));
+                        }
+
+                        // Always scan and show chests
+                        VillageCommand.scanAndShowStructureChests(source, s, world);
+
+                        return 1;
+                } catch (Exception ex) {
+                        LOGGER.error("showNearestStructureDetail error: ", ex);
+                        source.sendFailure(Component.literal("Error — see log."));
+                        return 0;
+                }
+        }
+
+        /**
+         * Admin command: look at a chest and stand inside the structure, then run this
+         * to plant the special-chest trap book in the chest you're facing.
+         */
+        public static int setupSpecialChestCommand(CommandSourceStack source) {
+                try {
+                        net.minecraft.world.entity.Entity nullablePlayer = source.getEntity();
+                        net.minecraft.world.entity.player.Player playerSource = nullablePlayer instanceof net.minecraft.world.entity.player.Player p
+                                        ? p
+                                        : null;
+                        if (playerSource == null) {
+                                source.sendFailure(Component.literal("Must be run by a player."));
+                                return 0;
+                        }
+                        net.minecraft.server.level.ServerLevel world = source.getLevel();
+
+                        // 1. Ray-cast to find the chest the player is looking at (up to 5 blocks).
+                        net.minecraft.world.phys.HitResult hit = playerSource.pick(5.0, 1.0f, false);
+                        if (hit.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                                source.sendFailure(Component.literal("Not looking at a block."));
+                                return 0;
+                        }
+                        net.minecraft.core.BlockPos chestPos = ((net.minecraft.world.phys.BlockHitResult) hit)
+                                        .getBlockPos().immutable();
+                        net.minecraft.world.level.block.Block blk = world.getBlockState(chestPos).getBlock();
+                        if (!com.falazar.farmupcraft.StructureManager.isStructureChest(blk)) {
+                                source.sendFailure(Component.literal("Look at a chest or barrel first."));
+                                return 0;
+                        }
+
+                        // 2. Find the structure the player is standing inside.
+                        var structureDb = com.falazar.farmupcraft.events.ModEvents.getGameStructureDatabase(world);
+                        com.falazar.farmupcraft.data.GameStructureData s = com.falazar.farmupcraft.util.StructureUtils
+                                        .findStructureForPlayer(structureDb, playerSource);
+                        if (s == null) {
+                                source.sendFailure(Component.literal(
+                                                "You are not standing inside a known structure (no bbox match)."));
+                                return 0;
+                        }
+
+                        java.util.List<net.minecraft.core.BlockPos> found = java.util.List.of(chestPos);
+                        boolean placed = VillageCommand.setupSpecialChest(world, s, found, structureDb);
+                        if (placed) {
+                                source.sendSystemMessage(Component.literal(
+                                                "Special chest set at " + s.getSpecialChestPos().toShortString()
+                                                                + " in " + s.getName())
+                                                .withStyle(ChatFormatting.GREEN));
+                        } else {
+                                source.sendFailure(Component.literal("Failed to place special chest — check log."));
+                        }
+                        return placed ? 1 : 0;
+                } catch (Exception ex) {
+                        LOGGER.error("setupSpecialChestCommand error: ", ex);
+                        source.sendFailure(Component.literal("Error — see log."));
+                        return 0;
+                }
         }
 }

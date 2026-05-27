@@ -40,14 +40,16 @@ public class EnchantmentMenuMixin {
         if (costs[pId] <= 0)
             return;
 
-        // Base cost: slot 0=100, 1=200, 2=300.
-        int baseCost = (pId + 1) * 100;
+        // Base cost: slot 0=0, 1=100, 2=200.
+        int baseCost = pId * 100;
 
         // Add 100 per village level.
+
         int villageBonus = 0;
         PlayerData playerData = ModEvents.getPlayerDatabase().getData(pPlayer.getUUID());
+        VillageData village = null;
         if (playerData != null && playerData.getHomeVillageUUID() != null) {
-            VillageData village = ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID());
+            village = ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID());
             if (village != null) {
                 villageBonus = village.getLevel() * 100;
             }
@@ -55,6 +57,16 @@ public class EnchantmentMenuMixin {
 
         int totalCost = baseCost + villageBonus;
         String formattedCost = NumberFormat.getInstance().format(totalCost);
+
+        // Block enchanting if village is in debt
+        if (village != null && village.getCoins() < 0) {
+            pPlayer.displayClientMessage(
+                Component.literal("Your village is in debt (" + village.getCoins() + " coins). Pay off the debt before enchanting.")
+                    .withStyle(ChatFormatting.RED),
+                false);
+            cir.setReturnValue(false);
+            return;
+        }
 
         if (playerData == null || !playerData.removeCoins(totalCost)) {
             int have = playerData != null ? playerData.getCoins() : 0;

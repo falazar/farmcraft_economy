@@ -25,3 +25,7 @@ run
 forge*changelog.txt
 
 .cache
+
+# JVM crash logs and replay logs
+hs_err_pid*.log
+replay_pid*.log

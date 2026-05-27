@@ -21,21 +21,21 @@ import java.util.List;
 public class StructureUtils {
     public static final CustomLogger LOGGER = new CustomLogger(StructureUtils.class.getSimpleName());
 
-
     public static boolean isInStructure(ServerLevel serverLevel, BlockPos pos, ResourceKey<Structure> structure) {
         return LocationPredicate.inStructure(structure).matches(serverLevel, pos.getX(), pos.getY(), pos.getZ());
     }
 
     public static AABB getAABBFromBoundingBox(BoundingBox boundingBox) {
-        return new AABB(boundingBox.minX(), boundingBox.minY(), boundingBox.minZ(), boundingBox.maxX(), boundingBox.maxY(), boundingBox.maxZ());
+        return new AABB(boundingBox.minX(), boundingBox.minY(), boundingBox.minZ(), boundingBox.maxX(),
+                boundingBox.maxY(), boundingBox.maxZ());
     }
 
     public static BlockPos getMinBlockPosFromAABB(AABB aabb) {
-        return BlockPos.containing( aabb.minX, aabb.minY, aabb.minZ);
+        return BlockPos.containing(aabb.minX, aabb.minY, aabb.minZ);
     }
 
     public static BlockPos getMaxBlockPosFromAABB(AABB aabb) {
-        return BlockPos.containing( aabb.maxX, aabb.maxY, aabb.maxZ);
+        return BlockPos.containing(aabb.maxX, aabb.maxY, aabb.maxZ);
     }
 
     public static boolean checkIfSafeForCheck(StructureStart structure) {
@@ -52,7 +52,8 @@ public class StructureUtils {
         return false;
     }
 
-    public static boolean checkForEntityInsideStructure(ServerLevel serverLevel, AABB aabb, TagKey<EntityType<?>> entity) {
+    public static boolean checkForEntityInsideStructure(ServerLevel serverLevel, AABB aabb,
+            TagKey<EntityType<?>> entity) {
         List<Entity> entityList = serverLevel.getEntitiesOfClass(Entity.class, aabb);
         for (var e : entityList) {
             if (e.getType().is(entity)) {
@@ -70,5 +71,38 @@ public class StructureUtils {
         stringBuilder.append("structure." + loc + ".");
         stringBuilder.append(path);
         return stringBuilder.toString();
+    }
+
+    /**
+     * Returns the first GameStructureData whose bbox (XZ) contains the given
+     * position,
+     * or null if none match.
+     */
+    public static com.falazar.farmupcraft.data.GameStructureData findStructureAtPos(
+            com.falazar.farmupcraft.database.DataBase<Long, com.falazar.farmupcraft.data.GameStructureData> structureDb,
+            BlockPos pos) {
+        for (Long id : structureDb.getKeys()) {
+            com.falazar.farmupcraft.data.GameStructureData sd = structureDb.getData(id);
+            if (sd == null || !sd.hasBoundingBox())
+                continue;
+            BlockPos mn = sd.getMinPos();
+            BlockPos mx = sd.getMaxPos();
+            if (pos.getX() >= mn.getX() && pos.getX() <= mx.getX()
+                    && pos.getY() >= mn.getY() && pos.getY() <= mx.getY()
+                    && pos.getZ() >= mn.getZ() && pos.getZ() <= mx.getZ()) {
+                return sd;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the first GameStructureData whose bbox (XYZ) contains the player's
+     * current block position, or null if none match.
+     */
+    public static com.falazar.farmupcraft.data.GameStructureData findStructureForPlayer(
+            com.falazar.farmupcraft.database.DataBase<Long, com.falazar.farmupcraft.data.GameStructureData> structureDb,
+            net.minecraft.world.entity.player.Player player) {
+        return findStructureAtPos(structureDb, player.blockPosition());
     }
 }

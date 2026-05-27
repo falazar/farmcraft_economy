@@ -2,24 +2,38 @@
 BUGS LIST:   
     BUG CHECK - Sheep/cows still follow player holding grain even after being bred today. NoLoveTemptGoal patch is confirmed replacing TemptGoal but blocking logic not visibly stopping follow. Need "delegateWants=true | blocked=true" in logs to confirm fix works.
     BUG CHECK - Lycanites drop halving (onLycanitesDrops): verify "Lycanites drop:" log lines appear after killing Lycanites mobs, and check before/after counts are halved correctly.
+    BUG: Vanilla mob spawner cages (dungeons etc) can be deactivated by placing a chest on or near them — find which mod causes this and remove/disable that mechanic.
 END BUGS AREA
 
 
 GENERAL SOON:
+    TODO: Village buyable setting — "Lycanites Sanctuary" toggle (purchasable perk or village upgrade).
+          When enabled, Lycanites are allowed to spawn in village chunks normally, BUT are forced to
+          remain permanently peaceful: never attack players, villagers, or animals, even at night.
+          Requires forcing peaceful AI on spawn (remove/cancel hostile goal tasks) and re-applying
+          it on EntityJoinLevel for any Lycanites that enter the village area.
+
+    TEST: Veswax block silk touch loot table — mine a veswax block with silk touch pickaxe, confirm block drops. Mine without silk touch, confirm nothing drops.
+    TODO: Create a new special item for structure chests — a puzzle piece or clue item (custom mod item with unique texture/lore) to replace the written book trap. Should hint at a larger mystery/quest chain.
+    TODO: Cursed items — items that display fake high stats/enchants in their tooltip (look amazing) but apply negative or debilitating effects when equipped. Place these in dungeon/structure chests as traps alongside or instead of the written book.
 
 test minions
 [07:51:04] [Render thread/INFO] [minecraft/ChatComponent]: [System] [CHAT] You are now able to summon the Jengu as a temporary minion! You will need a Summoning Item to summon it.
 
 
-    TODO: Add a structuremanager file
+    TODO: test NOCHESTS — DONE. If a structure has no chests, a vanilla chest is placed at center on solid ground then setupSpecialChest runs on it.
+
+
         extend commands to have after /village structures also 
         /village structures 1 (or 2-100 whatever)
-        That should load the satructure from the structures list at that number
+        That should load the structure from the structures list at that number
         Then print out some more debug information about that structure
         admin command only
-        min max bounding boxes would be good.
+        min max bounding boxes would be good. and exact chunks built on.
+
     TODO: possibly a command to scan for chests there.
         How do we tell if chests have been opened or not before?
+
     TODO: Add an extra bad guy in most all underground structures, first time only when discovered.
     TODO: Add new loot item to mineshaft chests — potion of mining (haste effect) or similar mining-buff potion.
     TODO: Add a note, paper or book to a chest in the structure, if no chest add a chest? (only once, when discovered?)

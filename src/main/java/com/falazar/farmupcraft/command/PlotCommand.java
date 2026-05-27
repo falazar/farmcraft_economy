@@ -49,7 +49,8 @@ import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
     private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen",
-            "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery", "library", "guardhouse");
+            "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery", "library", "guardhouse",
+            "portal");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -80,6 +81,7 @@ public class PlotCommand {
                             builder2.suggest("refinery");
                             builder2.suggest("library");
                             builder2.suggest("guardhouse");
+                            builder2.suggest("portal");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
@@ -227,8 +229,6 @@ public class PlotCommand {
             MutableComponent response = Component
                     .literal("---------- Plot info for " + chunkPos + " (y=" + playerY + "): ----------\n")
                     .withStyle(ChatFormatting.YELLOW)
-                    // .append(Component.literal("Owned by: " +
-                    // chunkData.getNameForPlayer(serverLevel) + ", "))
                     .append(Component.literal("Village: ").withStyle(ChatFormatting.GOLD)
                             .append(Component.literal(villageData.getName() + "\n").withStyle(ChatFormatting.WHITE)))
                     .append(Component.literal("Type: ").withStyle(ChatFormatting.GOLD)
@@ -237,6 +237,24 @@ public class PlotCommand {
                             .append(Component.literal(chunkData.getPlotLevel()
                                     + " (village level: " + villageData.getLevel() + ", max upgrade: "
                                     + (villageData.getLevel() / 2) + ")\n").withStyle(ChatFormatting.WHITE)));
+
+            boolean isHousePlot = chunkData.getType().equalsIgnoreCase("house");
+            UUID ownerUuid = chunkData.getOwnerUUID();
+            List<String> visitorsList = chunkData.getVisitors();
+            boolean hasOwner = ownerUuid != null;
+            boolean hasVisitors = visitorsList != null && !visitorsList.isEmpty();
+
+            if (isHousePlot || hasOwner) {
+                String ownerName = getPlotOwnerDisplayName(serverLevel, chunkData);
+                response.append(Component.literal("Owner: ").withStyle(ChatFormatting.GOLD)
+                        .append(Component.literal(ownerName + "\n").withStyle(ChatFormatting.WHITE)));
+            }
+
+            if (isHousePlot || hasVisitors) {
+                String visitors = formatVisitors(visitorsList);
+                response.append(Component.literal("Visitors: ").withStyle(ChatFormatting.GOLD)
+                        .append(Component.literal(visitors + "\n").withStyle(ChatFormatting.WHITE)));
+            }
             // todo if village show village unclaimed...
 
             // TODO get counts of biomes also.
@@ -427,22 +445,22 @@ public class PlotCommand {
     // Given current block position, get all biomes in the chunk at this y level
     // with counts.
     public static Map<String, Integer> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
-        ChunkPos chunkPos = new ChunkPos(blockPos);
-        // Use farmland level: one block below player's feet (block under the plant).
         int biomeY = blockPos.getY() - 1;
         LOGGER.info("DEBUGGER getChunkBiomes using biomeY=" + biomeY + " (playerY=" + blockPos.getY() + ")");
 
+        // Do a full 16x16 loop to get actual per-column counts (not just distinct set).
+        ChunkPos chunkPos = new ChunkPos(blockPos);
         Map<String, Integer> biomeCounts = new LinkedHashMap<>();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                int biomeX = chunkPos.x * 16 + x;
-                int biomeZ = chunkPos.z * 16 + z;
-                BlockPos blockPos2 = new BlockPos(biomeX, biomeY, biomeZ);
-                Biome biome = serverLevel.getBiome(blockPos2).value();
+                BlockPos samplePos = new BlockPos(chunkPos.x * 16 + x, biomeY, chunkPos.z * 16 + z);
+                net.minecraft.core.Holder<net.minecraft.world.level.biome.Biome> biomeHolder = serverLevel
+                        .getBiome(samplePos);
                 ResourceLocation biomeRes = serverLevel.registryAccess().registryOrThrow(Registries.BIOME)
-                        .getKey(biome);
-                String biomeName = biomeRes.toString().replaceAll("^[^:]+:", "");
-                biomeCounts.merge(biomeName, 1, Integer::sum);
+                        .getKey(biomeHolder.value());
+                if (biomeRes != null) {
+                    biomeCounts.merge(biomeRes.getPath(), 1, Integer::sum);
+                }
             }
         }
 
@@ -548,17 +566,38 @@ public class PlotCommand {
             }
 
             // STEP 2.6: Enforce per-type limits: "plot" = unlimited, "house" = 2 per level,
-            // all others = 1 per level. Creative players bypass.
+            // "portal" = 1 total, all others = 1 per level. Creative players bypass.
             if (!playerSource.isCreative()) {
                 if (!plotType.equalsIgnoreCase("plot")) {
                     int existing = countPlotType(village, plotType);
-                    int limit = plotType.equalsIgnoreCase("house") ? village.getLevel() * 2 : village.getLevel();
+                    int limit;
+                    if (plotType.equalsIgnoreCase("house")) {
+                        limit = village.getLevel() * 2;
+                    } else if (plotType.equalsIgnoreCase("portal")) {
+                        limit = 1;
+                    } else {
+                        limit = village.getLevel();
+                    }
                     if (existing >= limit) {
                         source.sendFailure(Component.literal(
                                 "Village limit reached for type '" + plotType + "': "
                                         + existing + "/" + limit + " (village level " + village.getLevel() + ")."));
                         return 0;
                     }
+                }
+            }
+
+            // STEP 2.7: Portal requires a Ruined Portal structure in this chunk, or village
+            // level 6+.
+            if (plotType.equalsIgnoreCase("portal") && !playerSource.isCreative()) {
+                boolean hasRuinedPortal = false;
+                if (playerSource.level() instanceof ServerLevel sv) {
+                    hasRuinedPortal = StructureCommand.chunkHasRuinedPortal(chunkPos, sv);
+                }
+                if (!hasRuinedPortal && village.getLevel() < 6) {
+                    source.sendFailure(Component.literal(
+                            "Portal requires a Ruined Portal structure in this chunk, or a village of level 6+."));
+                    return 0;
                 }
             }
             int cost = calculatePlotCost(village, plotType);
@@ -616,7 +655,7 @@ public class PlotCommand {
             placePlotSign(playerSource, level, plotType, village.getName());
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error("Exception in buyPlot:", ex);
         }
         return 0;
     }
@@ -796,6 +835,9 @@ public class PlotCommand {
             }
 
             chunk.setType(targetType);
+            if (!targetType.equals("village") && !targetType.equals("plot") && chunk.getOwnerUUID() == null) {
+                chunk.setOwnerUUID(actor.getUUID());
+            }
             chunkDb.putData(chunkPos.toLong(), chunk);
 
             if (!actor.isCreative()) {
@@ -948,6 +990,13 @@ public class PlotCommand {
                 return 0;
             }
 
+
+            // Block upgrade if village is in debt
+            if (!playerSource.isCreative() && village.getCoins() < 0) {
+                source.sendFailure(Component.literal("Your village is in debt (" + village.getCoins() + " coins). Pay off the debt before upgrading plots."));
+                return 0;
+            }
+
             int cost = calculatePlotCost(village, chunk.getType());
             if (!playerSource.isCreative() && playerData.getCoins() < cost) {
                 source.sendFailure(Component.literal("Not enough coins. Cost: " + cost
@@ -1036,6 +1085,27 @@ public class PlotCommand {
         return false;
     }
 
+    private static String getPlotOwnerDisplayName(ServerLevel level, ChunkData chunkData) {
+        UUID ownerUUID = chunkData.getOwnerUUID();
+        if (ownerUUID != null) {
+            ServerPlayer onlineOwner = level.getServer().getPlayerList().getPlayer(ownerUUID);
+            if (onlineOwner != null) {
+                return onlineOwner.getName().getString();
+            }
+            return ownerUUID.toString();
+        }
+
+        String legacy = chunkData.getNameForPlayer(level);
+        return legacy == null || legacy.isBlank() ? "Unassigned" : legacy + " (legacy)";
+    }
+
+    private static String formatVisitors(List<String> visitors) {
+        if (visitors == null || visitors.isEmpty()) {
+            return "None";
+        }
+        return String.join(", ", visitors);
+    }
+
     // Returns the StandingSign rotation (0-15) so the sign faces toward the player.
     private static void placePlotSign(Player player, Level level, String plotType, String villageName) {
         if (!(level instanceof ServerLevel sl))
@@ -1063,12 +1133,14 @@ public class PlotCommand {
         // east.
         // Sign is placed one block in front of player, so it should face back toward
         // them.
-        return switch (facing) {
-            case NORTH -> 0; // player faces north, sign placed north, sign faces south (back at player)
-            case SOUTH -> 8; // player faces south, sign placed south, sign faces north
-            case EAST -> 4; // player faces east, sign placed east, sign faces west
-            case WEST -> 12; // player faces west, sign placed west, sign faces east
-            default -> 0;
-        };
+        if (facing == Direction.NORTH)
+            return 0;
+        if (facing == Direction.SOUTH)
+            return 8;
+        if (facing == Direction.EAST)
+            return 4;
+        if (facing == Direction.WEST)
+            return 12;
+        return 0;
     }
 }

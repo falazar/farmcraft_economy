@@ -1,6 +1,0 @@
-{
-  "type": "forge:add_features",
-  "biomes": "#forge:is_savanna",
-  "features": "pamhc2crops:windy_garden_placed_savanna",
-  "step": "vegetal_decoration"
-}

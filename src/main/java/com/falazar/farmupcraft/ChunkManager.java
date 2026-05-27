@@ -34,6 +34,8 @@ import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
+import com.falazar.farmupcraft.command.StructureCommand;
+
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
 import static com.falazar.farmupcraft.command.VillageCommand.findVillageByChunkPos;
 
@@ -81,6 +83,19 @@ public class ChunkManager {
     private static final java.util.Map<java.util.UUID, Long> VILLAGE_CENTER_SHOWN_AT = new java.util.HashMap<>();
     private static final long VILLAGE_CENTER_COOLDOWN_MS = 60 * 60 * 1000L; // 1 hour
 
+    /**
+     * Tracks the last time (ms) each player triggered a wilderness structure scan.
+     * Used to enforce a cooldown so the 5 % per-chunk roll can't fire too often.
+     */
+    private static final java.util.Map<java.util.UUID, Long> WILDERNESS_SCAN_LAST_AT = new java.util.HashMap<>();
+    private static final long WILDERNESS_SCAN_COOLDOWN_MS = 30_000L; // 30 seconds
+    private static final java.util.Random WILDERNESS_RAND = new java.util.Random();
+
+    /** Returns true if this player should receive [DEBUG] chat messages. */
+    public static boolean isDebugPlayer(net.minecraft.world.entity.player.Player player) {
+        return player.getGameProfile().getName().equalsIgnoreCase("BossPanda96366");
+    }
+
     // Check anytime a player enters a new chunk.
     // Tell if they have entered a village or not.
     @SubscribeEvent
@@ -120,6 +135,37 @@ public class ChunkManager {
 
             // Check for structures in the new section
             checkForStructuresInSection(player, newPos);
+
+            // --- Wilderness structure discovery ---
+            // 5 % chance per new XZ-chunk entered while outside any village.
+            // Radius-10 scan is fast: it only queries already-loaded structure data.
+            boolean changedXZChunk = !newPos.chunk().equals(oldPos.chunk());
+            // 5% chance per new XZ-chunk entered while outside any village.
+            if (changedXZChunk && currChunkVillageName == null && WILDERNESS_RAND.nextFloat() < 0.05f) {
+                long nowMs = System.currentTimeMillis();
+                Long lastScan = WILDERNESS_SCAN_LAST_AT.get(player.getUUID());
+                if (lastScan == null || (nowMs - lastScan) >= WILDERNESS_SCAN_COOLDOWN_MS) {
+                    WILDERNESS_SCAN_LAST_AT.put(player.getUUID(), nowMs);
+                    if (isDebugPlayer(player)) {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                                "[DEBUG] Wilderness scan triggered").withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+                    }
+                    if (player.level() instanceof ServerLevel scanLevel) {
+                        try {
+                            java.util.List<com.falazar.farmupcraft.command.StructureCommand.StructureInfo> found = StructureCommand
+                                    .findNearbyStructuresForVillage(
+                                            player.blockPosition(), scanLevel, player, null, "all", 10);
+                            if (!found.isEmpty()) {
+                                // Fake a CommandSourceStack-compatible source for chest scanning.
+                                StructureCommand.scanAndSetupChests(
+                                        player.createCommandSourceStack(), found, scanLevel);
+                            }
+                        } catch (Exception ex) {
+                            LOGGER.error("Error in wilderness structure scan: " + ex.getMessage());
+                        }
+                    }
+                }
+            }
 
             if (currChunkVillageName == null && lastChunkVillageName != null) {
                 // Send leaving village message.
@@ -588,16 +634,31 @@ public class ChunkManager {
                 if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
                     if (LYCANITES_RAND.nextDouble() >= 0.10) {
                         event.setSpawnCancelled(true);
-                        LOGGER.info("[SPAWN] Lycanites 90% suppressed (jengu): " + entityId + " | uuid="
-                                + entity.getUUID() + " | pos=" + pos);
+                        // LOGGER.info("[SPAWN] Lycanites 90% suppressed (jengu): " + entityId + " |
+                        // uuid="
+                        // + entity.getUUID() + " | pos=" + pos);
                         return;
                     }
-                    LOGGER.info("[SPAWN] ALLOWED jengu (10% passed global roll): " + entityId + " | uuid="
-                            + entity.getUUID() + " | pos=" + pos);
+                    // LOGGER.info("[SPAWN] ALLOWED jengu (10% passed global roll): " + entityId + "
+                    // | uuid="
+                    // + entity.getUUID() + " | pos=" + pos);
                 } else if (LYCANITES_RAND.nextDouble() >= LYCANITES_SPAWN_RATE) {
                     event.setSpawnCancelled(true);
-                    LOGGER.info("[SPAWN] Lycanites 50% suppressed: " + entityId + " at " + pos);
+                    // LOGGER.info("[SPAWN] Lycanites 50% suppressed: " + entityId + " at " + pos);
                     return;
+                }
+
+                // ---- LYCANITES TORCHLIGHT BLOCK ----
+                // When enabled (default ON), no Lycanites mob — hostile or not — may spawn
+                // in a well-lit area (block light >= 8), mirroring vanilla mob rules.
+                com.falazar.farmupcraft.data.WorldData _wd = com.falazar.farmupcraft.events.ModEvents.getWorldData();
+                if (_wd != null && _wd.isLycaniteLightBlock()
+                        && event.getLevel() instanceof Level _lightLevel) {
+                    int bLight = _lightLevel.getBrightness(LightLayer.BLOCK, pos);
+                    if (bLight >= 8) {
+                        event.setSpawnCancelled(true);
+                        return;
+                    }
                 }
             }
 
@@ -612,13 +673,6 @@ public class ChunkManager {
             // — skip safely.
             if (!(event.getLevel() instanceof Level worldLevel))
                 return;
-            String spawnPlot = getPlotType(pos, worldLevel);
-            String spawnPlotLabel = spawnPlot.isEmpty() ? "unclaimed" : spawnPlot;
-            LOGGER.info("DEBUG: Modded mob spawn attempt: " + entityId
-                    + " | category=" + entity.getType().getCategory()
-                    + " | hostile=" + isHostile
-                    + " | plot=" + spawnPlotLabel
-                    + " | pos=" + pos);
 
             // Block modded mobs that are hostile (MONSTER category OR Monster/Enemy
             // interface).
@@ -641,17 +695,15 @@ public class ChunkManager {
                     // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
                     if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
                         event.setSpawnCancelled(true);
-                        LOGGER.info(
-                                "[SPAWN] Lycanites always-block village-chunk suppressed: " + entityId + " | uuid="
-                                        + entity.getUUID() + " | pos=" + pos);
                     } else if (LYCANITES_RAND.nextDouble() < 0.50) {
                         event.setSpawnCancelled(true);
-                        LOGGER.info("[SPAWN] Lycanites 50% village-chunk suppressed: " + entityId + " at " + pos);
+                    } else {
+                        // Passed the village 50% roll — this mob is spawning.
+                        LOGGER.info("[SPAWN-ALLOWED] {} | location=VILLAGE-CHUNK | blockLight={} | pos={}",
+                                entityId, blockLight, pos);
                     }
                 } else {
                     event.setSpawnCancelled(true);
-                    LOGGER.info("[SPAWN] Blocked modded hostile ("
-                            + entityId + ") in " + plotType + " plot at " + pos);
                 }
             } else if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
                 // Unclaimed chunk — but block always-block mobs (e.g. jengu) if they are
@@ -744,9 +796,9 @@ public class ChunkManager {
 
         String plotType = getPlotType(pos, (Level) event.getLevel());
         if (plotType.isEmpty()) {
-            if (LYCANITES_HIGH_BLOCK.contains(entityId.toString()))
-                LOGGER.info("[ENTITYJOIN] ALLOWED jengu in unclaimed chunk: " + entityId
-                        + " | uuid=" + mob.getUUID() + " | pos=" + pos);
+            // if (LYCANITES_HIGH_BLOCK.contains(entityId.toString()))
+            // LOGGER.info("[ENTITYJOIN] ALLOWED jengu in unclaimed chunk: " + entityId
+            // + " | uuid=" + mob.getUUID() + " | pos=" + pos);
             return;
         }
 
@@ -754,32 +806,23 @@ public class ChunkManager {
             // Always-blocked hostile Lycanites (e.g. jengu) — skip the 50% roll.
             if (LYCANITES_HIGH_BLOCK.contains(entityId.toString())) {
                 event.setCanceled(true);
-                LOGGER.info("[ENTITYJOIN] BLOCKED Lycanites village-chunk (always-block): " + entityId
-                        + " | uuid=" + event.getEntity().getUUID()
-                        + " | plot=village | pos=" + pos);
                 return;
             }
             // Village chunks: extra 50% Lycanites suppression
             if (LYCANITES_RAND.nextDouble() < 0.50) {
                 event.setCanceled(true);
-                LOGGER.info("[ENTITYJOIN] BLOCKED Lycanites village-chunk (50% roll): " + entityId + " | uuid="
-                        + event.getEntity().getUUID() + " | plot=village | pos="
-                        + pos);
             } else {
-                LOGGER.info("[ENTITYJOIN] ALLOWED Lycanites village-chunk (50% roll): " + entityId
-                        + " | uuid=" + event.getEntity().getUUID() + " | plot=village | pos=" + pos);
+                // Passed the 50% roll — this Lycanites mob is spawning in a village chunk.
+                LOGGER.info("[SPAWN-ALLOWED] {} | location=VILLAGE-CHUNK | blockLight={} | pos={}",
+                        entityId, blockLight, pos);
             }
         } else if (!plotType.equalsIgnoreCase("village")) {
             // Any owned plot chunk (farm, pasture, etc.): block entirely
             event.setCanceled(true);
-            LOGGER.info(
-                    "[ENTITYJOIN] BLOCKED modded hostile: " + entityId + " | uuid=" + event.getEntity().getUUID()
-                            + " | plot=" + plotType + " | pos=" + pos);
         } else {
-            // Village chunk, non-Lycanites hostile — log but allow through
-            LOGGER.info(
-                    "[ENTITYJOIN] ALLOWED non-Lycanites hostile: " + entityId + " | uuid="
-                            + event.getEntity().getUUID() + " | plot=village | pos=" + pos);
+            // Village chunk, non-Lycanites hostile — allowed through.
+            LOGGER.info("[SPAWN-ALLOWED] {} | location=VILLAGE-CHUNK (non-Lycanites) | blockLight={} | pos={}",
+                    entityId, blockLight, pos);
         }
     }
 

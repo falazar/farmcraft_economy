@@ -55,6 +55,107 @@ import static com.falazar.farmupcraft.command.PlayerCommand.getPlayer;
 public class NpcCommand {
     public static final CustomLogger LOGGER = new CustomLogger(NpcCommand.class.getSimpleName());
 
+    // -------------------------------------------------------------------------
+    // NPC Profile Retry Queue
+    // -------------------------------------------------------------------------
+
+    /**
+     * Holds all context needed to (re)generate an AI profile for one villager.
+     * Queued when a generation attempt fails so it can be retried automatically.
+     */
+    public record ProfileRequest(
+            String name, UUID uuid, String profession,
+            List<String> villagerNames, String villageName, List<String> biomes,
+            String structureCuriosity, UUID villageUUID, boolean isRegen, String existingText) {
+    }
+
+    /**
+     * Villagers whose profile generation failed — tried one at a time every 5
+     * minutes by {@link #tickRetryQueue(MinecraftServer)}.
+     */
+    public static final java.util.concurrent.ConcurrentLinkedQueue<ProfileRequest> PENDING_PROFILES =
+            new java.util.concurrent.ConcurrentLinkedQueue<>();
+
+    // -------------------------------------------------------------------------
+    // Threat notes cache — auto-replenishment
+    // -------------------------------------------------------------------------
+
+    /** How many cached notes trigger a replenish request. */
+    private static final int NOTES_REPLENISH_THRESHOLD = 3;
+    /** How many notes to request in one batch when replenishing. */
+    private static final int NOTES_REPLENISH_BATCH = 5;
+    /** Prevents concurrent replenishment requests. */
+    private static final java.util.concurrent.atomic.AtomicBoolean IS_REPLENISHING_NOTES =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /** Structure name pool used when auto-replenishing notes. */
+    private static final String[] NOTE_STRUCTURE_TYPES = {
+            "ancient ruins", "jungle temple", "graveyard", "haunted manor",
+            "dungeon", "mountain fortress", "cursed chapel", "abandoned keep"
+    };
+
+    /**
+     * Checks the threat notes cache and, if it is below {@value #NOTES_REPLENISH_THRESHOLD},
+     * asynchronously requests a fresh batch from Ollama.
+     * Safe to call frequently — guarded by an atomic flag so only one batch runs at a time.
+     *
+     * @param server the current Minecraft server (needed to run the callback on the
+     *               server thread after the AI responds)
+     */
+    public static void autoReplenishNotesIfNeeded(MinecraftServer server) {
+        int cacheSize = com.falazar.farmupcraft.util.NpcDataLoader.getThreatNoteCacheSize();
+        if (cacheSize >= NOTES_REPLENISH_THRESHOLD)
+            return;
+        if (!IS_REPLENISHING_NOTES.compareAndSet(false, true))
+            return; // another request already in-flight
+
+        String structureName = NOTE_STRUCTURE_TYPES[new java.util.Random().nextInt(NOTE_STRUCTURE_TYPES.length)];
+        LOGGER.info("autoReplenishNotesIfNeeded: cache={}, requesting {} more notes (type={}).",
+                cacheSize, NOTES_REPLENISH_BATCH, structureName);
+
+        com.falazar.farmupcraft.AIManager.generateChestThreatNotesBatch(structureName, NOTES_REPLENISH_BATCH)
+                .orTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+                .whenComplete((notes, err) -> {
+                    IS_REPLENISHING_NOTES.set(false);
+                    server.execute(() -> {
+                        if (err != null || notes == null || notes.isEmpty()) {
+                            LOGGER.warn("autoReplenishNotesIfNeeded: AI batch failed — will retry next cycle. ({})",
+                                    err != null ? err.getMessage() : "empty response");
+                            return;
+                        }
+                        com.falazar.farmupcraft.util.NpcDataLoader.addThreatNotes(notes);
+                        LOGGER.info("autoReplenishNotesIfNeeded: added {} note(s), cache now {}.",
+                                notes.size(),
+                                com.falazar.farmupcraft.util.NpcDataLoader.getThreatNoteCacheSize());
+                    });
+                });
+    }
+
+    /** Returns true if a ProfileRequest for this UUID is already in the queue. */
+    private static boolean isAlreadyQueued(UUID uuid) {
+        return PENDING_PROFILES.stream().anyMatch(r -> r.uuid().equals(uuid));
+    }
+
+    /**
+     * Called by the 5-minute tick in WorldScheduler.
+     * Picks ONE item from the pending queue and retries generating its profile.
+     * On success it is removed from the queue; on failure it is re-added at the
+     * back automatically via the normal error-handling path.
+     */
+    public static void tickRetryQueue(MinecraftServer server) {
+        ProfileRequest req = PENDING_PROFILES.poll();
+        if (req == null)
+            return;
+        LOGGER.info("tickRetryQueue: retrying profile for '{}' ({} still pending after this).",
+                req.name(), PENDING_PROFILES.size());
+        generateProfileForVillager(
+                server.createCommandSourceStack(), server,
+                req.name(), req.uuid(), req.profession(),
+                req.villagerNames(), req.villageName(), req.biomes(),
+                req.structureCuriosity(), req.villageUUID(),
+                req.isRegen(), req.existingText());
+    }
+
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "npc"
         LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("npc");
@@ -190,6 +291,15 @@ public class NpcCommand {
                             return setOneVillagerNameVisible(context.getSource(), name, false);
                         }));
         builder.then(hideNameBuilder);
+
+        // fillnotescache [count] — pre-generate AI threat notes and store in cache (admin only)
+        LiteralArgumentBuilder<CommandSourceStack> fillNotesCacheBuilder = Commands.literal("fillnotescache")
+                .requires(source -> source.hasPermission(2))
+                .executes(context -> fillNotesCache(context.getSource(), 5))
+                .then(Commands.argument("count", com.mojang.brigadier.arguments.IntegerArgumentType.integer(1, 20))
+                        .executes(context -> fillNotesCache(context.getSource(),
+                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "count"))));
+        builder.then(fillNotesCacheBuilder);
 
         // Register the main "npc" command with the dispatcher
         pDispatcher.register(builder);
@@ -479,8 +589,22 @@ public class NpcCommand {
                 return 0;
             }
 
+            // Pre-count how many need profiles vs already have one.
+            long needsProfile = villagers.stream()
+                    .filter(e -> e instanceof Villager)
+                    .filter(e -> !NpcDataLoader.hasProfile(e.getName().getString(), e.getUUID()))
+                    .count();
+            long alreadyHas = villagers.stream()
+                    .filter(e -> e instanceof Villager)
+                    .filter(e -> NpcDataLoader.hasProfile(e.getName().getString(), e.getUUID()))
+                    .count();
+            final long fNeedsProfile = needsProfile;
+            final long fAlreadyHas = alreadyHas;
             source.sendSuccess(() -> Component.literal("Found " + villagers.size()
-                    + " villager(s). Generating profiles for those without one..."), false);
+                    + " villager(s): " + fAlreadyHas + " already have profiles, generating " + fNeedsProfile
+                    + " new profile(s)..."), false);
+            LOGGER.info("initVillagers: {} total, {} already have profiles, {} to generate.", villagers.size(),
+                    fAlreadyHas, fNeedsProfile);
 
             // Collect all villager names in advance so the AI knows who's in the village.
             List<String> allNames = villagers.stream()
@@ -511,6 +635,9 @@ public class NpcCommand {
 
             int queued = 0;
             int structureIndex = 0;
+            // Stagger AI calls 60 seconds apart — each request can take up to 90s,
+            // so 30s wasn't enough and caused overlapping requests (Ollama 500 errors).
+            int delaySeconds = 0;
             for (LivingEntity entity : villagers) {
                 if (!(entity instanceof Villager villager))
                     continue;
@@ -533,8 +660,27 @@ public class NpcCommand {
                 structureIndex++;
                 queued++;
 
-                generateProfileForVillager(source, server, npcName, npcUUID, profession,
-                        allNames, villageName, biomeNames, structureCuriosity, villageUUID, false, null);
+                // Capture loop vars for lambda.
+                final String fName = npcName;
+                final UUID fUUID = npcUUID;
+                final String fProfession = profession;
+                final String fCuriosity = structureCuriosity;
+                final int fDelay = delaySeconds;
+                delaySeconds += 60;
+
+                LOGGER.info("initVillagers: queuing '{}' (delay={}s)", fName, fDelay);
+                java.util.concurrent.CompletableFuture.runAsync(
+                        () -> generateProfileForVillager(source, server, fName, fUUID, fProfession,
+                                allNames, villageName, biomeNames, fCuriosity, villageUUID, false, null),
+                        java.util.concurrent.CompletableFuture.delayedExecutor(
+                                fDelay, java.util.concurrent.TimeUnit.SECONDS))
+                        .exceptionally(err -> {
+                            LOGGER.error("initVillagers: background task for '{}' threw: {}", fName,
+                                    err.getMessage(), err);
+                            server.execute(() -> source.sendFailure(Component.literal(
+                                    "[NPC] Background task failed for " + fName + ": " + err.getMessage())));
+                            return null;
+                        });
             }
 
             if (queued == 0) {
@@ -660,7 +806,8 @@ public class NpcCommand {
             UUID villageUUID = village != null ? village.getUUID() : new UUID(0, 0);
 
             Map<String, Integer> biomeMap = village != null
-                    ? VillageCommand.getVillageBiomes(village, summoner.level()) : Map.of();
+                    ? VillageCommand.getVillageBiomes(village, summoner.level())
+                    : Map.of();
             List<String> biomeNames = biomeMap.entrySet().stream()
                     .sorted(Map.Entry.<String, Integer>comparingByValue().reversed())
                     .limit(2)
@@ -703,8 +850,9 @@ public class NpcCommand {
      * handles the result: guards against [AI Error], writes the file, updates the
      * in-memory DB, and sends success/failure feedback to the command source.
      *
-     * @param isRegen       true = regenerate (uses existing profile text), false = generate fresh
-     * @param existingText  existing profile JSON text; only used when isRegen=true
+     * @param isRegen      true = regenerate (uses existing profile text), false =
+     *                     generate fresh
+     * @param existingText existing profile JSON text; only used when isRegen=true
      */
     private static void generateProfileForVillager(
             CommandSourceStack source,
@@ -728,8 +876,16 @@ public class NpcCommand {
 
         future.thenAccept(personality -> server.execute(() -> {
             if (personality != null && personality.startsWith("[AI Error]")) {
-                source.sendFailure(Component.literal(
-                        "[NPC] AI failed for " + npcName + ": " + personality));
+                // Queue for retry instead of permanently dropping.
+                if (!isAlreadyQueued(npcUUID)) {
+                    PENDING_PROFILES.offer(new ProfileRequest(npcName, npcUUID, profession,
+                            villagerNames, villageName, biomes, structureCuriosity, villageUUID, isRegen,
+                            existingText));
+                    LOGGER.warn("generateProfileForVillager: AI error for '{}', queued for retry (queue size={}).",
+                            npcName, PENDING_PROFILES.size());
+                }
+                source.sendFailure(net.minecraft.network.chat.Component.literal(
+                        "[NPC] AI failed for " + npcName + " — queued for retry. (" + personality + ")"));
                 return;
             }
             String description = "A " + profession.replace("minecraft:", "")
@@ -754,10 +910,51 @@ public class NpcCommand {
                         "[NPC] AI done but failed to write file for " + npcName));
             }
         })).exceptionally(err -> {
+            // Queue for retry on exception too.
+            if (!isAlreadyQueued(npcUUID)) {
+                PENDING_PROFILES.offer(new ProfileRequest(npcName, npcUUID, profession,
+                        villagerNames, villageName, biomes, structureCuriosity, villageUUID, isRegen, existingText));
+                LOGGER.warn("generateProfileForVillager: exception for '{}': {} — queued for retry (queue={}).",
+                        npcName, err.getMessage(), PENDING_PROFILES.size());
+            }
             server.execute(() -> source.sendFailure(Component.literal(
-                    "[NPC] Failed to generate profile for " + npcName + ": " + err.getMessage())));
+                    "[NPC] Failed to generate profile for " + npcName + " — queued for retry.")));
             return null;
         });
+    }
+
+    /**
+     * /npc fillnotescache [count]
+     * Generates {@code count} AI threat notes in a single call and stores them in
+     * npcData/threat_notes_cache.json so they can be consumed one-by-one by
+     * setupSpecialChest without a live AI call.
+     */
+    public static int fillNotesCache(CommandSourceStack source, int count) {
+        MinecraftServer server = source.getServer();
+        // Use a variety of structure names so the notes feel diverse.
+        String[] types = { "ancient ruins", "jungle temple", "graveyard", "haunted manor", "dungeon",
+                "mountain fortress", "cursed chapel", "abandoned keep" };
+        String structureName = types[new java.util.Random().nextInt(types.length)];
+        source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                "[NPC] Requesting " + count + " threat notes from AI (type: " + structureName + ")..."), false);
+        LOGGER.info("fillNotesCache: requesting {} notes, structure='{}'", count, structureName);
+
+        com.falazar.farmupcraft.AIManager.generateChestThreatNotesBatch(structureName, count)
+                .orTimeout(90, java.util.concurrent.TimeUnit.SECONDS)
+                .whenComplete((notes, err) -> server.execute(() -> {
+                    if (err != null || notes == null || notes.isEmpty()) {
+                        source.sendFailure(net.minecraft.network.chat.Component.literal(
+                                "[NPC] AI failed to return threat notes: "
+                                        + (err != null ? err.getMessage() : "empty response")));
+                        return;
+                    }
+                    com.falazar.farmupcraft.util.NpcDataLoader.addThreatNotes(notes);
+                    int total = com.falazar.farmupcraft.util.NpcDataLoader.getThreatNoteCacheSize();
+                    source.sendSuccess(() -> net.minecraft.network.chat.Component.literal(
+                            "[NPC] Added " + notes.size() + " note(s) to cache. Cache total: " + total + ".")
+                            .withStyle(net.minecraft.ChatFormatting.GREEN), false);
+                }));
+        return 0;
     }
 
     /**

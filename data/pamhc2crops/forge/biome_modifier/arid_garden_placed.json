@@ -1,6 +1,0 @@
-{
-  "type": "forge:add_features",
-  "biomes": "#forge:is_dry/overworld",
-  "features": "pamhc2crops:arid_garden_placed",
-  "step": "vegetal_decoration"
-}

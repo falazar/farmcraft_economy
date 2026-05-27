@@ -26,7 +26,9 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
 import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructurePiece;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
 
 import java.util.*;
@@ -42,7 +44,7 @@ public class StructureCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "structure"
-        LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("structure");
+        LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("structures");
 
         // Define the "find" sub-command
         LiteralArgumentBuilder<CommandSourceStack> findBuilder = Commands.literal("find")
@@ -113,6 +115,31 @@ public class StructureCommand {
                         }));
         builder.then(unmarkBuilder);
 
+        // /structure detail <N> [chests] — show Nth nearest structure from the whole DB
+        builder.then(Commands.literal("detail")
+                .requires(stack -> stack.hasPermission(2))
+                .then(Commands.argument("index", IntegerArgumentType.integer(1, 500))
+                        .executes(context -> FarmCraftCommand.showNearestStructureDetail(
+                                context.getSource(),
+                                IntegerArgumentType.getInteger(context, "index"),
+                                false))
+                        .then(Commands.literal("chests")
+                                .executes(context -> FarmCraftCommand.showNearestStructureDetail(
+                                        context.getSource(),
+                                        IntegerArgumentType.getInteger(context, "index"),
+                                        true)))));
+
+        // /structures inside — show details of the structure you're currently standing
+        // in
+        builder.then(Commands.literal("inside")
+                .requires(stack -> stack.hasPermission(2))
+                .executes(context -> showInsideStructure(context.getSource())));
+
+        // /structure setupspecialchest — look at a chest while standing in a structure
+        builder.then(Commands.literal("setupspecialchest")
+                .requires(stack -> stack.hasPermission(2))
+                .executes(context -> FarmCraftCommand.setupSpecialChestCommand(context.getSource())));
+
         // Register the main command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -142,92 +169,298 @@ public class StructureCommand {
         }
     }
 
+    /**
+     * Shows details (including chests) for the structure the player is standing
+     * inside.
+     */
+    public static int showInsideStructure(CommandSourceStack source) {
+        try {
+            Entity nullablePlayer = source.getEntity();
+            Player playerSource = nullablePlayer instanceof Player p ? p : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Must be run by a player."));
+                return 0;
+            }
+            ServerLevel world = source.getLevel();
+            var structureDb = ModEvents.getGameStructureDatabase(world);
+
+            com.falazar.farmupcraft.data.GameStructureData s = com.falazar.farmupcraft.util.StructureUtils
+                    .findStructureForPlayer(structureDb, playerSource);
+            if (s == null) {
+                source.sendFailure(Component.literal(
+                        "You are not inside any known structure (no bbox match). Try /structures find all 5 first."));
+                return 0;
+            }
+
+            // Reuse the detail display from FarmCraftCommand — find the global index so
+            // the output header is consistent.
+            BlockPos playerPos = playerSource.blockPosition();
+            java.util.List<java.util.Map.Entry<Long, com.falazar.farmupcraft.data.GameStructureData>> all = new java.util.ArrayList<>();
+            for (Long id : structureDb.getKeys()) {
+                com.falazar.farmupcraft.data.GameStructureData sd = structureDb.getData(id);
+                if (sd != null)
+                    all.add(java.util.Map.entry(id, sd));
+            }
+            all.sort(java.util.Comparator.comparingDouble(e -> e.getValue().getCenterPos().distSqr(playerPos)));
+            int idx = 1;
+            for (int i = 0; i < all.size(); i++) {
+                if (all.get(i).getKey().equals(s.getId())) {
+                    idx = i + 1;
+                    break;
+                }
+            }
+
+            return FarmCraftCommand.showNearestStructureDetail(source, idx, true);
+        } catch (Exception ex) {
+            LOGGER.error("showInsideStructure error: ", ex);
+            source.sendFailure(Component.literal("Error — see log."));
+            return 0;
+        }
+    }
+
     // Find nearby structures command
     public static int findNearbyStructures(CommandSourceStack source, String filter, int radius) {
-        // Get the player's current position
         Entity nullableSummoner = source.getEntity();
         Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
         if (playerSource == null) {
             source.sendFailure(Component.literal("This command can only be used by a player."));
             return 0;
         }
-
         ServerLevel world = (ServerLevel) source.getLevel();
 
-        // Get the player's village data
         VillageData playerVillage = null;
-        if (playerSource != null) {
-            var playerDatabase = ModEvents.getPlayerDatabase();
-            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
-            if (playerData != null && playerData.getHomeVillage() != null) {
-                playerVillage = playerData.getHomeVillage();
-            }
+        var playerDatabase = ModEvents.getPlayerDatabase();
+        PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
+        if (playerData != null && playerData.getHomeVillage() != null) {
+            playerVillage = playerData.getHomeVillage();
         }
 
-        // Get the list of structures
-        List<StructureInfo> sortedStructures = findNearbyStructuresForVillage(BlockPos.containing(source.getPosition()),
-                world, playerSource, playerVillage, filter, radius);
+        List<StructureInfo> sortedStructures = findNearbyStructuresForVillage(
+                BlockPos.containing(source.getPosition()), world, playerSource, playerVillage, filter, radius);
 
         if (sortedStructures.isEmpty()) {
             source.sendFailure(Component.literal("No structures found nearby."));
             return 0;
         }
 
-        // Show count.
-        source.sendSystemMessage(Component.literal("Found " + sortedStructures.size() + " structures nearby.")
-                .withStyle(ChatFormatting.GOLD));
-
-        // STEP 4: Show results list with dist and tp clickable for testing.
-        for (final StructureInfo structureInfo : sortedStructures) {
-            int dist = (int) Math.sqrt(structureInfo.getPosition().distSqr(BlockPos.containing(source.getPosition())));
-
-            // Check if structure is on a claimed plot by the player's village
-            String claimedStatus = "";
-            ChunkPos structureChunk = new ChunkPos(structureInfo.getPosition());
-            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
-            ChunkData chunkData = chunkDatabase.getData(structureChunk.toLong());
-
-            if (chunkData != null && !chunkData.getType().equals("village")) {
-                claimedStatus = " (claimed)";
-            } else if (chunkData == null) {
-                claimedStatus = " (out of range)";
-            }
-
-            // Get visited status from database
-            String visitedStatus = "";
-            var gameStructureDatabase = ModEvents.getGameStructureDatabase((ServerLevel) source.getLevel());
-            GameStructureData structureData = gameStructureDatabase.getData(structureInfo.getId());
-            if (structureData != null && structureData.wasVisited()) {
-                visitedStatus = " (visited)";
-            }
-
-            // Create the base message component
-            MutableComponent baseMessage = Component.literal(
-                    (sortedStructures.indexOf(structureInfo) + 1) + "." // index starts at 0, so add 1
-                            + " " + getCommonNameForStructure(structureInfo.getType()) + claimedStatus + visitedStatus); // common
-                                                                                                                         // name
-
-            if (playerSource != null && playerSource.isCreative()) {
-                // Creative mode: show clickable teleport command
-                baseMessage.append(Component.literal(" " +
-                        " " + structureInfo.getPosition().toShortString()
-                        + " d=" + dist).withStyle(ChatFormatting.YELLOW).withStyle(style -> {
-                            return style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
-                                    "/tp " + structureInfo.getPosition().getX() + " "
-                                            + structureInfo.getPosition().getY() + " "
-                                            + structureInfo.getPosition().getZ()));
-                        }));
-            } else {
-                // Non-creative mode: show just coordinates
-                baseMessage.append(Component.literal(" " +
-                        " " + structureInfo.getPosition().toShortString()
-                        + " d=" + dist).withStyle(ChatFormatting.YELLOW));
-            }
-
-            source.sendSystemMessage(baseMessage);
+        Entity entity = source.getEntity();
+        boolean isDebug = false;
+        if (entity instanceof net.minecraft.world.entity.player.Player player) {
+            isDebug = com.falazar.farmupcraft.ChunkManager.isDebugPlayer(player);
+        }
+        if (isDebug) {
+            source.sendSystemMessage(Component.literal("Found " + sortedStructures.size() + " structures nearby.")
+                    .withStyle(ChatFormatting.GOLD));
+            printStructureList(source, sortedStructures, playerSource, world);
+            scanAndSetupChests(source, sortedStructures, world);
         }
 
         return 0;
+    }
+
+    /**
+     * Prints the numbered structure list with claimed/visited status and clickable
+     * TP.
+     */
+    private static void printStructureList(CommandSourceStack source, List<StructureInfo> structures,
+            Player playerSource, ServerLevel world) {
+        BlockPos origin = BlockPos.containing(source.getPosition());
+        var gameStructureDatabase = ModEvents.getGameStructureDatabase(world);
+        DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+
+        Entity entity = source.getEntity();
+        boolean isDebug = false;
+        if (entity instanceof net.minecraft.world.entity.player.Player player) {
+            isDebug = com.falazar.farmupcraft.ChunkManager.isDebugPlayer(player);
+        }
+        if (!isDebug)
+            return;
+        for (int i = 0; i < structures.size(); i++) {
+            StructureInfo si = structures.get(i);
+            int dist = (int) Math.sqrt(si.getPosition().distSqr(origin));
+            ChunkData chunkData = chunkDatabase.getData(new ChunkPos(si.getPosition()).toLong());
+            String claimedStatus = chunkData == null ? " (oo range)"
+                    : (!chunkData.getType().equals("village") ? " (claimed)" : "");
+            GameStructureData sd = gameStructureDatabase.getData(si.getId());
+            String visitedStatus = (sd != null && sd.wasVisited()) ? " (visited)" : "";
+            int idx = i + 1;
+            final int detailIdx = idx;
+            String coords = si.getPosition().getX() + "," + si.getPosition().getY() + "," + si.getPosition().getZ();
+            String tpCmd = "/tp " + si.getPosition().getX() + " " + si.getPosition().getY() + " "
+                    + si.getPosition().getZ();
+            MutableComponent msg = Component.literal(idx + ". ");
+            msg.append(Component.literal(getCommonNameForStructure(si.getType()))
+                    .withStyle(style -> style.withColor(ChatFormatting.WHITE).withUnderlined(true)
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                    "/structures detail " + detailIdx))));
+            msg.append(Component.literal(claimedStatus + visitedStatus + " "));
+            if (playerSource != null && playerSource.isCreative()) {
+                msg.append(Component.literal(coords)
+                        .withStyle(style -> style.withColor(ChatFormatting.YELLOW).withUnderlined(true)
+                                .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, tpCmd))));
+            } else {
+                msg.append(Component.literal(coords).withStyle(ChatFormatting.YELLOW));
+            }
+            msg.append(Component.literal(" d=" + dist));
+            source.sendSystemMessage(msg);
+        }
+    }
+
+    /**
+     * Scans each structure's bbox for chests, persists totalChestCount, and
+     * auto-plants a special chest if the structure is eligible.
+     */
+    public static void scanAndSetupChests(CommandSourceStack source, List<StructureInfo> structures,
+            ServerLevel world) {
+        var structureDb = ModEvents.getGameStructureDatabase(world);
+        int chestsScanned = 0;
+        int specialChestsPlanted = 0;
+
+        Entity entity = source.getEntity();
+        boolean isDebug = false;
+        if (entity instanceof net.minecraft.world.entity.player.Player player) {
+            isDebug = com.falazar.farmupcraft.ChunkManager.isDebugPlayer(player);
+        }
+        if (!isDebug)
+            return;
+        for (StructureInfo si : structures) {
+            GameStructureData sd = structureDb.getData(si.getId());
+            if (sd == null) {
+                LOGGER.info("scanAndSetupChests: no DB entry for id={}", si.getId());
+                continue;
+            }
+            if (!sd.hasBoundingBox()) {
+                LOGGER.info("scanAndSetupChests: no bbox for {} (id={})", sd.getName(), sd.getId());
+                continue;
+            }
+            int chunkCount = sd.hasChunkPositions() ? sd.getChunkPositions().size()
+                    : ((sd.getMaxPos().getX() >> 4) - (sd.getMinPos().getX() >> 4) + 1)
+                            * ((sd.getMaxPos().getZ() >> 4) - (sd.getMinPos().getZ() >> 4) + 1);
+            if (chunkCount >= 80) {
+                LOGGER.info("scanAndSetupChests: skipping {} — too large ({} chunks)", sd.getName(), chunkCount);
+                source.sendSystemMessage(Component.literal(
+                        "  Skipping " + sd.getName() + " — too large (" + chunkCount + " chunks).")
+                        .withStyle(ChatFormatting.GRAY));
+                continue;
+            }
+            List<BlockPos> foundChests = scanBboxForChests(sd, world);
+            LOGGER.info("scanAndSetupChests: {} — found {} chest(s), visited={}, hasSpecial={}",
+                    sd.getName(), foundChests.size(), sd.wasVisited(), sd.hasSpecialChest());
+            boolean plantedSpecial = false;
+            if (!foundChests.isEmpty()) {
+                chestsScanned += foundChests.size();
+                if (sd.getTotalChestCount() != foundChests.size()) {
+                    sd.setTotalChestCount(foundChests.size());
+                    structureDb.putData(sd.getId(), sd);
+                    structureDb.setDirty();
+                }
+                if (!sd.wasVisited() && !sd.hasSpecialChest()) {
+                    if (VillageCommand.setupSpecialChest(world, sd, foundChests, structureDb)) {
+                        specialChestsPlanted++;
+                        plantedSpecial = true;
+                    }
+                }
+            } else if (!sd.wasVisited() && !sd.hasSpecialChest()) {
+                // No chests found — place one at the structure's center on solid ground.
+                BlockPos placed = placeChestAtStructureCenter(sd, world);
+                if (placed != null) {
+                    chestsScanned++;
+                    sd.setTotalChestCount(1);
+                    structureDb.putData(sd.getId(), sd);
+                    structureDb.setDirty();
+                    if (VillageCommand.setupSpecialChest(world, sd, java.util.List.of(placed), structureDb)) {
+                        specialChestsPlanted++;
+                        plantedSpecial = true;
+                    }
+                    source.sendSystemMessage(Component.literal(
+                            "  " + sd.getName() + ": placed chest at " + placed.toShortString())
+                            .withStyle(ChatFormatting.YELLOW));
+                } else {
+                    LOGGER.info("scanAndSetupChests: {} — could not find solid ground to place chest", sd.getName());
+                }
+            }
+            String chestMsg = "  " + sd.getName() + ": " + foundChests.size() + " chest(s)";
+            if (plantedSpecial)
+                chestMsg += " [special chest planted]";
+            else if (sd.hasSpecialChest())
+                chestMsg += " [has special]";
+            else if (sd.wasVisited())
+                chestMsg += " [visited]";
+            source.sendSystemMessage(Component.literal(chestMsg).withStyle(ChatFormatting.AQUA));
+        }
+
+        if (chestsScanned > 0 || specialChestsPlanted > 0) {
+            source.sendSystemMessage(Component.literal(
+                    "Total: " + chestsScanned + " chest(s), "
+                            + specialChestsPlanted + " special chest(s) planted.")
+                    .withStyle(ChatFormatting.GOLD));
+        }
+    }
+
+    /**
+     * Walks a structure's bounding box and returns all chest/barrel positions.
+     * Only reads blocks in loaded chunks — unloaded chunks always read as air.
+     */
+    public static List<BlockPos> scanBboxForChests(GameStructureData sd, ServerLevel world) {
+        List<BlockPos> found = new ArrayList<>();
+        int unloadedChunks = 0;
+        for (int bx = sd.getMinPos().getX(); bx <= sd.getMaxPos().getX(); bx++) {
+            for (int bz = sd.getMinPos().getZ(); bz <= sd.getMaxPos().getZ(); bz++) {
+                int cx = bx >> 4;
+                int cz = bz >> 4;
+                if (!world.isLoaded(new BlockPos(bx, 64, bz))) {
+                    unloadedChunks++;
+                    continue;
+                }
+                for (int by = sd.getMinPos().getY(); by <= sd.getMaxPos().getY(); by++) {
+                    BlockPos bp = new BlockPos(bx, by, bz);
+                    if (com.falazar.farmupcraft.StructureManager.isStructureChest(world.getBlockState(bp).getBlock()))
+                        found.add(bp.immutable());
+                }
+            }
+        }
+        if (unloadedChunks > 0)
+            LOGGER.info("scanBboxForChests: {} — skipped {} column(s) in unloaded chunks", sd.getName(),
+                    unloadedChunks);
+        return found;
+    }
+
+    /**
+     * Finds solid ground near the structure's center (radius 5, center-first
+     * spiral)
+     * and places a vanilla chest there. Returns the placed position, or null on
+     * failure.
+     */
+    private static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world) {
+        BlockPos center = sd.getCenterPos();
+        int searchTop = sd.hasBoundingBox() ? sd.getMaxPos().getY() + 2 : center.getY() + 10;
+        int searchBot = sd.hasBoundingBox() ? sd.getMinPos().getY() : Math.max(center.getY() - 20, 0);
+
+        for (int dx = -5; dx <= 5; dx++) {
+            for (int dz = -5; dz <= 5; dz++) {
+                int cx = center.getX() + dx;
+                int cz = center.getZ() + dz;
+                for (int y = searchTop; y >= searchBot; y--) {
+                    BlockPos candidate = new BlockPos(cx, y, cz);
+                    if (!world.isLoaded(candidate))
+                        continue;
+                    BlockPos below = candidate.below();
+                    net.minecraft.world.level.block.state.BlockState belowState = world.getBlockState(below);
+                    net.minecraft.world.level.block.state.BlockState atState = world.getBlockState(candidate);
+                    net.minecraft.world.level.block.state.BlockState aboveState = world
+                            .getBlockState(candidate.above());
+                    if (belowState.isSolidRender(world, below)
+                            && (atState.isAir() || atState.canBeReplaced())
+                            && (aboveState.isAir() || aboveState.canBeReplaced())) {
+                        world.setBlock(candidate, net.minecraft.world.level.block.Blocks.CHEST.defaultBlockState(),
+                                net.minecraft.world.level.block.Block.UPDATE_ALL);
+                        LOGGER.info("placeChestAtStructureCenter: placed chest at {} in {}", candidate, sd.getName());
+                        return candidate.immutable();
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     // Find nearby structures for a specific village
@@ -266,7 +499,7 @@ public class StructureCommand {
                 singleIdSet.add(id);
                 world.structureManager().fillStartsForStructure(structureEntry.getKey(), singleIdSet,
                         structureStart -> processStructureStart(structureStart, type, id, structureInfos,
-                                gameStructureDatabase, newStructuresSaved, filter, structureEntry));
+                                gameStructureDatabase, newStructuresSaved, filter, structureEntry, playerSource));
             }
         }
 
@@ -277,6 +510,16 @@ public class StructureCommand {
         gameStructureDatabase.setDirty();
         LOGGER.info("Found " + structureInfos.size() + " structures, saved " + newStructuresSaved[0]
                 + " NEW structures to GameStructureData database");
+
+        // DEBUG: show totals in chat to the triggering player (Bosspanda only).
+        if (playerSource instanceof net.minecraft.server.level.ServerPlayer sp
+                && com.falazar.farmupcraft.ChunkManager.isDebugPlayer(sp)) {
+            int existing = structureInfos.size() - newStructuresSaved[0];
+            sp.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "[DEBUG] Scan: " + structureInfos.size() + " total ("
+                            + newStructuresSaved[0] + " new, " + existing + " existing)")
+                    .withStyle(ChatFormatting.GRAY));
+        }
 
         return structureInfos;
     }
@@ -328,7 +571,7 @@ public class StructureCommand {
             String type, Long id, List<StructureInfo> structureInfos,
             DataBase<Long, GameStructureData> gameStructureDatabase,
             int[] newStructuresSaved, String filter,
-            Map.Entry<Structure, LongSet> structureEntry) {
+            Map.Entry<Structure, LongSet> structureEntry, Player playerSource) {
         BlockPos structureCenterPos;
 
         // Hack for mineshafts and things that are too large a bounding box.
@@ -379,37 +622,107 @@ public class StructureCommand {
                 isOnClaimedPlot = true;
             }
 
+            // Compute the exact set of chunks covered by each structure piece.
+            Set<Long> pieceChunks = new LinkedHashSet<>();
+            for (StructurePiece piece : structureStart.getPieces()) {
+                BoundingBox pbb = piece.getBoundingBox();
+                int minCX = pbb.minX() >> 4;
+                int minCZ = pbb.minZ() >> 4;
+                int maxCX = pbb.maxX() >> 4;
+                int maxCZ = pbb.maxZ() >> 4;
+                for (int cx = minCX; cx <= maxCX; cx++) {
+                    for (int cz = minCZ; cz <= maxCZ; cz++) {
+                        pieceChunks.add(new ChunkPos(cx, cz).toLong());
+                    }
+                }
+            }
+
             GameStructureData structureData = new GameStructureData(
                     id, // Use the Long ID directly
                     getCommonNameForStructure(type), // Use common name for display
                     structureCenterPos, // Center position
                     type, // Original type string
                     isOnClaimedPlot, // Whether on claimed plot
-                    false // Not visited yet
-            );
+                    false, // Not visited yet
+                    new BlockPos(structureStart.getBoundingBox().minX(), structureStart.getBoundingBox().minY(),
+                            structureStart.getBoundingBox().minZ()),
+                    new BlockPos(structureStart.getBoundingBox().maxX(), structureStart.getBoundingBox().maxY(),
+                            structureStart.getBoundingBox().maxZ()),
+                    new ArrayList<>(pieceChunks));
             gameStructureDatabase.putData(id, structureData);
             gameStructureDatabase.setDirty();
             newStructuresSaved[0]++;
             LOGGER.info("Saved NEW structure to database: " + type + " (ID: " + id + ") at " + structureCenterPos
                     + " claimed: " + isOnClaimedPlot);
-        } else {
-            // Update claimed status for existing structures
-            GameStructureData existingData = gameStructureDatabase.getData(id);
-            if (existingData != null) {
-                ChunkPos structureChunk = new ChunkPos(structureCenterPos);
-                DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
-                ChunkData chunkData = chunkDatabase.getData(structureChunk.toLong());
-                boolean isOnClaimedPlot = (chunkData != null && !chunkData.getType().equals("village"));
-
-                if (existingData.isOnClaimedPlot() != isOnClaimedPlot) {
-                    existingData.setOnClaimedPlot(isOnClaimedPlot);
-                    gameStructureDatabase.putData(id, existingData);
-                    gameStructureDatabase.setDirty();
-                    LOGGER.info("Updated structure claimed status: " + type + " (ID: " + id + ") claimed: "
-                            + isOnClaimedPlot);
+            // DEBUG: broadcast to all players so we can see new discoveries in-game.
+            String newStructName = getCommonNameForStructure(type);
+            String newStructCoords = structureCenterPos.getX() + "," + structureCenterPos.getY() + ","
+                    + structureCenterPos.getZ();
+            if (playerSource instanceof net.minecraft.server.level.ServerPlayer sp) {
+                for (net.minecraft.server.level.ServerPlayer online : sp.getServer().getPlayerList().getPlayers()) {
+                    if (com.falazar.farmupcraft.ChunkManager.isDebugPlayer(online)) {
+                        online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                                "[DEBUG] New structure found: " + newStructName + " at " + newStructCoords)
+                                .withStyle(ChatFormatting.GREEN));
+                    }
                 }
             }
-            LOGGER.info("Structure already exists in database, skipping: " + type + " (ID: " + id + ")");
+        } else {
+            // Update claimed status and backfill bbox/chunkPositions for existing
+            // structures if missing.
+            GameStructureData existingData = gameStructureDatabase.getData(id);
+            if (existingData != null) {
+                boolean changed = false;
+
+                // Only update claimed status if the structure has been visited —
+                // unvisited structures should not be marked claimed by a scan.
+                if (existingData.wasVisited()) {
+                    ChunkPos structureChunk = new ChunkPos(structureCenterPos);
+                    DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
+                    ChunkData chunkData = chunkDatabase.getData(structureChunk.toLong());
+                    boolean isOnClaimedPlot = (chunkData != null && !chunkData.getType().equals("village"));
+                    if (existingData.isOnClaimedPlot() != isOnClaimedPlot) {
+                        existingData.setOnClaimedPlot(isOnClaimedPlot);
+                        changed = true;
+                        LOGGER.info("Updated structure claimed status: " + type + " (ID: " + id + ") claimed: "
+                                + isOnClaimedPlot);
+                    }
+                }
+
+                // Backfill bounding box if not stored yet.
+                if (!existingData.hasBoundingBox()) {
+                    existingData.setMinPos(new BlockPos(structureStart.getBoundingBox().minX(),
+                            structureStart.getBoundingBox().minY(), structureStart.getBoundingBox().minZ()));
+                    existingData.setMaxPos(new BlockPos(structureStart.getBoundingBox().maxX(),
+                            structureStart.getBoundingBox().maxY(), structureStart.getBoundingBox().maxZ()));
+                    LOGGER.info("Backfilled bbox for: " + type + " (ID: " + id + ") min=" + existingData.getMinPos()
+                            + " max=" + existingData.getMaxPos());
+                    changed = true;
+                }
+
+                // Backfill chunk positions from pieces if not stored yet.
+                if (!existingData.hasChunkPositions()) {
+                    Set<Long> pieceChunks = new LinkedHashSet<>();
+                    for (StructurePiece piece : structureStart.getPieces()) {
+                        BoundingBox pbb = piece.getBoundingBox();
+                        for (int cx = pbb.minX() >> 4; cx <= pbb.maxX() >> 4; cx++) {
+                            for (int cz = pbb.minZ() >> 4; cz <= pbb.maxZ() >> 4; cz++) {
+                                pieceChunks.add(new ChunkPos(cx, cz).toLong());
+                            }
+                        }
+                    }
+                    existingData.setChunkPositions(new ArrayList<>(pieceChunks));
+                    LOGGER.info("Backfilled " + pieceChunks.size() + " chunk(s) for: " + type + " (ID: " + id + ")");
+                    changed = true;
+                }
+
+                if (changed) {
+                    gameStructureDatabase.putData(id, existingData);
+                    gameStructureDatabase.setDirty();
+                } else {
+                    LOGGER.info("Structure already fully populated, skipping: " + type + " (ID: " + id + ")");
+                }
+            }
         }
 
         // This seems to indicate we have bounding box and such on things? hmmm
@@ -442,6 +755,21 @@ public class StructureCommand {
                     return type;
                 }
         }
+    }
+
+    /**
+     * Returns true if any ruined_portal structure exists in the given chunk.
+     * Uses the world's structure manager directly so no prior scan is needed.
+     */
+    public static boolean chunkHasRuinedPortal(ChunkPos chunkPos, ServerLevel world) {
+        BlockPos checkPos = new BlockPos(chunkPos.x * 16, 64, chunkPos.z * 16);
+        for (Map.Entry<Structure, LongSet> entry : world.structureManager().getAllStructuresAt(checkPos).entrySet()) {
+            String type = world.registryAccess().registry(Registries.STRUCTURE).get().getKey(entry.getKey()).toString();
+            if (type.contains("ruined_portal")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // todo chekc water tower, not showing up.

@@ -55,6 +55,12 @@ public class WorldScheduler {
         if (fiveMinCounter >= TICKS_PER_5_MIN) {
             fiveMinCounter = 0;
             checkHardMode();
+            // Retry one pending NPC profile generation per 5-minute window.
+            MinecraftServer retryServer = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+            if (retryServer != null) {
+                com.falazar.farmupcraft.command.NpcCommand.tickRetryQueue(retryServer);
+                com.falazar.farmupcraft.command.NpcCommand.autoReplenishNotesIfNeeded(retryServer);
+            }
         }
 
         tickCounter++;

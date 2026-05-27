@@ -21,6 +21,10 @@ import java.util.function.Supplier;
  */
 public class AddJMWaypointPacket {
 
+    // Create waypoints as JourneyMap-owned so players can right-click remove them
+    // like normal JM waypoints on the map UI.
+    private static final String JOURNEYMAP_OWNER_MODID = "journeymap";
+
     private final int x;
     private final int y;
     private final int z;
@@ -78,12 +82,13 @@ public class AddJMWaypointPacket {
 
         ResourceKey<Level> dim = ResourceKey.create(Registries.DIMENSION, new ResourceLocation(msg.dimId));
         Waypoint waypoint = new Waypoint(
-                FarmUpCraft.MODID,
+                JOURNEYMAP_OWNER_MODID,
                 msg.name,
                 dim,
                 new BlockPos(msg.x, msg.y, msg.z));
         waypoint.setColor(msg.color);
         waypoint.setPersistent(msg.persistent);
+        waypoint.setEditable(true);
 
         try {
             api.show(waypoint);

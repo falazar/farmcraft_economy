@@ -158,6 +158,16 @@ public class VillageCommand {
                 .executes(context -> {
                     return showVillageStructures(context.getSource(), 20, "all");
                 })
+                .then(Commands.argument("index", IntegerArgumentType.integer(1, 200))
+                        .executes(context -> {
+                            int index = IntegerArgumentType.getInteger(context, "index");
+                            return showVillageStructureDetail(context.getSource(), index, false);
+                        })
+                        .then(Commands.literal("chests")
+                                .executes(context -> {
+                                    int index = IntegerArgumentType.getInteger(context, "index");
+                                    return showVillageStructureDetail(context.getSource(), index, true);
+                                })))
                 .then(Commands.argument("filter", StringArgumentType.word())
                         .suggests((context, builder2) -> {
                             builder2.suggest("all");
@@ -1478,7 +1488,9 @@ public class VillageCommand {
             int newChunksCount = addNewVillageChunks(village, playerSource);
             villageDatabase.putData(village.getUUID(), village);
 
-            // STEP 7: Find already-visited structures now inside the newly claimed chunks.
+            // STEP 7: Find already-visited SURFACE structures now inside the newly claimed
+            // chunks.
+            // Underground structures (Y < 60) are secrets — don't spoil them here.
             List<String> newlyFoundStructureNames = new ArrayList<>();
             if (playerSource.level() instanceof ServerLevel serverLevel) {
                 var structureDb = ModEvents.getGameStructureDatabase(serverLevel);
@@ -1486,6 +1498,9 @@ public class VillageCommand {
                 for (Long structureId : structureDb.getKeys()) {
                     GameStructureData sd = structureDb.getData(structureId);
                     if (sd == null || !sd.wasVisited())
+                        continue;
+                    // Skip underground structures — they are secrets!
+                    if (sd.getCenterPos().getY() < 60)
                         continue;
                     ChunkPos sc = new ChunkPos(sd.getCenterPos());
                     ChunkData cd = chunkDb.getData(sc.toLong());
@@ -1598,11 +1613,8 @@ public class VillageCommand {
                     villageDatabase.putData(otherVillage.getUUID(), otherVillage);
                     village.addClaimedChunk(chunkPos);
                     villageDatabase.putData(village.getUUID(), otherVillage);
-
-                    // Update structure claim flags for this chunk
-                    if (playerSource.level() instanceof ServerLevel serverLevel) {
-                        StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
-                    }
+                    // NOTE: Do NOT updateStructuresInChunk on takeover — only plot buys claim
+                    // structures.
 
                     // Add world chat message. Show center chunk pos.
                     MutableComponent message = Component.literal("Village " + village.getName()
@@ -1621,11 +1633,9 @@ public class VillageCommand {
             ChunkData chunk = new ChunkData("village", player.getId(), villageId);
             chunkDatabase.putData(chunkPos.toLong(), chunk);
             village.addClaimedChunk(chunkPos);
-
-            // Update structure claim flags for this chunk
-            if (playerSource.level() instanceof ServerLevel serverLevel) {
-                StructureCommand.updateStructuresInChunk(chunkPos, true, serverLevel);
-            }
+            // NOTE: Do NOT call updateStructuresInChunk here — village expansion should
+            // never auto-claim structures. Structures become claimed only when a player
+            // explicitly buys a plot on the chunk.
 
             chunksCount--;
         } // while
@@ -1852,7 +1862,7 @@ public class VillageCommand {
 
             // Add to a count of biomes hash.
             String biomeString = biomeName.toString();
-            LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeString);
+            // LOGGER.info("DEBUG Biome name for chunk " + chunk + " is " + biomeString);
             if (biomeCounts.containsKey(biomeString)) {
                 // Increment the count for this biome
                 biomeCounts.put(biomeString, biomeCounts.get(biomeString) + 1);
@@ -2195,6 +2205,375 @@ public class VillageCommand {
         }
     }
 
+    // Admin command: show detailed debug info for the Nth structure in the village
+    // list.
+    public static int showVillageStructureDetail(CommandSourceStack source, int index, boolean searchChests) {
+        try {
+            Entity nullablePlayer = source.getEntity();
+            Player playerSource = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("This command can only be used by a player."));
+                return 0;
+            }
+
+            ServerLevel world = (ServerLevel) source.getLevel();
+
+            DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
+            PlayerData playerData = playerDatabase.getData(playerSource.getUUID());
+            if (playerData == null || playerData.getHomeVillageUUID() == null) {
+                source.sendFailure(Component.literal("You are not part of a village."));
+                return 0;
+            }
+
+            DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
+            VillageData village = villageDatabase.getData(playerData.getHomeVillageUUID());
+            if (village == null) {
+                source.sendFailure(Component.literal("No village data found."));
+                return 0;
+            }
+
+            // Get same sorted list as showVillageStructures (all, sorted by distance from
+            // player)
+            List<Map.Entry<Long, GameStructureData>> structuresList = getVillageStructuresList(village, world);
+            BlockPos playerPos = playerSource.blockPosition();
+            structuresList
+                    .sort(Comparator.comparingDouble(entry -> entry.getValue().getCenterPos().distSqr(playerPos)));
+
+            if (index < 1 || index > structuresList.size()) {
+                source.sendFailure(Component.literal(
+                        "Index " + index + " out of range. Village has " + structuresList.size()
+                                + " structure(s) in the list."));
+                return 0;
+            }
+
+            Map.Entry<Long, GameStructureData> entry = structuresList.get(index - 1);
+            Long structureId = entry.getKey();
+            GameStructureData s = entry.getValue();
+
+            int distance = (int) Math.sqrt(s.getCenterPos().distSqr(playerPos));
+
+            source.sendSystemMessage(
+                    Component.literal("=== Structure #" + index + " ===").withStyle(ChatFormatting.GOLD));
+            source.sendSystemMessage(Component.literal("Name:   " + s.getName()).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(Component.literal("Type:   " + s.getType()).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(Component.literal("ID:     " + structureId).withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(
+                    Component.literal("Center: " + s.getCenterPos().toShortString() + "  (d=" + distance + ")")
+                            .withStyle(ChatFormatting.WHITE));
+            source.sendSystemMessage(Component.literal("Claimed:" + s.isOnClaimedPlot() + "  Visited:" + s.wasVisited())
+                    .withStyle(ChatFormatting.WHITE));
+
+            // Bounding box
+            if (s.hasBoundingBox()) {
+                BlockPos mn = s.getMinPos();
+                BlockPos mx = s.getMaxPos();
+                int sizeX = mx.getX() - mn.getX();
+                int sizeY = mx.getY() - mn.getY();
+                int sizeZ = mx.getZ() - mn.getZ();
+                source.sendSystemMessage(Component.literal(
+                        "BBox:   min=" + mn.toShortString() + "  max=" + mx.toShortString())
+                        .withStyle(ChatFormatting.AQUA));
+                source.sendSystemMessage(Component.literal(
+                        "Size:   " + sizeX + "x" + sizeY + "x" + sizeZ).withStyle(ChatFormatting.AQUA));
+            } else {
+                source.sendSystemMessage(
+                        Component.literal("BBox:   (not stored — run /village structures rescan to repopulate)")
+                                .withStyle(ChatFormatting.YELLOW));
+            }
+
+            // Chunks: prefer exact piece-level chunk list, fall back to bbox range
+            if (s.hasChunkPositions()) {
+                List<Long> chunks = s.getChunkPositions();
+                source.sendSystemMessage(Component.literal(
+                        "Chunks: " + chunks.size() + " chunk(s) (from structure pieces):")
+                        .withStyle(ChatFormatting.AQUA));
+                StringBuilder chunkList = new StringBuilder();
+                for (Long packed : chunks) {
+                    ChunkPos cp = new ChunkPos(packed);
+                    if (chunkList.length() > 0)
+                        chunkList.append("  ");
+                    chunkList.append("[").append(cp.x).append(",").append(cp.z).append("]");
+                }
+                source.sendSystemMessage(Component.literal("  " + chunkList).withStyle(ChatFormatting.AQUA));
+            } else if (s.hasBoundingBox()) {
+                BlockPos mn = s.getMinPos();
+                BlockPos mx = s.getMaxPos();
+                int minCX = mn.getX() >> 4;
+                int minCZ = mn.getZ() >> 4;
+                int maxCX = mx.getX() >> 4;
+                int maxCZ = mx.getZ() >> 4;
+                int chunkCount = (maxCX - minCX + 1) * (maxCZ - minCZ + 1);
+                source.sendSystemMessage(Component.literal(
+                        "Chunks: " + chunkCount + " chunk(s) bbox range [" + minCX + "," + minCZ + "] to [" + maxCX
+                                + "," + maxCZ + "] (rescan for exact)")
+                        .withStyle(ChatFormatting.YELLOW));
+            } else {
+                ChunkPos structureChunk = new ChunkPos(s.getCenterPos());
+                source.sendSystemMessage(Component.literal(
+                        "Chunk:  [" + structureChunk.x + "," + structureChunk.z
+                                + "] (center chunk only — rescan to populate)")
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+
+            // Chest search — only if requested and structure is small enough.
+            if (searchChests) {
+                scanAndShowStructureChests(source, s, world);
+            }
+
+            LOGGER.info("showVillageStructureDetail: #{} {} ({}) id={} center={} min={} max={} claimed={} visited={}",
+                    index, s.getName(), s.getType(), structureId,
+                    s.getCenterPos().toShortString(),
+                    s.hasBoundingBox() ? s.getMinPos().toShortString() : "none",
+                    s.hasBoundingBox() ? s.getMaxPos().toShortString() : "none",
+                    s.isOnClaimedPlot(), s.wasVisited());
+
+            return 1;
+        } catch (Exception ex) {
+            LOGGER.error("Error in showVillageStructureDetail: ", ex);
+            source.sendFailure(Component.literal("Exception — see log"));
+            return 0;
+        }
+    }
+
+    /**
+     * Scans a structure's bounding box for chest/barrel blocks and prints them to
+     * chat.
+     * Skips if bbox is missing or the structure covers 50+ chunks.
+     */
+    public static void scanAndShowStructureChests(CommandSourceStack source, GameStructureData s,
+            ServerLevel world) {
+        if (!s.hasBoundingBox()) {
+            source.sendSystemMessage(
+                    Component.literal("Chests: no bbox stored — run /village structures rescan first.")
+                            .withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        int chunkCount;
+        if (s.hasChunkPositions()) {
+            chunkCount = s.getChunkPositions().size();
+        } else {
+            BlockPos mn = s.getMinPos();
+            BlockPos mx = s.getMaxPos();
+            chunkCount = ((mx.getX() >> 4) - (mn.getX() >> 4) + 1)
+                    * ((mx.getZ() >> 4) - (mn.getZ() >> 4) + 1);
+        }
+
+        if (chunkCount >= 90) {
+            source.sendSystemMessage(Component.literal(
+                    "Chests: structure too large (" + chunkCount + " chunks ≥ 90) — skipping scan.")
+                    .withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        source.sendSystemMessage(
+                Component.literal("Chests: scanning " + chunkCount + " chunk(s)...").withStyle(ChatFormatting.AQUA));
+        BlockPos mn = s.getMinPos();
+        BlockPos mx = s.getMaxPos();
+        List<BlockPos> foundChests = new ArrayList<>();
+        for (int bx = mn.getX(); bx <= mx.getX(); bx++) {
+            for (int bz = mn.getZ(); bz <= mx.getZ(); bz++) {
+                for (int by = mn.getY(); by <= mx.getY(); by++) {
+                    BlockPos scanPos = new BlockPos(bx, by, bz);
+                    net.minecraft.world.level.block.Block blk = world.getBlockState(scanPos).getBlock();
+                    if (com.falazar.farmupcraft.StructureManager.isStructureChest(blk)) {
+                        foundChests.add(scanPos.immutable());
+                    }
+                }
+            }
+        }
+
+        if (foundChests.isEmpty()) {
+            source.sendSystemMessage(Component.literal("Chests: none found.").withStyle(ChatFormatting.AQUA));
+        } else {
+            source.sendSystemMessage(
+                    Component.literal("Chests: " + foundChests.size() + " found:").withStyle(ChatFormatting.AQUA));
+            for (BlockPos cp : foundChests) {
+                MutableComponent chestMsg = Component.literal("  " + cp.toShortString())
+                        .withStyle(ChatFormatting.AQUA)
+                        .withStyle(style -> style.withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                                "/tp " + cp.getX() + " " + cp.getY() + " " + cp.getZ())));
+                source.sendSystemMessage(chestMsg);
+            }
+
+            // Always persist scanned chest count so spawn rates are accurate.
+            var structureDb = ModEvents.getGameStructureDatabase(world);
+            if (s.getTotalChestCount() != foundChests.size()) {
+                s.setTotalChestCount(foundChests.size());
+                structureDb.putData(s.getId(), s);
+                structureDb.setDirty();
+            }
+
+            // Auto-setup special chest if structure not yet visited and has <=5 chests.
+            if (!s.wasVisited() && !s.hasSpecialChest()) {
+                LOGGER.info("Auto-triggering setupSpecialChest for structure {} ({}) — {} chest(s) found",
+                        s.getName(), s.getId(), foundChests.size());
+                boolean placed = setupSpecialChest(world, s, foundChests, structureDb);
+                if (placed) {
+                    source.sendSystemMessage(Component.literal(
+                            "Special chest planted in " + s.getName() + "!")
+                            .withStyle(ChatFormatting.DARK_RED));
+                }
+            } else if (s.hasSpecialChest()) {
+                source.sendSystemMessage(Component.literal(
+                        "Special chest already set at " + s.getSpecialChestPos().toShortString()
+                                + " — opened: " + s.isSpecialChestOpened())
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+        }
+    }
+
+    /**
+     * Places a written-book trap item in the first chest of a structure and
+     * records the chest position in the DB. Returns true if placed successfully.
+     */
+    public static boolean setupSpecialChest(ServerLevel world, GameStructureData s,
+            List<BlockPos> chestPositions, DataBase<Long, GameStructureData> structureDb) {
+        if (chestPositions.isEmpty())
+            return false;
+        if (s.wasVisited()) {
+            LOGGER.info("setupSpecialChest: skipping {} — already visited", s.getName());
+            return false;
+        }
+        if (s.hasSpecialChest()) {
+            LOGGER.info("setupSpecialChest: skipping {} — already has special chest", s.getName());
+            return false;
+        }
+
+        // Pick a random chest so structures don't always trap the same one.
+        BlockPos chestPos = chestPositions.get(new java.util.Random().nextInt(chestPositions.size()));
+        net.minecraft.world.level.block.entity.BlockEntity be = world.getBlockEntity(chestPos);
+        if (!(be instanceof net.minecraft.world.Container)) {
+            LOGGER.warn("setupSpecialChest: block entity at {} is not a Container", chestPos);
+            return false;
+        }
+
+        // Persist the chest position immediately so the trap is armed even before the
+        // book is written.
+        s.setSpecialChestPos(chestPos);
+        structureDb.putData(s.getId(), s);
+        structureDb.setDirty();
+        LOGGER.info("setupSpecialChest: placed trap chest at {} for structure {} ({})",
+                chestPos, s.getName(), s.getId());
+
+        // DEBUG: notify Bosspanda when a special chest is placed.
+        for (net.minecraft.server.level.ServerPlayer online : world.getServer().getPlayerList().getPlayers()) {
+            if (com.falazar.farmupcraft.ChunkManager.isDebugPlayer(online)) {
+                online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                        "[DEBUG] Special chest + book placed in " + s.getName()
+                                + " at " + chestPos.toShortString())
+                        .withStyle(net.minecraft.ChatFormatting.LIGHT_PURPLE));
+            }
+        }
+
+        // Try the pre-generated notes cache first; only fall back to a live AI call
+        // if the cache is empty. This avoids connection failures and is much faster.
+        final String structureName = s.getName();
+        String cachedNote = com.falazar.farmupcraft.util.NpcDataLoader.popThreatNote();
+        if (cachedNote != null) {
+            // Use the cached note synchronously — no async needed.
+            LOGGER.info("setupSpecialChest: using cached threat note for {} ({} remaining in cache).",
+                    structureName, com.falazar.farmupcraft.util.NpcDataLoader.getThreatNoteCacheSize());
+            final String noteTitleSync = "A Strange Note";
+            final String noteBodySync = cachedNote;
+            world.getServer().execute(() -> {
+                net.minecraft.world.level.block.entity.BlockEntity beSync = world.getBlockEntity(chestPos);
+                if (!(beSync instanceof net.minecraft.world.Container containerSync)) {
+                    LOGGER.warn("setupSpecialChest: chest at {} gone before cached note could be written", chestPos);
+                    return;
+                }
+                net.minecraft.world.item.ItemStack bookSync = new net.minecraft.world.item.ItemStack(
+                        net.minecraft.world.item.Items.WRITTEN_BOOK);
+                net.minecraft.nbt.CompoundTag tagSync = bookSync.getOrCreateTag();
+                tagSync.putString("title", noteTitleSync);
+                tagSync.putString("author", "???");
+                net.minecraft.nbt.ListTag pagesSync = new net.minecraft.nbt.ListTag();
+                pagesSync.add(net.minecraft.nbt.StringTag.valueOf(
+                        net.minecraft.network.chat.Component.Serializer.toJson(
+                                net.minecraft.network.chat.Component.literal(noteBodySync))));
+                tagSync.put("pages", pagesSync);
+                tagSync.putInt("generation", 0);
+                containerSync.setItem(0, bookSync);
+                beSync.setChanged();
+                world.blockEntityChanged(chestPos);
+                LOGGER.info("setupSpecialChest: cached book written in chest at {}", chestPos);
+            });
+            return true;
+        }
+
+        // Cache is empty — ask Ollama for a custom threat note async; fall back to a
+        // random hardcoded one on failure.
+        com.falazar.farmupcraft.AIManager.generateChestThreatNote(structureName)
+                .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                .whenComplete((aiText, err) -> {
+                    String noteTitle;
+                    String noteBody;
+                    final boolean aiFailure = (err != null || aiText == null || aiText.isBlank());
+                    if (aiFailure) {
+                        LOGGER.warn("setupSpecialChest: AI note failed ({}), using fallback",
+                                err != null ? err.getMessage() : "empty");
+                        String[][] threats = {  
+                                { "Scrawled Note",
+                                        "You should not have come here. These ruins are MINE. Leave now and perhaps I will let you keep your wretched life... perhaps." },
+                                { "Warning",
+                                        "I watched you from the shadows. Every step you took. Every chest you opened. You are being hunted. Run." },
+                                { "A Torn Page",
+                                        "My patience has limits, little thief. Touch one more thing in this place and I will make an example of you that your companions will not soon forget." },
+                                { "Ravings",
+                                        "They said I was mad for claiming this place. They laughed. They are gone now. YOU will not laugh." },
+                                { "Scrawled in Blood",
+                                        "This is your only warning. The next visitor who disturbs my collection will find more than a note waiting for them." },
+                                { "Crumpled Letter",
+                                        "Do you feel that? That cold dread creeping up your spine? Good. That means you understand what is coming for you." },
+                                { "The Master's Words",
+                                        "I have killed adventurers stronger than you. I have claimed fortresses greater than this. You. Are. Nothing." },
+                        };
+                        int pick = new java.util.Random().nextInt(threats.length);
+                        noteTitle = threats[pick][0];
+                        noteBody = threats[pick][1];
+                    } else {
+                        noteTitle = "A Strange Note";
+                        noteBody = aiText.trim();
+                        LOGGER.info("setupSpecialChest: AI note for {}: {}", structureName, noteBody);
+                    }
+
+                    // Write the book on the server thread.
+                    world.getServer().execute(() -> {
+                        if (aiFailure) {
+                            for (net.minecraft.server.level.ServerPlayer online : world.getServer().getPlayerList()
+                                    .getPlayers()) {
+                                if (com.falazar.farmupcraft.ChunkManager.isDebugPlayer(online)) {
+                                    online.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                                            "[DEBUG] AI chest note FAILED for " + structureName + " — using fallback")
+                                            .withStyle(net.minecraft.ChatFormatting.RED));
+                                }
+                            }
+                        }
+                        net.minecraft.world.level.block.entity.BlockEntity beLate = world.getBlockEntity(chestPos);
+                        if (!(beLate instanceof net.minecraft.world.Container containerLate)) {
+                            LOGGER.warn("setupSpecialChest: chest at {} gone by the time AI responded", chestPos);
+                            return;
+                        }
+                        net.minecraft.world.item.ItemStack book2 = new net.minecraft.world.item.ItemStack(
+                                net.minecraft.world.item.Items.WRITTEN_BOOK);
+                        net.minecraft.nbt.CompoundTag tag2 = book2.getOrCreateTag();
+                        tag2.putString("title", noteTitle);
+                        tag2.putString("author", "???");
+                        net.minecraft.nbt.ListTag pages2 = new net.minecraft.nbt.ListTag();
+                        pages2.add(net.minecraft.nbt.StringTag.valueOf(
+                                net.minecraft.network.chat.Component.Serializer.toJson(
+                                        net.minecraft.network.chat.Component.literal(noteBody))));
+                        tag2.put("pages", pages2);
+                        tag2.putInt("generation", 0);
+                        containerLate.setItem(0, book2);
+                        beLate.setChanged();
+                        world.blockEntityChanged(chestPos);
+                        LOGGER.info("setupSpecialChest: book written in chest at {}", chestPos);
+                    });
+                });
+        return true;
+    }
+
     // Helper method to get structures in the village
     public static List<Map.Entry<Long, GameStructureData>> getVillageStructuresList(VillageData village, Level level) {
         List<Map.Entry<Long, GameStructureData>> structuresList = new ArrayList<>();
@@ -2286,40 +2665,60 @@ public class VillageCommand {
      */
     public static int rescanVillageStructures(CommandSourceStack source) {
         try {
-            ServerLevel world = (ServerLevel) source.getLevel();
-            var structureDb = ModEvents.getGameStructureDatabase(world);
-            DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
-
-            int cleared = 0;
-            int updated = 0;
-
-            for (Long structureId : structureDb.getKeys()) {
-                GameStructureData structureData = structureDb.getData(structureId);
-                if (structureData == null)
-                    continue;
-
-                ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
-                ChunkData chunkData = chunkDb.getData(structureChunk.toLong());
-
-                // A chunk is "plot-claimed" if it has data and a type other than "village".
-                boolean shouldBeClaimed = chunkData != null && !chunkData.getType().equals("village");
-
-                if (structureData.isOnClaimedPlot() != shouldBeClaimed) {
-                    structureData.setOnClaimedPlot(shouldBeClaimed);
-                    structureDb.putData(structureId, structureData);
-                    updated++;
-                    if (!shouldBeClaimed)
-                        cleared++;
-                }
+            Entity nullablePlayer = source.getEntity();
+            Player playerSource = nullablePlayer instanceof Player ? (Player) nullablePlayer : null;
+            if (playerSource == null) {
+                source.sendFailure(Component.literal("Must be run by a player."));
+                return 0;
             }
 
-            structureDb.setDirty();
+            ServerLevel world = (ServerLevel) source.getLevel();
+            var structureDb = ModEvents.getGameStructureDatabase(world);
+
+            // Count missing bbox/chunks before scan so we can report how many were
+            // backfilled.
+            long missingBbox = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasBoundingBox())
+                    .count();
+            long missingChunks = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasChunkPositions())
+                    .count();
+            LOGGER.info("[Rescan] Before scan: {} structure(s) missing bbox, {} missing chunkPositions",
+                    missingBbox, missingChunks);
+            source.sendSystemMessage(Component.literal(
+                    "[Structures Rescan] DB has " + structureDb.getSize() + " structure(s). "
+                            + missingBbox + " missing bbox, " + missingChunks + " missing chunks. Running scan...")
+                    .withStyle(ChatFormatting.YELLOW));
+
+            // Run the real structure scan — this calls processStructureStart which now
+            // backfills bbox + chunkPositions for existing entries.
+            List<com.falazar.farmupcraft.command.StructureCommand.StructureInfo> found = StructureCommand
+                    .findNearbyStructuresForVillage(
+                            playerSource.blockPosition(), world, playerSource, null, "all", 64);
+
+            LOGGER.info("[Rescan] Scan complete. Found {} structure(s) in area.", found.size());
+
+            // Report what's still missing after the scan.
+            long stillMissingBbox = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasBoundingBox())
+                    .count();
+            long stillMissingChunks = structureDb.getKeys().stream()
+                    .map(structureDb::getData)
+                    .filter(d -> d != null && !d.hasChunkPositions())
+                    .count();
+            LOGGER.info("[Rescan] After scan: {} still missing bbox, {} still missing chunkPositions",
+                    stillMissingBbox, stillMissingChunks);
 
             source.sendSystemMessage(Component.literal(
-                    "[Structures Rescan] Updated " + updated + " record(s), cleared claimed flag on " + cleared + ".")
+                    "[Structures Rescan] Done. Scanned " + found.size() + " structure(s) in area. "
+                            + "Still missing bbox: " + stillMissingBbox + ", chunks: " + stillMissingChunks + ".")
                     .withStyle(ChatFormatting.GREEN));
             return 1;
         } catch (Exception ex) {
+            LOGGER.error("[Rescan] Exception: ", ex);
             source.sendFailure(Component.literal("Rescan failed: " + ex.getMessage()));
             return 0;
         }
@@ -2381,9 +2780,16 @@ public class VillageCommand {
 
             // Chat shows name, profession, coordinates, and a clickable [TP] link in
             // creative.
+            boolean lowY = villagerPos.getY() < 55;
+            String lowYTag = lowY ? " (LOW Y!)" : "";
             MutableComponent villagerResponse = Component
                     .literal(" - " + v.getName().getString() + " (" + profession + ") d=" + distance
-                            + " [" + villagerPos.getX() + "," + villagerPos.getY() + "," + villagerPos.getZ() + "]");
+                            + " [" + villagerPos.getX() + "," + villagerPos.getY() + "," + villagerPos.getZ() + "]"
+                            + lowYTag);
+            if (lowY) {
+                // Warning: villager is below target Y level.
+                villagerResponse.withStyle(ChatFormatting.GOLD);
+            }
             // Append a clickable [TP] link in creative mode.
             if (playerSource instanceof ServerPlayer sp && sp.getAbilities().instabuild) {
                 String tpCmd = "/tp " + villagerPos.getX() + " " + villagerPos.getY() + " " + villagerPos.getZ();

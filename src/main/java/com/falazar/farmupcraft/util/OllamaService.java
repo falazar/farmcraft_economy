@@ -43,7 +43,7 @@ public class OllamaService {
     private static final String CHAT_ENDPOINT = OLLAMA_BASE_URL + "/api/chat";
 
     /** How long to wait for a response before giving up (milliseconds). */
-    private static final int REQUEST_TIMEOUT_MS = 60_000;
+    private static final int REQUEST_TIMEOUT_MS = 90_000;
 
     /** Connection timeout — fail fast if Ollama is not reachable (milliseconds). */
     private static final int CONNECT_TIMEOUT_MS = 5_000;

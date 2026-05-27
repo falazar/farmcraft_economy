@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["##", "##"],
+  "key": {
+    "#": {
+      "item": "minecraft:deepslate"
+    }
+  },
+  "result": {
+    "item": "minecraft:polished_deepslate",
+    "count": 1
+  }
+}

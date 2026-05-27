@@ -69,6 +69,18 @@ public class PlayerCommand {
                         }));
         builder.then(giveVillageCoinsBuilder);
 
+        // /player givecoins <playerName> <amount> (admin)
+        LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
+            .requires(s -> s.hasPermission(2))
+            .then(Commands.argument("playerName", StringArgumentType.word())
+                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
+                    .executes(context -> {
+                        String playerName = StringArgumentType.getString(context, "playerName");
+                        int amount = IntegerArgumentType.getInteger(context, "amount");
+                        return givePlayerCoinsByName(context.getSource(), playerName, amount);
+                    })));
+        builder.then(giveCoinsBuilder);
+
         // Define the "takevillagecoins" and amount sub-command.
         LiteralArgumentBuilder<CommandSourceStack> takeVillageCoinsBuilder = Commands.literal("takevillagecoins")
                 .then(Commands.argument("amount", IntegerArgumentType.integer(0))
@@ -265,6 +277,69 @@ public class PlayerCommand {
             LOGGER.error("givePlayerCoins error: " + ex.getMessage(), ex);
             source.sendFailure(Component
                     .literal("givePlayerCoins error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
+        }
+        return 0;
+    }
+
+    /** /player givecoins <playerName> <amount> — admin command, works for online or offline players. */
+    public static int givePlayerCoinsByName(CommandSourceStack source, String targetName, int amount) {
+        try {
+            ServerLevel serverLevel = source.getLevel();
+
+            UUID targetUUID = null;
+            ServerPlayer online = source.getServer().getPlayerList().getPlayerByName(targetName);
+            if (online != null) {
+                targetUUID = online.getUUID();
+            } else {
+                DataBase<UUID, PlayerData> db = ModEvents.getPlayerDatabase();
+                for (UUID uuid : db.getKeys()) {
+                    PlayerData pd = db.getData(uuid);
+                    if (pd != null) {
+                        String recordedName = pd.getNameForPlayer(serverLevel, uuid);
+                        if (recordedName.equalsIgnoreCase(targetName)) {
+                            targetUUID = uuid;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (targetUUID == null) {
+                source.sendFailure(Component.literal("No player data found for '" + targetName + "'."));
+                return 0;
+            }
+
+            DataBase<UUID, PlayerData> db = ModEvents.getPlayerDatabase();
+            PlayerData player = db.getData(targetUUID);
+            if (player == null) {
+                source.sendFailure(Component.literal("Player data not found for '" + targetName + "'."));
+                return 0;
+            }
+
+            player.addCoins(amount);
+            savePlayer(targetUUID, player);
+
+            String resolvedName = player.getNameForPlayer(serverLevel, targetUUID);
+            int bronzeCoins = player.getCoins();
+            NumberFormat numberFormat = NumberFormat.getInstance();
+            boolean isOnline = online != null;
+
+            source.sendSuccess(() -> Component.literal("Player: "
+                    + resolvedName + " "
+                    + (amount >= 0 ? "given " : "adjusted by ")
+                    + numberFormat.format(amount) + " coins. Total: "
+                    + numberFormat.format(bronzeCoins)
+                    + " (" + (isOnline ? "online" : "offline") + ")"), false);
+
+            if (online != null) {
+                online.sendSystemMessage(Component.literal("[Admin] Your coins were adjusted by "
+                        + numberFormat.format(amount) + ". New total: " + numberFormat.format(bronzeCoins))
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+        } catch (Exception ex) {
+            LOGGER.error("givePlayerCoinsByName error: " + ex.getMessage(), ex);
+            source.sendFailure(Component.literal(
+                    "givePlayerCoinsByName error: " + ex.getClass().getSimpleName() + " - " + ex.getMessage()));
         }
         return 0;
     }

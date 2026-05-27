@@ -3,6 +3,7 @@ package com.falazar.farmupcraft.command;
 import com.falazar.farmupcraft.data.GoodsData;
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
+import com.falazar.farmupcraft.data.WorldData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
@@ -261,6 +262,14 @@ public class MarketCommand {
                 source.sendFailure(Component.literal(
                         "Your village already has " + currentVillagers + " villagers (cap: " + villagerCap
                                 + " at level " + village.getLevel() + ")."));
+                return 0;
+            }
+
+
+            // STEP 2.5: Block villager egg buy if village is in debt.
+            if (village.getCoins() < 0) {
+                source.sendFailure(Component.literal(
+                        "Your village is in debt (" + village.getCoins() + " coins). Pay off the debt before buying villager eggs."));
                 return 0;
             }
 
@@ -891,6 +900,11 @@ public class MarketCommand {
             raiseMarketPrices(source, "stone");
             raiseMarketPrices(source, "general");
 
+                // Keep scheduler status in sync even when admin runs /market admin rundaily.
+                WorldData worldData = ModEvents.getWorldDataDatabase().getOrCreate(0, WorldData::new);
+                worldData.markMarketDailyRanToday();
+                ModEvents.getWorldDataDatabase().putData(0, worldData);
+
             // Broadcast to all online players that the market has refreshed.
             Component broadcastMsg = Component.literal("[Market] The market has been refreshed for today!")
                     .withStyle(ChatFormatting.GOLD);
@@ -1266,6 +1280,7 @@ public class MarketCommand {
 
         Style style;
         if (hasRecipe) {
+            // /frecipe uses greedyString — no quotes needed, they would be included literally.
             ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/frecipe " + itemId);
             ChatFormatting color = inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA;
             style = Style.EMPTY.withColor(color).withUnderlined(true)
@@ -1274,7 +1289,27 @@ public class MarketCommand {
             ChatFormatting color = inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE;
             style = Style.EMPTY.withColor(color).withHoverEvent(hoverEvent);
         }
-        return Component.literal(label).withStyle(style);
+
+        // Strip trailing newline from label so we can append the [x] on the same line.
+        String labelNoNewline = label.endsWith("\n") ? label.substring(0, label.length() - 1) : label;
+        MutableComponent line = Component.literal(labelNoNewline).withStyle(style);
+
+        // Admin [x] remove button — only shown in creative mode.
+        // Wrap itemId in quotes so Brigadier handles the colon in namespaced IDs
+        // correctly.
+        if (playerSource != null && playerSource.isCreative()) {
+            String removeCmd = "/market admin setactive \"" + itemId + "\" inactive";
+            MutableComponent removeBtn = Component.literal(" [x]")
+                    .withStyle(Style.EMPTY
+                            .withColor(ChatFormatting.RED)
+                            .withUnderlined(true)
+                            .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, removeCmd))
+                            .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                    Component.literal("Remove " + itemId + " from market\n" + removeCmd))));
+            line = line.append(removeBtn);
+        }
+
+        return line.append(Component.literal("\n"));
     }
 
     public static int showHighValueItems(CommandSourceStack source, int minCoins) {

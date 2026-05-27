@@ -1,6 +1,0 @@
-{
-  "type": "forge:add_features",
-  "biomes": "#minecraft:is_jungle",
-  "features": "pamhc2crops:tropical_garden_placed_jungle",
-  "step": "vegetal_decoration"
-}

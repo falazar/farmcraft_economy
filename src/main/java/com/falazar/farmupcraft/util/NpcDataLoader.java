@@ -216,6 +216,102 @@ public class NpcDataLoader {
         return deleted;
     }
 
+    /** JSON file (in the npcData/ dir) that holds the pool of pre-generated threat notes. */
+    private static final String THREAT_NOTES_FILE = "threat_notes_cache.json";
+
+    // -------------------------------------------------------------------------
+    // Threat notes cache — pre-generated pool used by setupSpecialChest
+    // -------------------------------------------------------------------------
+
+    /**
+     * Pops and returns the first cached threat note, removing it from the file.
+     * Returns null if the cache is empty or missing.
+     */
+    @Nullable
+    public static String popThreatNote() {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return null;
+        Path cacheFile = dir.resolve(THREAT_NOTES_FILE);
+        if (!Files.exists(cacheFile))
+            return null;
+        try {
+            String content = Files.readString(cacheFile, StandardCharsets.UTF_8);
+            com.google.gson.JsonObject json = JsonParser.parseString(content).getAsJsonObject();
+            com.google.gson.JsonArray notes = json.has("notes") ? json.getAsJsonArray("notes")
+                    : new com.google.gson.JsonArray();
+            if (notes.size() == 0)
+                return null;
+            String note = notes.get(0).getAsString();
+            // Remove first element and save.
+            com.google.gson.JsonArray updated = new com.google.gson.JsonArray();
+            for (int i = 1; i < notes.size(); i++)
+                updated.add(notes.get(i));
+            json.add("notes", updated);
+            Files.writeString(cacheFile,
+                    new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json) + "\n",
+                    StandardCharsets.UTF_8);
+            LOGGER.info("NpcDataLoader: popped threat note from cache ({} remaining).", updated.size());
+            return note;
+        } catch (Exception e) {
+            LOGGER.error("NpcDataLoader: error reading threat notes cache: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Appends a list of pre-generated threat notes to the cache file.
+     *
+     * @param notes list of note strings to store
+     */
+    public static void addThreatNotes(java.util.List<String> notes) {
+        if (notes.isEmpty())
+            return;
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return;
+        Path cacheFile = dir.resolve(THREAT_NOTES_FILE);
+        try {
+            com.google.gson.JsonObject json;
+            if (Files.exists(cacheFile)) {
+                json = JsonParser.parseString(Files.readString(cacheFile, StandardCharsets.UTF_8))
+                        .getAsJsonObject();
+            } else {
+                json = new com.google.gson.JsonObject();
+            }
+            com.google.gson.JsonArray arr = json.has("notes") ? json.getAsJsonArray("notes")
+                    : new com.google.gson.JsonArray();
+            for (String note : notes)
+                arr.add(note);
+            json.add("notes", arr);
+            Files.writeString(cacheFile,
+                    new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(json) + "\n",
+                    StandardCharsets.UTF_8);
+            LOGGER.info("NpcDataLoader: added {} threat note(s) to cache (total={}).", notes.size(), arr.size());
+        } catch (Exception e) {
+            LOGGER.error("NpcDataLoader: error writing threat notes cache: {}", e.getMessage());
+        }
+    }
+
+    /** Returns how many cached threat notes are currently stored. */
+    public static int getThreatNoteCacheSize() {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return 0;
+        Path cacheFile = dir.resolve(THREAT_NOTES_FILE);
+        if (!Files.exists(cacheFile))
+            return 0;
+        try {
+            String content = Files.readString(cacheFile, StandardCharsets.UTF_8);
+            com.google.gson.JsonObject json = JsonParser.parseString(content).getAsJsonObject();
+            com.google.gson.JsonArray notes = json.has("notes") ? json.getAsJsonArray("notes")
+                    : new com.google.gson.JsonArray();
+            return notes.size();
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     // -------------------------------------------------------------------------
     // Private helpers
     // -------------------------------------------------------------------------
