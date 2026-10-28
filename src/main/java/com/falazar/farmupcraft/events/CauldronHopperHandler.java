@@ -18,6 +18,8 @@ import net.minecraftforge.items.IItemHandler;
 import net.minecraftforge.items.ItemHandlerHelper;
 import net.minecraftforge.items.wrapper.InvWrapper;
 
+import com.falazar.farmupcraft.util.CustomLogger;
+
 /**
  * Lava cauldron → lava bucket automation for refinery plots.
  *
@@ -34,23 +36,47 @@ import net.minecraftforge.items.wrapper.InvWrapper;
 @Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class CauldronHopperHandler {
 
+    private static final CustomLogger LOGGER = new CustomLogger(CauldronHopperHandler.class.getSimpleName());
+
     @SubscribeEvent
     public static void onNeighborNotify(BlockEvent.NeighborNotifyEvent event) {
         if (event.getLevel().isClientSide())
             return;
 
-        BlockPos cauldronPos = event.getPos();
-        BlockState cauldronState = event.getState();
-
-        // Only care about lava cauldrons.
-        if (!cauldronState.is(Blocks.LAVA_CAULDRON))
-            return;
-
         Level level = (Level) event.getLevel();
+        BlockPos eventPos = event.getPos();
+
+        // Case 1: the changed block itself is a lava cauldron (e.g. dripstone just
+        // filled it — the cauldron transitions to LAVA_CAULDRON and fires this event).
+        if (event.getState().is(Blocks.LAVA_CAULDRON)) {
+            processCauldron(eventPos, level);
+        }
+
+        // Case 2: a neighbour of the changed block is a lava cauldron.
+        // Catches the drip from the dripstone side — the stalactite fires its own
+        // NeighborNotifyEvent with DOWN in notifiedSides pointing at the cauldron.
+        for (net.minecraft.core.Direction dir : event.getNotifiedSides()) {
+            BlockPos neighbourPos = eventPos.relative(dir);
+            if (level.getBlockState(neighbourPos).is(Blocks.LAVA_CAULDRON)) {
+                processCauldron(neighbourPos, level);
+            }
+        }
+    }
+
+    /**
+     * Core logic: if the lava cauldron at {@code cauldronPos} is inside a refinery
+     * plot and the hopper setup is ready, consume one empty bucket and output a
+     * lava bucket, then empty the cauldron.
+     */
+    private static void processCauldron(BlockPos cauldronPos, Level level) {
+        LOGGER.info("[CauldronHopper] Lava cauldron neighbor-notify at {}", cauldronPos);
 
         // Only operate inside a refinery plot.
-        if (!ChunkManager.getPlotType(cauldronPos, level).equalsIgnoreCase("refinery"))
+        String plotType = ChunkManager.getPlotType(cauldronPos, level);
+        if (!plotType.equalsIgnoreCase("refinery")) {
+            LOGGER.info("[CauldronHopper] Skipped — plot type is '{}' (need 'refinery') at {}", plotType, cauldronPos);
             return;
+        }
 
         // Find the bucket hopper: adjacent to the cauldron (N/S/E/W/above) with its
         // FACING pointing toward the cauldron.
@@ -64,28 +90,37 @@ public class CauldronHopperHandler {
             if (!adjState.is(Blocks.HOPPER))
                 continue;
             net.minecraft.core.Direction facing = adjState.getValue(HopperBlock.FACING);
+            LOGGER.info("[CauldronHopper] Found hopper {} of cauldron facing {}, need {}",
+                    dir, facing, dir.getOpposite());
             if (facing != dir.getOpposite())
                 continue;
             BlockEntity adjBe = level.getBlockEntity(adjPos);
             if (adjBe instanceof HopperBlockEntity hbe) {
                 bucketHopper = hbe;
+                LOGGER.info("[CauldronHopper] Bucket hopper found at {}", adjPos);
                 break;
             }
         }
-        if (bucketHopper == null)
+        if (bucketHopper == null) {
+            LOGGER.info("[CauldronHopper] No bucket hopper found adjacent and facing cauldron at {}", cauldronPos);
             return;
+        }
 
         // Output hopper: directly below the cauldron.
         BlockPos outputPos = cauldronPos.below();
         BlockEntity outBe = level.getBlockEntity(outputPos);
-        if (!(outBe instanceof HopperBlockEntity outputHopper))
+        if (!(outBe instanceof HopperBlockEntity outputHopper)) {
+            LOGGER.info("[CauldronHopper] No output hopper below cauldron at {}", outputPos);
             return;
+        }
 
         // Require an empty bucket in the bucket hopper.
         IItemHandler bucketInv = new InvWrapper(bucketHopper);
         int bucketSlot = findSlotWithItem(bucketInv, Items.BUCKET);
-        if (bucketSlot == -1)
+        if (bucketSlot == -1) {
+            LOGGER.info("[CauldronHopper] No empty bucket in bucket hopper at {} — cannot process", cauldronPos);
             return;
+        }
 
         // Consume the bucket.
         bucketInv.getStackInSlot(bucketSlot).shrink(1);
@@ -98,10 +133,14 @@ public class CauldronHopperHandler {
             net.minecraft.world.entity.item.ItemEntity drop = new net.minecraft.world.entity.item.ItemEntity(
                     level, outputPos.getX() + 0.5, outputPos.getY() + 0.5, outputPos.getZ() + 0.5, remainder);
             level.addFreshEntity(drop);
+            LOGGER.info("[CauldronHopper] Output hopper full — dropped lava bucket at {}", outputPos);
+        } else {
+            LOGGER.info("[CauldronHopper] SUCCESS — lava bucket inserted into output hopper at {}", outputPos);
         }
 
         // Empty the cauldron.
         level.setBlock(cauldronPos, Blocks.CAULDRON.defaultBlockState(), 3);
+        LOGGER.info("[CauldronHopper] Cauldron emptied at {}", cauldronPos);
     }
 
     /**

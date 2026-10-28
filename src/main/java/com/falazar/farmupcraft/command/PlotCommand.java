@@ -165,6 +165,12 @@ public class PlotCommand {
 
         // TODO do a /plot biomes command also!
 
+        // Define the "list" sub-command — shows all buyable plot types and their
+        // abilities.
+        LiteralArgumentBuilder<CommandSourceStack> listBuilder = Commands.literal("list")
+                .executes(context -> showPlotList(context.getSource()));
+        builder.then(listBuilder);
+
         // Register the main "plot" command with the dispatcher
         pDispatcher.register(builder);
     }
@@ -990,10 +996,10 @@ public class PlotCommand {
                 return 0;
             }
 
-
             // Block upgrade if village is in debt
             if (!playerSource.isCreative() && village.getCoins() < 0) {
-                source.sendFailure(Component.literal("Your village is in debt (" + village.getCoins() + " coins). Pay off the debt before upgrading plots."));
+                source.sendFailure(Component.literal("Your village is in debt (" + village.getCoins()
+                        + " coins). Pay off the debt before upgrading plots."));
                 return 0;
             }
 
@@ -1023,6 +1029,44 @@ public class PlotCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    /**
+     * Lists all buyable plot types with a one-line description of each type's
+     * special abilities.
+     */
+    public static int showPlotList(CommandSourceStack source) {
+        // Ordered map of type → description.
+        java.util.LinkedHashMap<String, String> types = new java.util.LinkedHashMap<>();
+        types.put("plot", "Basic claimed land. Blocks griefing and unauthorized building by outsiders.");
+        types.put("farm", "Crop farming with biome-based planting rules. Supports plot levels for expanded crops.");
+        types.put("nursery", "Tree and sapling growing area with nursery-specific growth support.");
+        types.put("pasture", "Animal husbandry plot. Required to breed and house village livestock.");
+        types.put("house", "Private residence. Grants the owner protected private storage no one else can access.");
+        types.put("kitchen", "Cooking and food preparation area for village meals and recipes.");
+        types.put("restaurant", "Food service for visitors. Can be used to sell meals and generate village income.");
+        types.put("refinery",
+                "Industrial plot. Enables lava cauldron automation — dripstone fills cauldron, hopper feeds buckets, output hopper collects lava buckets.");
+        types.put("library", "Book and knowledge storage area for village records and written works.");
+        types.put("guardhouse", "Village defense post. Designates a security area for guards and village protection.");
+        types.put("trainstation", "Village transport hub for inter-village or fast-travel connections.");
+        types.put("graveyard", "Burial and respawn area. Designates a sacred resting place within village bounds.");
+        types.put("portal", "Hosts a Nether or End portal. Restricted — requires admin or creative to purchase.");
+
+        source.sendSuccess(() -> Component.literal("=== Buyable Plot Types ===")
+                .withStyle(ChatFormatting.GOLD), false);
+
+        for (var entry : types.entrySet()) {
+            MutableComponent namePart = Component.literal(" " + entry.getKey())
+                    .withStyle(ChatFormatting.AQUA);
+            MutableComponent descPart = Component.literal(" — " + entry.getValue())
+                    .withStyle(ChatFormatting.GRAY);
+            source.sendSuccess(() -> namePart.copy().append(descPart), false);
+        }
+
+        source.sendSuccess(() -> Component.literal("Use /plot buy <type> to purchase.")
+                .withStyle(ChatFormatting.YELLOW), false);
+        return 1;
     }
 
     public static int calculatePlotCost(VillageData villageData, String plotType) {

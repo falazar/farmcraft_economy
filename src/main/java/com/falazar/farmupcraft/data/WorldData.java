@@ -13,7 +13,8 @@ public class WorldData {
                     .forGetter(WorldData::getLastRanMarketDaily),
             Codec.BOOL.optionalFieldOf("use_farms", true).forGetter(WorldData::isUseVillageFarms),
             Codec.BOOL.optionalFieldOf("use_biome_crop_rules", true).forGetter(WorldData::isUseBiomeCropRules),
-            Codec.BOOL.optionalFieldOf("lycanite_light_block", true).forGetter(WorldData::isLycaniteLightBlock))
+            Codec.BOOL.optionalFieldOf("lycanite_light_block", true).forGetter(WorldData::isLycaniteLightBlock),
+            Codec.BOOL.optionalFieldOf("lan_notice_enabled", true).forGetter(WorldData::isLanNoticeEnabled))
             .apply(instance, WorldData::new));
 
     private int upkeepTick;
@@ -21,6 +22,7 @@ public class WorldData {
     private boolean useFarms;
     private boolean useBiomeCropRules;
     private boolean lycaniteLightBlock;
+    private boolean lanNoticeEnabled;
 
     public WorldData() {
         this.upkeepTick = 0;
@@ -28,15 +30,17 @@ public class WorldData {
         this.useFarms = true;
         this.useBiomeCropRules = true;
         this.lycaniteLightBlock = true;
+        this.lanNoticeEnabled = true;
     }
 
     public WorldData(int upkeepTick, String lastRanMarketDaily,
-            boolean useFarms, boolean useBiomeCropRules, boolean lycaniteLightBlock) {
+            boolean useFarms, boolean useBiomeCropRules, boolean lycaniteLightBlock, boolean lanNoticeEnabled) {
         this.upkeepTick = upkeepTick;
         this.lastRanMarketDaily = lastRanMarketDaily != null ? lastRanMarketDaily : "2000-01-01";
         this.useFarms = useFarms;
         this.useBiomeCropRules = useBiomeCropRules;
         this.lycaniteLightBlock = lycaniteLightBlock;
+        this.lanNoticeEnabled = lanNoticeEnabled;
     }
 
     public boolean isUseVillageFarms() {
@@ -62,6 +66,14 @@ public class WorldData {
 
     public void setLycaniteLightBlock(boolean lycaniteLightBlock) {
         this.lycaniteLightBlock = lycaniteLightBlock;
+    }
+
+    public boolean isLanNoticeEnabled() {
+        return lanNoticeEnabled;
+    }
+
+    public void setLanNoticeEnabled(boolean lanNoticeEnabled) {
+        this.lanNoticeEnabled = lanNoticeEnabled;
     }
 
     public void setUpkeepTick(int upkeepTick) {

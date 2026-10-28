@@ -32,6 +32,7 @@ import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.entity.living.LivingEvent;
+import net.minecraftforge.event.entity.living.LivingDropsEvent;
 import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.ArrayList;
@@ -78,14 +79,38 @@ public class AnimalsManager {
         if (sheep.isBaby() || sheep.isSheared())
             return;
 
+        // Shearing is only allowed in a pasture plot or unclaimed wilderness.
+        Level level = event.getLevel();
+        String plotType = ChunkManager.getPlotType(sheep.blockPosition(), level);
+        if (!plotType.isEmpty() && !"pasture".equals(plotType)) {
+            event.setCanceled(true);
+            player.displayClientMessage(
+                    Component.literal("Sheep can only be sheared in a pasture plot or the wilderness.")
+                            .withStyle(ChatFormatting.RED),
+                    false);
+            return;
+        }
+
         long gameTime = sheep.level().getGameTime();
         sheep.getPersistentData().putLong(NBT_LAST_SHEARED_TICK, gameTime);
+
+        // Pasture level bonus: add extra wool on shearing using the same level rule.
+        ChunkData chunk = ChunkManager.getPlot(sheep.blockPosition());
+        int pastureLevel = (chunk != null) ? chunk.getPlotLevel() : 1;
+        int extraWool = getExtraDropsForPastureLevel(pastureLevel);
+        if (extraWool > 0) {
+            ItemStack bonusWool = new ItemStack(getWoolItemForColor(sheep.getColor()), extraWool);
+            sheep.spawnAtLocation(bonusWool);
+            LOGGER.info("Sheep {} bonus wool dropped: +{} (pastureLevel={}) by {}",
+                    sheep.getUUID(), extraWool, pastureLevel, player.getName().getString());
+        }
+
         LOGGER.info("Sheep {} sheared by {} at gameTick={}", sheep.getUUID(), player.getName().getString(), gameTime);
     }
 
-    // Base dye success chance (20%) + 10% per pasture level above 1.
+    // Base dye success chance (20%) + 20% per pasture level above 1.
     private static final int DYE_BASE_CHANCE = 20;
-    private static final int DYE_CHANCE_PER_LEVEL = 10;
+    private static final int DYE_CHANCE_PER_LEVEL = 20;
 
     @SubscribeEvent
     public static void onRightClickSheepDye(PlayerInteractEvent.EntityInteract event) {
@@ -108,7 +133,7 @@ public class AnimalsManager {
         ChunkData chunk = ChunkManager.getPlot(sheep.blockPosition());
         int pastureLevel = (chunk != null) ? chunk.getPlotLevel() : 1;
 
-        int successChance = DYE_BASE_CHANCE + (pastureLevel - 1) * DYE_CHANCE_PER_LEVEL;
+        int successChance = Math.min(100, DYE_BASE_CHANCE + (pastureLevel - 1) * DYE_CHANCE_PER_LEVEL);
 
         if (new java.util.Random().nextInt(100) >= successChance) {
             // Failed — cancel the interaction so the sheep is not dyed.
@@ -150,7 +175,7 @@ public class AnimalsManager {
 
         if (!sheep.isSheared()) {
             sheep.getPersistentData().remove(NBT_LAST_SHEARED_TICK);
-            LOGGER.info("Sheep {} regrew wool after {} ticks", sheep.getUUID(), elapsed);
+            // LOGGER.info("Sheep {} regrew wool after {} ticks", sheep.getUUID(), elapsed);
         }
     }
 
@@ -598,4 +623,73 @@ public class AnimalsManager {
             delegate.tick();
         }
     }
+
+    // Returns extra item drops granted by higher Pasture levels.
+    // Level 2 = +1, Level 3 = +2, Level 4 = +3; Level 1 or below = 0.
+    public static int getExtraDropsForPastureLevel(int pastureLevel) {
+        if (pastureLevel >= 2 && pastureLevel <= 4) {
+            return pastureLevel - 1;
+        }
+        return 0;
+    }
+
+    private static net.minecraft.world.item.Item getWoolItemForColor(DyeColor color) {
+        return switch (color) {
+            case ORANGE -> Items.ORANGE_WOOL;
+            case MAGENTA -> Items.MAGENTA_WOOL;
+            case LIGHT_BLUE -> Items.LIGHT_BLUE_WOOL;
+            case YELLOW -> Items.YELLOW_WOOL;
+            case LIME -> Items.LIME_WOOL;
+            case PINK -> Items.PINK_WOOL;
+            case GRAY -> Items.GRAY_WOOL;
+            case LIGHT_GRAY -> Items.LIGHT_GRAY_WOOL;
+            case CYAN -> Items.CYAN_WOOL;
+            case PURPLE -> Items.PURPLE_WOOL;
+            case BLUE -> Items.BLUE_WOOL;
+            case BROWN -> Items.BROWN_WOOL;
+            case GREEN -> Items.GREEN_WOOL;
+            case RED -> Items.RED_WOOL;
+            case BLACK -> Items.BLACK_WOOL;
+            default -> Items.WHITE_WOOL;
+        };
+    }
+
+    // When a pasture animal dies in a level 2+ pasture, add bonus drops.
+    @SubscribeEvent
+    public static void onPastureAnimalDrops(LivingDropsEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+        if (!(event.getEntity() instanceof Animal animal))
+            return;
+        if (!isPastureAnimal(animal))
+            return;
+
+        Level level = (Level) event.getEntity().level();
+        String plotType = ChunkManager.getPlotType(animal.blockPosition(), level);
+        if (!"pasture".equals(plotType))
+            return;
+
+        ChunkData chunk = ChunkManager.getPlot(animal.blockPosition());
+        if (chunk == null)
+            return;
+
+        int extra = getExtraDropsForPastureLevel(chunk.getPlotLevel());
+        if (extra <= 0)
+            return;
+
+        event.getDrops().forEach(itemEntity -> {
+            net.minecraft.world.item.ItemStack stack = itemEntity.getItem();
+            stack.setCount(stack.getCount() + extra);
+        });
+    }
+
+    // Restrict sheep shearing to Pasture Plots or Wilderness
+    private static boolean isPasturePlot(Level level, net.minecraft.core.BlockPos pos) {
+        return "pasture".equals(ChunkManager.getPlotType(pos, level));
+    }
+
+    private static boolean isVillageArea(Level level, net.minecraft.core.BlockPos pos) {
+        return !ChunkManager.getPlotType(pos, level).isEmpty();
+    }
+
 }

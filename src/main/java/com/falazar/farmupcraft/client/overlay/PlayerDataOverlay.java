@@ -72,11 +72,16 @@ public class PlayerDataOverlay {
         currentY += lineSpacing;
 
         // Show Plot type.
-        if (currentPlotType.equals("village")) {
-            currentPlotType = "village unclaimed";
+        String plotDisplayText = currentPlotType;
+        if (plotDisplayText.equals("village")) {
+            plotDisplayText = "village unclaimed";
         }
-        if (!currentPlotType.equals("None")) {
-            guiGraphics.drawString(mc.font, Component.literal("Plot: " + currentPlotType), paddingLeft, currentY,
+        if (chunkData != null && isLeveledPlotType(chunkData.getType())) {
+            int plotLevel = Math.max(1, chunkData.getPlotLevel());
+            plotDisplayText = chunkData.getType() + " level " + plotLevel;
+        }
+        if (!plotDisplayText.equals("None")) {
+            guiGraphics.drawString(mc.font, Component.literal("Plot: " + plotDisplayText), paddingLeft, currentY,
                     0xCCCCCC, true);
             currentY += lineSpacing;
         }
@@ -90,11 +95,14 @@ public class PlayerDataOverlay {
         guiGraphics.drawString(mc.font, Component.literal(homeVillageText), paddingLeft, currentY, 0xFFD700, true);
         currentY += lineSpacing;
 
-        guiGraphics.drawString(mc.font, Component.literal("Coins: " + NumberFormat.getInstance().format(playerData.getCoins())), paddingLeft, currentY,
+        guiGraphics.drawString(mc.font,
+                Component.literal("Coins: " + NumberFormat.getInstance().format(playerData.getCoins())), paddingLeft,
+                currentY,
                 0xFFD700, true);
     };
 
-    private static String resolveHouseOwnerName(net.minecraft.client.multiplayer.ClientLevel level, ChunkData chunkData) {
+    private static String resolveHouseOwnerName(net.minecraft.client.multiplayer.ClientLevel level,
+            ChunkData chunkData) {
         UUID ownerUUID = chunkData.getOwnerUUID();
         if (ownerUUID == null)
             return null;
@@ -106,5 +114,13 @@ public class PlayerDataOverlay {
         }
 
         return null;
+    }
+
+    private static boolean isLeveledPlotType(String plotType) {
+        if (plotType == null)
+            return false;
+        return plotType.equalsIgnoreCase("farm")
+                || plotType.equalsIgnoreCase("nursery")
+                || plotType.equalsIgnoreCase("pasture");
     }
 }

@@ -2,6 +2,7 @@ package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.AIManager;
 import com.falazar.farmupcraft.data.NpcData;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.NpcConversationLogger;
 import com.falazar.farmupcraft.util.NpcDataLoader;
@@ -12,9 +13,12 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.entity.player.Player;
 import net.minecraftforge.event.ServerChatEvent;
+import net.minecraftforge.event.entity.living.LivingChangeTargetEvent;
+import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -199,6 +203,48 @@ public class NpcManager {
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onClaimedNpcTargetChange(LivingChangeTargetEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+        if (!(event.getEntity() instanceof Mob mob))
+            return;
+
+        NpcData npcData = ModEvents.getNpcDatabase().getData(mob.getUUID());
+        if (npcData == null)
+            return;
+
+        String behavior = npcData.getBehavior();
+        if (behavior == null || !"nonhostile".equalsIgnoreCase(behavior))
+            return;
+
+        if (event.getNewTarget() != null) {
+            event.setCanceled(true);
+        }
+        if (mob.getTarget() != null) {
+            mob.setTarget(null);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onClaimedNpcTick(LivingEvent.LivingTickEvent event) {
+        if (event.getEntity().level().isClientSide())
+            return;
+        if (!(event.getEntity() instanceof Mob mob))
+            return;
+        if (mob.getTarget() == null)
+            return;
+
+        NpcData npcData = ModEvents.getNpcDatabase().getData(mob.getUUID());
+        if (npcData == null)
+            return;
+        String behavior = npcData.getBehavior();
+        if (behavior == null || !"nonhostile".equalsIgnoreCase(behavior))
+            return;
+
+        mob.setTarget(null);
+    }
 
     /** Clears a conversation if one is active for the given player. */
     public static void clearConversation(UUID playerUUID) {

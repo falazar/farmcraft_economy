@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft.util;
 
 import com.falazar.farmupcraft.data.NpcData;
+import com.falazar.farmupcraft.events.ModEvents;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import net.minecraftforge.fml.loading.FMLPaths;
@@ -63,6 +64,11 @@ public class NpcDataLoader {
         if (dir == null)
             return null;
 
+        Path assignedProfile = resolveAssignedProfilePath(uuid, dir);
+        if (assignedProfile != null) {
+            return parseProfile(assignedProfile);
+        }
+
         // Expected filename: "Alaina Fae-a1b2c3d4-xxxx-xxxx-xxxx-xxxxxxxxxxxx.json"
         String expectedFile = name + "-" + uuid + ".json";
         Path profilePath = dir.resolve(expectedFile);
@@ -119,6 +125,9 @@ public class NpcDataLoader {
         Path dir = getOrCreateDir();
         if (dir == null)
             return false;
+        Path assignedProfile = resolveAssignedProfilePath(uuid, dir);
+        if (assignedProfile != null)
+            return true;
         return Files.exists(dir.resolve(name + "-" + uuid + ".json"));
     }
 
@@ -159,6 +168,47 @@ public class NpcDataLoader {
     /** Legacy overload — no village_name. */
     public static boolean writeProfile(String name, UUID uuid, String description, String personality) {
         return writeProfile(name, uuid, description, personality, "");
+    }
+
+    /**
+     * Writes (or overwrites) a profile JSON to an explicit file in npcData/.
+     */
+    public static boolean writeProfileToFile(String profileFileName, String name, UUID uuid, String description,
+            String personality, String villageName) {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return false;
+        String normalizedName = normalizeProfileFileName(profileFileName);
+        if (normalizedName.isBlank())
+            return false;
+        com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().disableHtmlEscaping()
+                .create();
+        com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
+        obj.addProperty("uuid", uuid.toString());
+        obj.addProperty("name", name);
+        obj.addProperty("village_name", villageName == null ? "" : villageName);
+        obj.addProperty("description", description == null ? "" : description);
+        obj.addProperty("personality", personality == null ? "" : personality);
+        try {
+            Files.writeString(dir.resolve(normalizedName), gson.toJson(obj) + "\n", StandardCharsets.UTF_8);
+            LOGGER.info("NpcDataLoader: wrote explicit profile '{}' for '{}'", normalizedName, name);
+            return true;
+        } catch (IOException e) {
+            LOGGER.error("NpcDataLoader: failed to write explicit profile '{}' for '{}': {}", normalizedName, name,
+                    e.getMessage());
+            return false;
+        }
+    }
+
+    /** Returns true if the explicit file exists in npcData/. */
+    public static boolean profileFileExists(String profileFileName) {
+        Path dir = getOrCreateDir();
+        if (dir == null)
+            return false;
+        String normalizedName = normalizeProfileFileName(profileFileName);
+        if (normalizedName.isBlank())
+            return false;
+        return Files.exists(dir.resolve(normalizedName));
     }
 
     /**
@@ -373,5 +423,40 @@ public class NpcDataLoader {
         } catch (IOException e) {
             LOGGER.error("Failed to write example NPC profile: {}", e.getMessage());
         }
+    }
+
+    @Nullable
+    private static Path resolveAssignedProfilePath(UUID uuid, Path dir) {
+        try {
+            NpcData npcData = ModEvents.getNpcDatabase().getData(uuid);
+            if (npcData == null)
+                return null;
+            String assigned = normalizeProfileFileName(npcData.getAiProfileFile());
+            if (assigned.isBlank())
+                return null;
+            Path assignedPath = dir.resolve(assigned);
+            if (Files.exists(assignedPath))
+                return assignedPath;
+            LOGGER.warn("NpcDataLoader: assigned profile file missing for {}: {}", uuid, assigned);
+            return null;
+        } catch (Exception e) {
+            LOGGER.error("NpcDataLoader: failed to resolve assigned profile for {}: {}", uuid, e.getMessage());
+            return null;
+        }
+    }
+
+    private static String normalizeProfileFileName(String profileFileName) {
+        if (profileFileName == null)
+            return "";
+        String trimmed = profileFileName.trim();
+        if (trimmed.isEmpty())
+            return "";
+        String safe = trimmed.replace("\\", "/");
+        int slash = safe.lastIndexOf('/');
+        if (slash >= 0 && slash < safe.length() - 1)
+            safe = safe.substring(slash + 1);
+        if (!safe.toLowerCase(java.util.Locale.ROOT).endsWith(".json"))
+            safe = safe + ".json";
+        return safe;
     }
 }

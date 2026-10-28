@@ -1,6 +1,7 @@
 package com.falazar.farmupcraft.events;
 
 import com.falazar.farmupcraft.FarmUpCraft;
+import com.falazar.farmupcraft.command.FarmCraftCommand;
 import com.falazar.farmupcraft.command.VillageCommand;
 import com.falazar.farmupcraft.data.*;
 import com.falazar.farmupcraft.database.message.DataBaseChunkS2C;
@@ -10,6 +11,7 @@ import com.falazar.farmupcraft.database.DataBaseAccess;
 import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
 import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.database.message.RemoveModWaypointsPacket;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import io.netty.buffer.Unpooled;
 import net.minecraft.ChatFormatting;
@@ -143,6 +145,7 @@ public class ForgeEvents {
 
             DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             UUID uuid = ((ServerPlayer) event.getEntity()).getUUID();
+            boolean isFirstLogin = !playerDatabase.containsKey(uuid);
 
             if (!playerDatabase.containsKey(uuid)) {
                 playerDatabase.putData(uuid, new PlayerData(event.getEntity().getId(), uuid, UUID.randomUUID(), 10));
@@ -178,7 +181,6 @@ public class ForgeEvents {
             }
 
             ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
-            boolean isFirstLogin = !playerDatabase.containsKey(uuid);
 
             // First login: explain the upkeep system once.
             if (isFirstLogin) {
@@ -186,6 +188,12 @@ public class ForgeEvents {
                         Component.literal(
                                 "Welcome! Your village has a daily upkeep cost (village level x100 + plots x20 coins/day). Claim structures to earn income!")
                                 .withStyle(ChatFormatting.GOLD));
+
+                // Reuse /farmcraft map clearwaypoints logic, but only for villager death
+                // waypoints near the player.
+                EDBMessages.sendToPlayer(new RemoveModWaypointsPacket(
+                    serverPlayer.getX(), serverPlayer.getY(), serverPlayer.getZ(), 128, false,
+                    com.falazar.farmupcraft.ChunkManager.VILLAGER_DEATH_WAYPOINT_TAG), serverPlayer);
             }
 
             // Every login: warn if village treasury is too low to cover today's upkeep.
@@ -240,6 +248,9 @@ public class ForgeEvents {
                                     + " mode — consider switching to HARD!")
                             .withStyle(ChatFormatting.RED));
         }
+
+        // Show LAN reminder in the same periodic spot as the difficulty reminder.
+        FarmCraftCommand.displayLanNotice(player);
     }
 
     /**

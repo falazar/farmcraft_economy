@@ -131,12 +131,20 @@ public class FarmCraftCommand {
                                                                                 context.getSource(), false,
                                                                                 IntegerArgumentType.getInteger(context,
                                                                                                 "chunks")))))
+                                // /farmcraft map removenearestwaypoint
+                                // Removes the closest mod-created JourneyMap waypoint around you.
+                                .then(Commands.literal("removenearestwaypoint")
+                                                .executes(context -> removeNearestWaypoint(context.getSource())))
                                 // /farmcraft map clear - remove ALL farmcraft overlays (chunks, village, etc.)
                                 .then(Commands.literal("clear")
                                                 .executes(context -> clearAllMapOverlays(context.getSource()))));
 
                 // /structure detail <N> [chests] and /structure setupspecialchest
                 // (moved to StructureCommand)
+
+                // /farmcraft lan - toggle LAN-open reminder notice on/off for yourself
+                builder.then(Commands.literal("lan")
+                                .executes(context -> toggleLanNotice(context.getSource())));
 
                 pDispatcher.register(builder);
 
@@ -194,6 +202,40 @@ public class FarmCraftCommand {
                                                         String itemId = StringArgumentType.getString(context, "itemId");
                                                         return openRecipeForPlayer(context.getSource(), itemId);
                                                 })));
+        }
+
+        /** Toggle the LAN-open reminder notice on or off for the calling player. */
+        public static int toggleLanNotice(CommandSourceStack source) {
+                Entity entity = source.getEntity();
+                if (!(entity instanceof ServerPlayer)) {
+                        source.sendFailure(Component.literal("Must be a player."));
+                        return 0;
+                }
+                var worldDb = ModEvents.getWorldDataDatabase();
+                com.falazar.farmupcraft.data.WorldData worldData = ModEvents.getWorldData();
+                boolean newValue = !worldData.isLanNoticeEnabled();
+                worldData.setLanNoticeEnabled(newValue);
+                worldDb.putData(0, worldData);
+                source.sendSuccess(() -> Component.literal(
+                                "LAN notice " + (newValue ? "enabled" : "disabled") + ".")
+                                .withStyle(newValue ? ChatFormatting.GREEN : ChatFormatting.RED), false);
+                return 1;
+        }
+
+        /**
+         * Show a reminder if the server is not published (Open to LAN),
+         * gated behind the player's lanNoticeEnabled setting.
+         */
+        public static void displayLanNotice(net.minecraft.world.entity.player.Player player) {
+                if (player.getServer() == null || player.getServer().isPublished())
+                        return;
+                com.falazar.farmupcraft.data.WorldData worldData = ModEvents.getWorldData();
+                if (worldData != null && !worldData.isLanNoticeEnabled())
+                        return;
+                player.displayClientMessage(
+                                Component.literal("You are not Open To LAN. Use /farmcraft lan to toggle this notice.")
+                                                .withStyle(ChatFormatting.YELLOW),
+                                false);
         }
 
         public static int showSchedulerInfo(CommandSourceStack source) {
@@ -270,6 +312,25 @@ public class FarmCraftCommand {
                 source.sendSuccess(() -> Component.literal(
                                 (testOnly ? "[TEST] Scanning" : "Removing") + " mod waypoints within " + chunks
                                                 + " chunks (" + rangeBlocks + " blocks)...")
+                                .withStyle(ChatFormatting.YELLOW), false);
+                return 1;
+        }
+
+        /**
+         * /farmcraft map removenearestwaypoint
+         * Removes the nearest mod-created JourneyMap waypoint near the player.
+         */
+        public static int removeNearestWaypoint(CommandSourceStack source) {
+                Entity entity = source.getEntity();
+                if (!(entity instanceof ServerPlayer player)) {
+                        source.sendFailure(Component.literal("Must be a player."));
+                        return 0;
+                }
+                int rangeBlocks = 16;
+                EDBMessages.sendToPlayer(new RemoveModWaypointsPacket(
+                                player.getX(), player.getY(), player.getZ(), rangeBlocks, false, null, true), player);
+                source.sendSuccess(() -> Component.literal(
+                                "Removing nearest mod waypoint around you...")
                                 .withStyle(ChatFormatting.YELLOW), false);
                 return 1;
         }
@@ -620,7 +681,8 @@ public class FarmCraftCommand {
                         }
 
                         java.util.List<net.minecraft.core.BlockPos> found = java.util.List.of(chestPos);
-                        boolean placed = VillageCommand.setupSpecialChest(world, s, found, structureDb);
+                        boolean placed = com.falazar.farmupcraft.StructureManager.setupSpecialChest(world, s, found,
+                                        structureDb);
                         if (placed) {
                                 source.sendSystemMessage(Component.literal(
                                                 "Special chest set at " + s.getSpecialChestPos().toShortString()

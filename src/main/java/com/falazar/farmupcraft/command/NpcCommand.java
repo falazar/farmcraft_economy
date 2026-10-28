@@ -27,6 +27,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.ai.goal.MeleeAttackGoal;
 import net.minecraft.world.entity.ai.goal.target.NearestAttackableTargetGoal;
@@ -40,13 +41,16 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.world.ForgeChunkManager;
+import net.minecraftforge.registries.ForgeRegistries;
 
 import java.util.Arrays;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.falazar.farmupcraft.FarmUpCraft.MODID;
@@ -54,6 +58,9 @@ import static com.falazar.farmupcraft.command.PlayerCommand.getPlayer;
 
 public class NpcCommand {
     public static final CustomLogger LOGGER = new CustomLogger(NpcCommand.class.getSimpleName());
+    private static final Set<String> NPC_BEHAVIORS = Set.of("nonhostile", "wary", "hostile");
+    private static final int DEFAULT_NPC_LIST_RADIUS_BLOCKS = 4 * 16;
+    private static final double DEFAULT_CREATE_TARGET_RADIUS = 16.0;
 
     // -------------------------------------------------------------------------
     // NPC Profile Retry Queue
@@ -73,8 +80,7 @@ public class NpcCommand {
      * Villagers whose profile generation failed — tried one at a time every 5
      * minutes by {@link #tickRetryQueue(MinecraftServer)}.
      */
-    public static final java.util.concurrent.ConcurrentLinkedQueue<ProfileRequest> PENDING_PROFILES =
-            new java.util.concurrent.ConcurrentLinkedQueue<>();
+    public static final java.util.concurrent.ConcurrentLinkedQueue<ProfileRequest> PENDING_PROFILES = new java.util.concurrent.ConcurrentLinkedQueue<>();
 
     // -------------------------------------------------------------------------
     // Threat notes cache — auto-replenishment
@@ -85,8 +91,8 @@ public class NpcCommand {
     /** How many notes to request in one batch when replenishing. */
     private static final int NOTES_REPLENISH_BATCH = 5;
     /** Prevents concurrent replenishment requests. */
-    private static final java.util.concurrent.atomic.AtomicBoolean IS_REPLENISHING_NOTES =
-            new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static final java.util.concurrent.atomic.AtomicBoolean IS_REPLENISHING_NOTES = new java.util.concurrent.atomic.AtomicBoolean(
+            false);
 
     /** Structure name pool used when auto-replenishing notes. */
     private static final String[] NOTE_STRUCTURE_TYPES = {
@@ -95,9 +101,11 @@ public class NpcCommand {
     };
 
     /**
-     * Checks the threat notes cache and, if it is below {@value #NOTES_REPLENISH_THRESHOLD},
+     * Checks the threat notes cache and, if it is below
+     * {@value #NOTES_REPLENISH_THRESHOLD},
      * asynchronously requests a fresh batch from Ollama.
-     * Safe to call frequently — guarded by an atomic flag so only one batch runs at a time.
+     * Safe to call frequently — guarded by an atomic flag so only one batch runs at
+     * a time.
      *
      * @param server the current Minecraft server (needed to run the callback on the
      *               server thread after the AI responds)
@@ -170,6 +178,39 @@ public class NpcCommand {
                         }));
         builder.then(createBuilder);
 
+        LiteralArgumentBuilder<CommandSourceStack> findNearestLivingBuilder = Commands.literal("findnearestliving")
+                .requires(source -> source.hasPermission(2))
+                .executes(context -> findNearestLiving(context.getSource(), DEFAULT_CREATE_TARGET_RADIUS));
+        builder.then(findNearestLivingBuilder);
+
+        // admin aliases for command discoverability/grouping
+        LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.literal("create")
+                        .then(Commands.argument("name", StringArgumentType.string())
+                                .executes(context -> {
+                                    String name = StringArgumentType.getString(context, "name");
+                                    return createNpc(context.getSource(), name);
+                                })))
+                .then(Commands.literal("findnearestliving")
+                        .executes(context -> findNearestLiving(context.getSource(), DEFAULT_CREATE_TARGET_RADIUS)));
+        builder.then(adminBuilder);
+
+        LiteralArgumentBuilder<CommandSourceStack> claimBuilder = Commands.literal("claim")
+                .requires(source -> source.hasPermission(2))
+                .then(Commands.argument("name", StringArgumentType.string())
+                        .executes(context -> {
+                            String name = StringArgumentType.getString(context, "name");
+                            return claimNpc(context.getSource(), name);
+                        })
+                        .then(Commands.argument("behavior", StringArgumentType.word())
+                                .executes(context -> {
+                                    String name = StringArgumentType.getString(context, "name");
+                                    String behavior = StringArgumentType.getString(context, "behavior");
+                                    return claimNpc(context.getSource(), name, behavior);
+                                })));
+        builder.then(claimBuilder);
+
         // Define the "info" sub-commands
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .then(Commands.argument("name", StringArgumentType.string())
@@ -178,6 +219,14 @@ public class NpcCommand {
                             return showNpcInfo(context.getSource(), name);
                         }));
         builder.then(infoBuilder);
+
+        // list [radius] — show nearby villagers + claimed NPC mobs
+        LiteralArgumentBuilder<CommandSourceStack> listBuilder = Commands.literal("list")
+                .executes(context -> listNearbyNpcs(context.getSource(), DEFAULT_NPC_LIST_RADIUS_BLOCKS))
+                .then(Commands.argument("radius", com.mojang.brigadier.arguments.IntegerArgumentType.integer(4, 256))
+                        .executes(context -> listNearbyNpcs(context.getSource(),
+                                com.mojang.brigadier.arguments.IntegerArgumentType.getInteger(context, "radius"))));
+        builder.then(listBuilder);
 
         // Define the "setdescription" sub-command (admin only)
         LiteralArgumentBuilder<CommandSourceStack> setDescriptionBuilder = Commands.literal("setdescription")
@@ -292,7 +341,8 @@ public class NpcCommand {
                         }));
         builder.then(hideNameBuilder);
 
-        // fillnotescache [count] — pre-generate AI threat notes and store in cache (admin only)
+        // fillnotescache [count] — pre-generate AI threat notes and store in cache
+        // (admin only)
         LiteralArgumentBuilder<CommandSourceStack> fillNotesCacheBuilder = Commands.literal("fillnotescache")
                 .requires(source -> source.hasPermission(2))
                 .executes(context -> fillNotesCache(context.getSource(), 5))
@@ -351,6 +401,132 @@ public class NpcCommand {
         return 0;
     }
 
+    public static int claimNpc(CommandSourceStack source, String name) {
+        return claimNpc(source, name, "nonhostile");
+    }
+
+    public static int claimNpc(CommandSourceStack source, String name, String behavior) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            String normalizedBehavior = behavior.toLowerCase(java.util.Locale.ROOT);
+            if (!NPC_BEHAVIORS.contains(normalizedBehavior)) {
+                source.sendFailure(Component.literal(
+                        "Behavior must be one of: nonhostile, wary, hostile."));
+                return 0;
+            }
+
+            LivingEntity target = findClosestClaimTarget(summoner, 8.0);
+            if (target == null) {
+                source.sendFailure(Component.literal("No nearby mob found to claim (range 8 blocks)."));
+                return 0;
+            }
+
+            PlayerData playerData = getPlayer(source);
+            VillageData village = playerData != null ? playerData.getHomeVillage() : null;
+            UUID villageId = village != null ? village.getUUID() : new UUID(0L, 0L);
+            String villageName = village != null ? village.getName() : "";
+
+            LOGGER.info("claimNpc: naming target uuid={} as '{}'", target.getUUID(), name);
+
+            target.setCustomName(Component.literal(name));
+            target.setCustomNameVisible(true);
+            if (target instanceof Mob mob) {
+                mob.setPersistenceRequired();
+                LOGGER.info("claimNpc: setPersistenceRequired on uuid={} type={}", target.getUUID(), target.getType());
+                if (!"hostile".equals(normalizedBehavior)) {
+                    mob.setTarget(null);
+                }
+            }
+
+            final String profileFileName = generateDefaultProfileFileName(name, target.getUUID());
+
+            net.minecraft.resources.ResourceLocation entityTypeId = ForgeRegistries.ENTITY_TYPES
+                    .getKey(target.getType());
+            String typeLabel = entityTypeId != null ? entityTypeId.toString() : target.getType().toString();
+            String description = "Claimed NPC " + name + " (" + typeLabel + ")";
+
+            DataBase<UUID, NpcData> npcDb = ModEvents.getNpcDatabase();
+            NpcData npcData = npcDb.getData(target.getUUID());
+            if (npcData == null) {
+                npcData = new NpcData(target.getUUID(), name, villageId, description, "", villageName, false,
+                        normalizedBehavior, profileFileName);
+            } else {
+                npcData.setName(name);
+                npcData.setHomeVillageId(villageId);
+                npcData.setDescription(description);
+                npcData.setVillageName(villageName);
+                npcData.setBehavior(normalizedBehavior);
+                npcData.setAiProfileFile(profileFileName);
+            }
+            npcDb.putData(target.getUUID(), npcData);
+
+            boolean hasProfileFile = NpcDataLoader.profileFileExists(profileFileName);
+            if (!hasProfileFile) {
+                String starterPersonality = switch (normalizedBehavior) {
+                    case "hostile" -> "You are volatile and intimidating, but still speak briefly and clearly.";
+                    case "wary" -> "You are cautious and distrustful, avoid direct conflict unless cornered.";
+                    default -> "You are peaceful, calm, and helpful to nearby villagers and players.";
+                };
+                NpcDataLoader.writeProfileToFile(profileFileName, name, target.getUUID(), description,
+                        starterPersonality, villageName);
+            }
+
+            source.sendSuccess(() -> Component.literal(
+                    "NPC claimed: " + name
+                            + " | entity=" + typeLabel
+                            + " | behavior=" + normalizedBehavior
+                            + " | profile=npcData/" + profileFileName)
+                    .withStyle(ChatFormatting.GREEN), false);
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("claimNpc exception — see log"));
+            LOGGER.error("claimNpc error: " + ex.getMessage(), ex);
+            return 0;
+        }
+    }
+
+    private static LivingEntity findClosestClaimTarget(Player summoner, double radius) {
+        return findClosestNonPlayerLiving(summoner, radius);
+    }
+
+    private static LivingEntity findClosestNonPlayerLiving(Player summoner, double radius) {
+        AABB searchBox = summoner.getBoundingBox().inflate(radius);
+        return summoner.level().getEntitiesOfClass(LivingEntity.class, searchBox,
+                entity -> entity.isAlive() && entity != summoner && !(entity instanceof Player))
+                .stream()
+                .min(Comparator.comparingDouble(entity -> entity.distanceToSqr(summoner)))
+                .orElse(null);
+    }
+
+    private static String normalizeProfileFileName(String profileFile) {
+        if (profileFile == null)
+            return "";
+        String trimmed = profileFile.trim();
+        if (trimmed.isEmpty())
+            return "";
+        String safe = trimmed.replace("\\", "/");
+        int slash = safe.lastIndexOf('/');
+        if (slash >= 0 && slash < safe.length() - 1)
+            safe = safe.substring(slash + 1);
+        if (!safe.toLowerCase(java.util.Locale.ROOT).endsWith(".json"))
+            safe = safe + ".json";
+        return safe;
+    }
+
+    private static String generateDefaultProfileFileName(String name, UUID uuid) {
+        String base = name == null ? "npc" : name.trim().toLowerCase(java.util.Locale.ROOT);
+        if (base.isEmpty())
+            base = "npc";
+        base = base.replaceAll("[^a-z0-9_-]+", "_");
+        return base + "-" + uuid + ".json";
+    }
+
     public static int createNpc(CommandSourceStack source, String name) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -359,29 +535,34 @@ public class NpcCommand {
                 source.sendFailure(Component.literal("Player not found."));
                 return 0;
             }
-            PlayerData player = getPlayer(source);
-            VillageData village = player.getHomeVillage();
+            UUID villageId = null;
 
             LOGGER.info("DEBUG createNpc command executed by " + summoner.getName().getString());
 
-            // TODO MAKE HELPER METHOD.
-            // STEP 1: Find a nearby villager matching this name.
-            double radius = 64.0;
-            AABB searchBox = new AABB(
-                    summoner.getX() - radius, summoner.getY() - radius, summoner.getZ() - radius,
-                    summoner.getX() + radius, summoner.getY() + radius, summoner.getZ() + radius);
-            List<Villager> nearVillagers = summoner.level().getEntitiesOfClass(
-                    Villager.class,
-                    searchBox,
-                    villager -> villager.getName().getString().equals(name));
-            Villager villager = nearVillagers.stream().findFirst().orElse(null);
-            if (villager == null) {
-                source.sendFailure(Component.literal("No nearby villager found with that name."));
+            // STEP 1: Find the nearest non-player living entity.
+            LivingEntity target = findClosestNonPlayerLiving(summoner, DEFAULT_CREATE_TARGET_RADIUS);
+            if (target == null) {
+                source.sendFailure(Component.literal(
+                        "No nearby living entity found (range " + (int) DEFAULT_CREATE_TARGET_RADIUS + " blocks)."));
                 return 0;
             }
 
+            if (target instanceof Mob mob) {
+                mob.setPersistenceRequired();
+                LOGGER.info("createNpc: setPersistenceRequired on uuid={} type={}", target.getUUID(), target.getType());
+            }
+
+            LOGGER.info("createNpc: naming target uuid={} as '{}'", target.getUUID(), name);
+            target.setCustomName(Component.literal(name));
+            target.setCustomNameVisible(true);
+
+            net.minecraft.resources.ResourceLocation entityTypeId = ForgeRegistries.ENTITY_TYPES
+                    .getKey(target.getType());
+            String typeLabel = entityTypeId != null ? entityTypeId.toString() : target.getType().toString();
+            String description = "Created NPC " + name + " (" + typeLabel + ")";
+
             // STEP 2: Create a new NPC data object with that UUID.
-            NpcData npc = new NpcData(villager.getUUID(), name, village.getUUID(), "a villager");
+            NpcData npc = new NpcData(target.getUUID(), name, villageId, description);
             ModEvents.getNpcDatabase().putData(npc.getUUID(), npc);
 
             // Send success message to the player.
@@ -392,6 +573,38 @@ public class NpcCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    public static int findNearestLiving(CommandSourceStack source, double radius) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            LivingEntity target = findClosestNonPlayerLiving(summoner, radius);
+            if (target == null) {
+                source.sendFailure(
+                        Component.literal("No nearby living entity found (range " + (int) radius + " blocks)."));
+                return 0;
+            }
+
+            net.minecraft.resources.ResourceLocation entityTypeId = ForgeRegistries.ENTITY_TYPES
+                    .getKey(target.getType());
+            String typeLabel = entityTypeId != null ? entityTypeId.toString() : target.getType().toString();
+            int dist = (int) Math.round(Math.sqrt(target.distanceToSqr(summoner)));
+
+            source.sendSuccess(() -> Component.literal(
+                    "[NPC] nearest living | type=" + typeLabel + " | uuid=" + target.getUUID() + " | dist=" + dist),
+                    false);
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("findnearestliving exception — see log"));
+            LOGGER.error("findNearestLiving error: " + ex.getMessage(), ex);
+            return 0;
+        }
     }
 
     public static int setNpcDescription(CommandSourceStack source, String name, String description) {
@@ -1105,6 +1318,93 @@ public class NpcCommand {
             ex.printStackTrace();
         }
         return 0;
+    }
+
+    /**
+     * /npc list [radius]
+     * Lists nearby NPCs: all villagers plus any entity already registered in
+     * npcDatabase (for example claimed dragons or other mobs).
+     */
+    public static int listNearbyNpcs(CommandSourceStack source, int radius) {
+        try {
+            Entity nullableSummoner = source.getEntity();
+            Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
+            if (summoner == null) {
+                source.sendFailure(Component.literal("This command can only be run by a player."));
+                return 0;
+            }
+
+            AABB searchBox = summoner.getBoundingBox().inflate(radius);
+            DataBase<UUID, NpcData> npcDb = ModEvents.getNpcDatabase();
+
+            List<LivingEntity> matches = summoner.level().getEntitiesOfClass(LivingEntity.class, searchBox,
+                    entity -> entity.isAlive()
+                            && entity != summoner
+                            && !(entity instanceof Player)
+                        && (entity instanceof Villager || isClaimedNpcSafe(npcDb, entity.getUUID())))
+                    .stream()
+                    .sorted(Comparator.comparingDouble(entity -> entity.distanceToSqr(summoner)))
+                    .collect(java.util.stream.Collectors.toList());
+
+            if (matches.isEmpty()) {
+                source.sendFailure(Component.literal("No nearby NPCs found within " + radius + " blocks."));
+                return 0;
+            }
+
+            source.sendSuccess(() -> Component.literal(
+                    "[NPC] Nearby NPCs (" + matches.size() + ") within " + radius + " blocks:"), false);
+
+            int shown = 0;
+            for (LivingEntity entity : matches) {
+                if (shown >= 20)
+                    break;
+
+                NpcData npcData;
+                try {
+                    npcData = npcDb.getData(entity.getUUID());
+                } catch (Exception fetchErr) {
+                    LOGGER.warn("listNearbyNpcs: failed to fetch npcData for uuid={} ({})",
+                            entity.getUUID(), fetchErr.getMessage());
+                    npcData = null;
+                }
+                String npcName = npcData != null && npcData.getName() != null && !npcData.getName().isBlank()
+                        ? npcData.getName()
+                        : entity.getName().getString();
+                net.minecraft.resources.ResourceLocation typeId = ForgeRegistries.ENTITY_TYPES.getKey(entity.getType());
+                String typeLabel = typeId != null ? typeId.toString() : entity.getType().toString();
+                String category = entity instanceof Villager ? "villager" : "claimed";
+                int dist = (int) Math.round(Math.sqrt(entity.distanceToSqr(summoner)));
+
+                String behaviorPart = npcData != null && npcData.getBehavior() != null
+                        && !npcData.getBehavior().isBlank()
+                                ? " | behavior=" + npcData.getBehavior()
+                                : "";
+
+                String line = " - " + npcName + " | type=" + typeLabel + " | " + category + " | dist=" + dist
+                        + behaviorPart;
+                source.sendSuccess(() -> Component.literal(line), false);
+                shown++;
+            }
+
+            if (matches.size() > shown) {
+                int remaining = matches.size() - shown;
+                source.sendSuccess(() -> Component.literal("[NPC] ... and " + remaining + " more."), false);
+            }
+            return 1;
+        } catch (Exception ex) {
+            source.sendFailure(Component.literal("npc list exception — see log"));
+            LOGGER.error("listNearbyNpcs error: " + ex.getMessage(), ex);
+            return 0;
+        }
+    }
+
+    private static boolean isClaimedNpcSafe(DataBase<UUID, NpcData> npcDb, UUID uuid) {
+        try {
+            return npcDb.getData(uuid) != null;
+        } catch (Exception ex) {
+            LOGGER.warn("isClaimedNpcSafe: failed db lookup for uuid={} ({})", uuid, ex.getMessage());
+            return false;
+        }
     }
 
 }

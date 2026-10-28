@@ -187,7 +187,7 @@ public final class TreeManager {
             DataBase<Long, ChunkData> chunkDb = ModEvents.getChunkDataDatabase();
             ChunkData chunkData = chunkDb.getData(chunkPos.toLong());
             int plotLevel = chunkData != null ? chunkData.getPlotLevel() : 1;
-            successRate += plotLevel * 20; // plot level 1=20%, 2=40%, 3=60%
+            successRate = plotLevel * 30; // plot level 1=30%, 2=60%, 3=90%
         }
 
         // STEP 3: Roll for success now.
