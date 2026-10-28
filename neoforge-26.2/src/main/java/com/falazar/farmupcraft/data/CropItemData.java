@@ -1,0 +1,76 @@
+package com.falazar.farmupcraft.data;
+
+import com.mojang.datafixers.util.Either;
+import com.mojang.serialization.Codec;
+import com.mojang.serialization.codecs.RecordCodecBuilder;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.level.biome.Biome;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class CropItemData {
+    public static final Codec<CropItemData> CODEC = RecordCodecBuilder.create(instance ->
+            instance.group(
+                    Codec.either(
+                            BuiltInRegistries.ITEM.byNameCodec().fieldOf("item").codec(),
+                            TagKey.codec(Registries.ITEM).fieldOf("tag").codec()
+                    ).fieldOf("crop").forGetter(data ->
+                            data.item != null ? Either.left(data.item) : Either.right(data.itemTagKey)),
+                    TagKey.codec(Registries.BIOME).fieldOf("allowed_biomes").forGetter(CropItemData::getAllowedBiomes),
+                    Codec.BOOL.fieldOf("populate_items").forGetter(CropItemData::getPopulateItems)
+            ).apply(instance, CropItemData::new));
+
+    private final Item item;
+    private final TagKey<Item> itemTagKey;
+    private final TagKey<Biome> allowedBiomes;
+    private final boolean populateItems;
+    private List<Holder<Biome>> allowedBiomesList = new ArrayList<>();
+
+    public CropItemData(Either<Item, TagKey<Item>> crop, TagKey<Biome> allowedBiomes, boolean populateItems) {
+        this.item = crop.left().orElse(null);
+        this.itemTagKey = crop.right().orElse(null);
+        this.allowedBiomes = allowedBiomes;
+        this.populateItems = populateItems;
+    }
+
+    public CropItemData(TagKey<Item> tag, TagKey<Biome> allowedBiomes, boolean populateItems) {
+        this(Either.right(tag), allowedBiomes, populateItems);
+    }
+
+    public CropItemData(Item item, TagKey<Biome> allowedBiomes, boolean populateItems) {
+        this(Either.left(item), allowedBiomes, populateItems);
+    }
+
+    public boolean containsBiome(Holder<Biome> biome) {
+        return allowedBiomesList.contains(biome);
+    }
+
+    public List<Holder<Biome>> getAllowedBiomesList() {
+        return allowedBiomesList;
+    }
+
+    public void setAllowedBiomesList(List<Holder<Biome>> allowedBiomesList) {
+        this.allowedBiomesList = allowedBiomesList;
+    }
+
+    public TagKey<Biome> getAllowedBiomes() {
+        return allowedBiomes;
+    }
+
+    public Item getItem() {
+        return item;
+    }
+
+    public TagKey<Item> getItems() {
+        return itemTagKey;
+    }
+
+    public boolean getPopulateItems() {
+        return populateItems;
+    }
+}

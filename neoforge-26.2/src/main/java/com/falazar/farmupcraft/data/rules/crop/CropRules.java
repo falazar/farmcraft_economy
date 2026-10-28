@@ -1,0 +1,18 @@
+package com.falazar.farmupcraft.data.rules.crop;
+
+import com.falazar.farmupcraft.registry.FUCRegistries;
+import com.mojang.serialization.Codec;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.item.Item;
+
+import java.util.List;
+
+public interface CropRules {
+    Codec<CropRules> DIRECT_CODEC = Codec.lazyInitialized(() ->
+            FUCRegistries.CROP_RULES_TYPE_SERIALIZER_SUPP.get().byNameCodec()
+                    .dispatch(CropRules::type, CropRulesType::codec));
+
+    List<Item> getCropItems(ServerLevel level, int id);
+
+    CropRulesType<? extends CropRules> type();
+}

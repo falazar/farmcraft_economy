@@ -10,7 +10,9 @@
 
 ## Current-code snapshot
 
-The Forge `forge-1.20.1/src/main/java` tree contains **139 Java files**. Import-family counts overlap:
+The pre-port Forge source tree contained **139 Java files**. Two Java-only
+helpers have since moved into `common`, leaving 137 in the Forge target.
+The following overlapping import counts describe the original baseline:
 
 - 123 files import `net.minecraft.*`.
 - 56 files import `net.minecraftforge.*`.
@@ -32,7 +34,7 @@ farmcraft_economy/
 └── neoforge-26.2/          # New NeoForge target
 ```
 
-Each target owns its Gradle configuration, loader metadata, version-specific resources, and platform integrations. The common module should not depend on Minecraft or either loader API.
+Each target owns its Gradle configuration, loader metadata, version-specific resources, and platform integrations. Both include `common` as a Java 17 subproject and package its compiled classes in their own mod jar. Common build outputs are isolated under each target's build directory. The common module has no Minecraft or loader dependency.
 
 ## Work chunks
 
@@ -52,36 +54,55 @@ Each target owns its Gradle configuration, loader metadata, version-specific res
 ### 1. Confirm target and dependency availability
 
 - [x] Verify the initial 26.2 toolchain against the official MDK: NeoForge 26.2.0.93, Java 25, Gradle 9.2.1, and ModDevGradle 2.0.148.
-- [ ] Check whether compatible 26.2 NeoForge releases exist for JEI, The One Probe, Pam's HarvestCraft 2 (Food Core, Crops, Food Extended, Trees), Biomes O' Plenty, JourneyMap, Villager Names, Collective, and TerraBlender.
-- [ ] Decide which integrations are required, optional, replaceable, or can be omitted from the NeoForge target.
-- [ ] Record the selected artifact versions and any unavailable integrations before porting their code.
+- [x] Check whether compatible 26.2 NeoForge releases exist for JEI, The One Probe, Pam's HarvestCraft 2 (Food Core, Crops, Food Extended, Trees), Biomes O' Plenty, JourneyMap, Villager Names, Collective, and TerraBlender.
+- [ ] Finalize required/optional runtime metadata as each integration is ported; the development target currently retains all existing companion mods.
+- [x] Record and pin selected artifact versions in `neoforge-26.2/gradle.properties`.
+- [x] Download the selected jars and inspect actual NeoForge metadata; verify mandatory dependencies, embedded libraries, and compatibility with NeoForge 26.2.0.93.
+- [x] Build and launch the dependency-enabled development client; all selected companion mods were discovered and reached client resource/sound initialization.
 
 **Done when:** every required dependency has a verified compatible artifact or an agreed replacement.
 
+**Artifact verification and client smoke test:** all four HarvestCraft artifacts
+downloaded successfully through CurseMaven. Their embedded metadata requires
+Minecraft `[26.2,26.3)` and NeoForge `[26.2.0.88,26.3)`, satisfied by our target.
+The Crops jar retains all seven grain IDs used by `AnimalGrainAssigner`.
+JEI embeds its required `mezz_config` library; JourneyMap embeds Common
+Networking and its API. BOP's required GlitchCore and TerraBlender are declared
+explicitly. Development runtime testing found upstream warnings for a missing
+HarvestCraft apple texture and malformed BOP Spanish translation; these were
+not modified. No missing-dependency or fatal startup error appeared in this
+client smoke test. World creation and feature behavior remain unverified.
+
 #### Content dependency research (2026-10-28)
 
-The content-dependency research agent checked public Modrinth metadata and
-version histories for exact Minecraft 26.2 / NeoForge matches. Direct
-CurseForge file listings could not be fully verified because of access limits.
-Treat absent releases as blockers requiring a decision, not proof that no
-unlisted or future port exists.
+The content-dependency research agent checked Modrinth and then the original
+HarvestCraft CurseForge projects through the unofficial cfwidget metadata
+mirror. The follow-up found exact Minecraft 26.2 / NeoForge file records for
+all four HarvestCraft modules, superseding the earlier Modrinth-only negative
+finding. Direct CurseForge file pages returned access errors, but a subsequent
+artifact check downloaded all four jars through CurseMaven and verified their
+embedded metadata. The dependency-enabled development client also loaded them.
 
 | Dependency | Reported exact-target release | Next step |
 | --- | --- | --- |
-| Pam's HarvestCraft 2 Food Core | No matching release in checked Modrinth history | Decide whether to wait, replace, or omit its dependent features |
-| Pam's HarvestCraft 2 Crops | No matching release in checked Modrinth history | Same; do not assume old crop IDs exist in the new target |
-| Pam's HarvestCraft 2 Food Extended | No matching release in checked Modrinth history | Decide whether to wait, replace, or omit |
-| Pam's HarvestCraft 2 Trees | No matching release in checked Modrinth history | Decide whether to wait, replace, or omit |
-| Biomes O' Plenty | `26.2.0.0.28` | Verify artifact dependencies before adding |
-| TerraBlender | `26.2.0.0.2` | Verify artifact dependencies before adding |
-| GlitchCore (additional BOP dependency) | `26.2.0.0.0` | Include in dependency verification for BOP |
+| Pam's HarvestCraft 2 Food Core | `pamhc2foodcore-NEOFORGE-1.26.2-1.0.0.jar`, CurseForge file `9050309` | Jar metadata verified; loaded in development client |
+| Pam's HarvestCraft 2 Crops | `pamhc2crops-NEOFORGE-1.26.2-1.0.0.jar`, CurseForge file `9050315` | Jar metadata and seven grain IDs verified; loaded in development client |
+| Pam's HarvestCraft 2 Food Extended | `pamhc2foodextended-NEOFORGE-1.26.2-1.0.0.jar`, CurseForge file `9050328` | Jar metadata verified; loaded in development client |
+| Pam's HarvestCraft 2 Trees | `pamhc2trees-NEOFORGE-1.26.2-1.0.0.jar`, CurseForge file `9050321` | Jar metadata verified; loaded in development client |
+| Biomes O' Plenty | `26.2.0.0.28` | Jar metadata verified; declared GlitchCore and TerraBlender; loaded in development client |
+| TerraBlender | `26.2.0.0.2` | Jar metadata verified; loaded in development client |
+| GlitchCore (additional BOP dependency) | `26.2.0.0.0` | Jar metadata verified; loaded in development client |
 
-Primary metadata sources:
+HarvestCraft file pages (records reported by the cfwidget mirror; direct-page
+verification pending):
 
-- [HarvestCraft Food Core](https://api.modrinth.com/v2/project/Z9OywhE4)
-- [HarvestCraft Crops](https://api.modrinth.com/v2/project/5xO6VNlk)
-- [HarvestCraft Food Extended](https://api.modrinth.com/v2/project/bdPeAbPS)
-- [HarvestCraft Trees](https://api.modrinth.com/v2/project/KDzWXxuG)
+- [HarvestCraft Food Core](https://www.curseforge.com/minecraft/mc-mods/pams-harvestcraft-2-food-core/files/9050309)
+- [HarvestCraft Crops](https://www.curseforge.com/minecraft/mc-mods/pams-harvestcraft-2-crops/files/9050315)
+- [HarvestCraft Food Extended](https://www.curseforge.com/minecraft/mc-mods/pams-harvestcraft-2-food-extended/files/9050328)
+- [HarvestCraft Trees](https://www.curseforge.com/minecraft/mc-mods/pams-harvestcraft-2-trees/files/9050321)
+
+Other primary metadata sources:
+
 - [Biomes O' Plenty](https://api.modrinth.com/v2/project/HXF82T3G)
 - [TerraBlender](https://api.modrinth.com/v2/project/kkmrDlKT)
 - [GlitchCore](https://api.modrinth.com/v2/project/s3dmwKy5)
@@ -94,7 +115,7 @@ with FarmUpCraft. CurseForge artifact IDs remain unverified.
 
 | Dependency | Reported candidate | Conversion or verification needed |
 | --- | --- | --- |
-| JEI | `30.48.0.242` / `30.48.0.243` | Artifact-level compatibility check pending; `.244` has a contradictory changelog mentioning 26.1.2 |
+| JEI | `mezz.jei:jei-26.2-neoforge:30.48.0.244` | Agent inspected actual jar metadata: Minecraft `[26.2, 26.2]`, NeoForge `[26.2.0.67,)`, compatible with our pinned loader; runtime integration testing remains pending |
 | The One Probe | `26.2_neo-15.0.1` | Check required dependencies and actual API usage before adding |
 | JourneyMap | `26.2-6.0.10` | Port integration to the matching API |
 | JourneyMap API | `info.journeymap:journeymap-api-neoforge:26.2-2.0.0` | Upstream documents waypoint changes and replacement of `ClientPlugin` with `JourneyMapPlugin` |
@@ -104,6 +125,7 @@ with FarmUpCraft. CurseForge artifact IDs remain unverified.
 Sources:
 
 - [JEI release metadata](https://api.modrinth.com/v2/project/jei/version)
+- [JEI Maven metadata](https://maven.blamejared.com/mezz/jei/jei-26.2-neoforge/maven-metadata.xml)
 - [The One Probe release metadata](https://api.modrinth.com/v2/project/the-one-probe/version)
 - [JourneyMap release metadata](https://api.modrinth.com/v2/project/journeymap/version)
 - [JourneyMap API Maven metadata](https://maven.blamejared.com/info/journeymap/journeymap-api-neoforge/maven-metadata.xml)
@@ -118,7 +140,8 @@ Sources:
 - [x] Add NeoForge-specific mod metadata and verify it is packaged in the jar.
 - [x] Build the minimal starter jar.
 - [x] Launch the development client and confirm it discovers FarmUpCraft on NeoForge 26.2.
-- [ ] Test a dedicated server before porting features; this requires accepting the Minecraft EULA for the isolated development server.
+- [x] Start the dependency-enabled dedicated development server: reached `Done` and listened on port 25565 with the currency registry present. NeoForge's built-in development-mode EULA behavior allowed startup without editing an EULA file.
+- [ ] Investigate dedicated-server companion-mod diagnostics (a client-only `SalmonRenderer` load attempt and missing spawn-placement registration); startup succeeded, but this is not yet a clean production-server regression test.
 
 **Done when:** the empty/minimal NeoForge target builds and launches on both client and dedicated server.
 
@@ -126,7 +149,9 @@ Sources:
 
 - [ ] Review the `currency/`, `data/`, `data/rules/`, and `util/` packages for domain logic that can be separated from Minecraft types.
 - [ ] Keep Minecraft values such as `ItemStack`, `BlockPos`, `ResourceLocation`, `Component`, registry objects, and game codecs out of the common module.
-- [ ] Review `ChecksumUtil.java` and `FileInfo.java` as straightforward Java-only sharing candidates.
+- [x] Review `ChecksumUtil.java` and `FileInfo.java` as straightforward Java-only sharing candidates.
+- [x] Move `ChecksumUtil.java` and `FileInfo.java` unchanged into `common`, wire both development runtimes and packaged jars, and compile common independently of Minecraft/loader APIs.
+- [x] Add four focused shared-utility tests and pass them through both Forge/Java 17 and NeoForge builds.
 - [ ] Review `AnimalGrainAssigner.java`, `QueryBuilder.java`, and database file-format strategies; share them only after their model/database dependencies are decoupled.
 - [ ] Add focused tests for any extracted pure-Java rules or calculations.
 
@@ -135,6 +160,11 @@ Sources:
 ### 4. Port mod bootstrap, lifecycle, and registrations
 
 - [ ] Port the mod entry point and lifecycle setup in `FarmUpCraft.java`.
+- [x] Port the currency models, coin registry key/registration, bronze coin resource, and five currency codec/behavior tests; tests pass on the NeoForge target.
+- [x] Port the four crop-rule classes, serializer IDs, and crop datapack registry registration while preserving coin registration; initial standalone crop tests pass.
+- [x] Enable ModDevGradle's official FML-aware JUnit support and matching NeoForge test framework instead of mocking the Minecraft loader.
+- [x] Validate item/dispatch codecs and actual datapack registries using the supported server fixture: loaded bronze coin value 10, coin/crop registry keys, serializer registrations, and legacy JSON decoding.
+- [ ] Exercise world-dependent `getCropItems` cache integration in GameTest or an in-world test; the ephemeral registry fixture does not supply a `ServerLevel`.
 - [ ] Port `setup/Registration.java` and the `registry/` package, including item, data, and biome-related registrations.
 - [ ] Replace Forge event-bus, lifecycle, distribution-side, and registry APIs with the NeoForge equivalents.
 - [ ] Review loader metadata, mixin configuration registration, and Gradle resource expansion for the NeoForge jar.
@@ -173,6 +203,8 @@ Sources:
 - [ ] Port client event registration, overlays, rendering, weather/sound behavior, and client-only code in `client/`.
 - [ ] Port JEI integration if a compatible target artifact exists; otherwise make it optional or omit it from the NeoForge target.
 - [ ] Port JourneyMap integration if its NeoForge API supports the target; otherwise make it optional or omit it.
+- [x] Convert the basic JEI runtime-holder plugin and JourneyMap client-plugin bridge to the target APIs; command/packet consumers and in-world integration behavior remain pending.
+- [x] Pass four plugin-identifier/lifecycle tests and confirm JourneyMap discovers the converted plugin during development-client startup.
 - [ ] Adapt the existing JourneyMap `ClientPlugin` annotation and waypoint handling to the target API's documented replacements.
 - [ ] Check all other companion-mod integrations against their actual target APIs and loader artifacts.
 - [ ] Confirm client-only classes are not loaded on a dedicated server.
@@ -201,6 +233,7 @@ Sources:
 ### 11. Test both targets and release artifacts
 
 - [ ] Build the NeoForge 26.2 jar from a clean checkout.
+- [x] Build the current working-tree NeoForge jar and freshly run 22 NeoForge tests plus four common tests with zero failures. Coverage includes legacy currency/crop codec shapes, real registry loading, HarvestCraft item/tag lookup, and client-plugin lifecycle behavior.
 - [ ] Build the Forge 1.20.1 jar after shared-code or repository-structure changes.
 - [ ] Test client startup, dedicated-server startup, a copied test world, persistence across restart, core commands, and required integrations.
 - [ ] Check logs for missing mixins, missing dependencies, registry errors, and data-pack errors.

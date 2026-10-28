@@ -10,6 +10,8 @@ plugins {
 version = mod_version
 group = mod_group_id
 
+evaluationDependsOn(':common')
+
 base {
     archivesName = mod_id
 }
@@ -85,6 +87,7 @@ minecraft {
             mods {
                 "${mod_id}" {
                     source sourceSets.main
+                    source project(':common').sourceSets.main
                 }
             }
         }
@@ -101,6 +104,7 @@ minecraft {
             mods {
                 "${mod_id}" {
                     source sourceSets.main
+                    source project(':common').sourceSets.main
                 }
             }
         }
@@ -120,6 +124,7 @@ minecraft {
             mods {
                 "${mod_id}" {
                     source sourceSets.main
+                    source project(':common').sourceSets.main
                 }
             }
         }
@@ -137,6 +142,7 @@ minecraft {
             mods {
                 "${mod_id}" {
                     source sourceSets.main
+                    source project(':common').sourceSets.main
                 }
             }
         }
@@ -176,6 +182,7 @@ repositories {
 }
 
 dependencies {
+    implementation project(':common')
     // Specify the version of Minecraft to use.
     // Any artifact can be supplied so long as it has a "userdev" classifier artifact and is a compatible patcher artifact.
     // The "userdev" classifier will be requested and setup by ForgeGradle.
@@ -256,6 +263,7 @@ processResources {
 
 // Example for how to get properties into the manifest for reading at runtime.
 jar {
+    from project(':common').sourceSets.main.output
     manifest {
         attributes([
                 "Specification-Title"     : mod_id,
@@ -319,3 +327,7 @@ task copyJar(type: Copy) {
 
 // Make copyJar run automatically after build
 build.finalizedBy(copyJar)
+
+tasks.named('check').configure {
+    dependsOn ':common:check'
+}

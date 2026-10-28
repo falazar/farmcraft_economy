@@ -7,6 +7,8 @@ plugins {
 version = mod_version
 group = mod_group_id
 
+evaluationDependsOn(':common')
+
 base {
     archivesName = "${mod_id}-neoforge-${minecraft_version}"
 }
@@ -15,6 +17,62 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(25)
 
 sourceSets.main.resources {
     srcDir('src/generated/resources')
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://maven.blamejared.com'
+        content {
+            includeGroup 'mezz.jei'
+            includeGroup 'info.journeymap'
+        }
+    }
+    maven {
+        url = 'https://api.modrinth.com/maven'
+        content {
+            includeGroup 'maven.modrinth'
+        }
+    }
+    maven {
+        url = 'https://www.cursemaven.com'
+        content {
+            includeGroup 'curse.maven'
+        }
+    }
+}
+
+configurations {
+    localRuntime
+    runtimeClasspath.extendsFrom localRuntime
+}
+
+dependencies {
+    implementation project(':common')
+    compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
+    compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
+    compileOnly "info.journeymap:journeymap-api-neoforge:${journeymap_api_version}"
+
+    localRuntime "maven.modrinth:jei:${jei_modrinth_version}"
+    localRuntime "maven.modrinth:the-one-probe:${top_modrinth_version}"
+    localRuntime "maven.modrinth:journeymap:${journeymap_modrinth_version}"
+    localRuntime "maven.modrinth:villager-names-serilum:${villagernames_modrinth_version}"
+    localRuntime "maven.modrinth:collective:${collective_modrinth_version}"
+
+    implementation "curse.maven:food-core-372534:${harvestcraft_foodcore_file}"
+    implementation "curse.maven:crops-361385:${harvestcraft_crops_file}"
+    implementation "curse.maven:food-extended-402231:${harvestcraft_foodextended_file}"
+    implementation "curse.maven:trees-365460:${harvestcraft_trees_file}"
+    implementation "maven.modrinth:HXF82T3G:${bop_modrinth_version}"
+    implementation "maven.modrinth:kkmrDlKT:${terrablender_modrinth_version}"
+    implementation "maven.modrinth:s3dmwKy5:${glitchcore_modrinth_version}"
+
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
+    testImplementation "info.journeymap:journeymap-api-neoforge:${journeymap_api_version}"
+    testImplementation "net.neoforged:testframework:${neo_version}"
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 neoForge {
@@ -41,7 +99,13 @@ neoForge {
     mods {
         "${mod_id}" {
             sourceSet(sourceSets.main)
+            sourceSet(project(':common').sourceSets.main)
         }
+    }
+
+    unitTest {
+        enable()
+        testedMod = mods.getByName(project.mod_id)
     }
 }
 
@@ -66,6 +130,18 @@ neoForge.ideSyncTask generateModMetadata
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+tasks.named('jar', Jar).configure {
+    from project(':common').sourceSets.main.output
+}
+
+tasks.named('check').configure {
+    dependsOn ':common:check'
 }
 
 idea {
