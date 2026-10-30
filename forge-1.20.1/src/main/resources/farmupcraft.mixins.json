@@ -5,7 +5,11 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "farmupcraft.refmap.json",
   "mixins": [
-    "EnchantmentMenuMixin"
+    "BeePollinationMixin",
+    "ButterflyPollinationMixin",
+    "HarvestCraftProducePlantingMixin",
+    "EnchantmentMenuMixin",
+    "VillagerSleepMixin"
   ],
   "client": [
     "client.LevelRendererMixin",

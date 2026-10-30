@@ -20,7 +20,10 @@ public class PlayerData {
                     .forGetter(pd -> pd.getHomeVillageUUID() != null ? pd.getHomeVillageUUID() : new UUID(0L, 0L)),
             Codec.INT.optionalFieldOf("coins", 0).forGetter(PlayerData::getCoins),
             Codec.BOOL.optionalFieldOf("border_show", false).forGetter(PlayerData::isBorderShow),
-            Codec.STRING.optionalFieldOf("border_color", "blue").forGetter(PlayerData::getBorderColor))
+            Codec.STRING.optionalFieldOf("border_color", "blue").forGetter(PlayerData::getBorderColor),
+            Codec.LONG.optionalFieldOf("first_welcome_day", com.falazar.farmupcraft.util.PlayerOnboarding.UNSET_DAY)
+                    .forGetter(PlayerData::getFirstWelcomeDay),
+            Codec.BOOL.optionalFieldOf("village_map_show", false).forGetter(PlayerData::isVillageMapShow))
             .apply(instance, PlayerData::new));
 
     private final int id;
@@ -29,6 +32,16 @@ public class PlayerData {
     private int coins;
     private boolean borderShow;
     private String borderColor;
+    private long firstWelcomeDay;
+    private boolean villageMapShow;
+
+    public boolean isVillageMapShow() { return villageMapShow; }
+
+    public void setVillageMapShow(boolean show) { villageMapShow = show; }
+
+    public long getFirstWelcomeDay() { return firstWelcomeDay; }
+
+    public void setFirstWelcomeDay(long day) { firstWelcomeDay = day; }
     // todo add level
     // todo add experience
     // todo add lastPos
@@ -36,12 +49,25 @@ public class PlayerData {
     /** Full constructor used by CODEC. */
     public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
             String borderColor) {
+        this(id, playerUUID, homeVillageUUID, coins, borderShow, borderColor,
+                com.falazar.farmupcraft.util.PlayerOnboarding.UNSET_DAY);
+    }
+
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
+            String borderColor, long firstWelcomeDay) {
+        this(id, playerUUID, homeVillageUUID, coins, borderShow, borderColor, firstWelcomeDay, false);
+    }
+
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
+            String borderColor, long firstWelcomeDay, boolean villageMapShow) {
         this.id = id;
         this.playerUUID = playerUUID;
         this.homeVillageUUID = homeVillageUUID;
         this.coins = Math.max(0, coins);
         this.borderShow = borderShow;
         this.borderColor = borderColor;
+        this.firstWelcomeDay = firstWelcomeDay;
+        this.villageMapShow = villageMapShow;
     }
 
     /**

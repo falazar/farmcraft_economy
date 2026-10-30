@@ -25,6 +25,7 @@ public class StoneManager {
     // cobblestone and deepslate drop rate here.
     @SubscribeEvent
     public static void onBreakStone(BlockEvent.BreakEvent event) {
+        if (event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent) return;
         Player player = event.getPlayer();
         if (player == null) {
             return;

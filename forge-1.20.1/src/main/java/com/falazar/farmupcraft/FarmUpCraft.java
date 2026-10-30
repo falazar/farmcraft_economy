@@ -36,6 +36,16 @@ public class FarmUpCraft {
 
 
     public FarmUpCraft() {
+        if (ModList.get().isLoaded("solonion")) {
+            try {
+                if (com.falazar.farmupcraft.util.StartupDefaults.installOnion(
+                        net.minecraftforge.fml.loading.FMLPaths.CONFIGDIR.get(), false)) {
+                    LOGGER.info("Installed one-time Spice of Life progression defaults.");
+                }
+            } catch (java.io.IOException | com.google.gson.JsonParseException | IllegalStateException error) {
+                throw new IllegalStateException("Could not install Spice of Life progression defaults", error);
+            }
+        }
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         MinecraftForge.EVENT_BUS.addListener(this::commands);
         modEventBus.addListener(this::commonSetup);
@@ -102,6 +112,7 @@ public class FarmUpCraft {
         VillageCommand.register(e.getDispatcher());
         MarketCommand.register(e.getDispatcher());
         FarmCraftCommand.register(e.getDispatcher());
+        BuildCommand.register(e.getDispatcher());
         TesterCommand.register(e.getDispatcher());
         NpcCommand.register(e.getDispatcher());
         StructureCommand.register(e.getDispatcher());

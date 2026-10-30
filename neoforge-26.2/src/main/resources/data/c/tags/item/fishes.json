@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "aquaculture:fish_fillet_raw", "required": false },
+    { "id": "alexsmobs:raw_catfish", "required": false }
+  ]
+}

@@ -159,6 +159,7 @@ public final class TreeManager {
     // block rate by a lot.
     @SubscribeEvent
     public static void onBreakLeaves(BlockEvent.BreakEvent event) {
+        if (event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent) return;
         Player playerSource = event.getPlayer();
         if (playerSource == null) {
             return;
@@ -422,6 +423,7 @@ public final class TreeManager {
      */
     @SubscribeEvent
     public static void onLogBreakNurseryBonus(BlockEvent.BreakEvent event) {
+        if (event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent) return;
         if (event.getLevel().isClientSide())
             return;
 

@@ -37,8 +37,18 @@ import java.util.UUID;
 public class FarmCraftCommand {
         public static final CustomLogger LOGGER = new CustomLogger(FarmCraftCommand.class.getSimpleName());
 
+        public static int showHelp(CommandSourceStack source) {
+                for (String line : com.falazar.farmupcraft.util.PlayerOnboarding.HELP) {
+                        source.sendSuccess(() -> Component.literal(line), false);
+                }
+                return 1;
+        }
+
         public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
+                pDispatcher.register(Commands.literal("farmupcraft").executes(ctx -> showHelp(ctx.getSource()))
+                                .then(Commands.literal("help").executes(ctx -> showHelp(ctx.getSource()))));
                 LiteralArgumentBuilder<CommandSourceStack> builder = Commands.literal("farmcraft");
+                builder.then(Commands.literal("help").executes(ctx -> showHelp(ctx.getSource())));
 
                 // /farmcraft scheduler - show next scheduled run info
                 builder.then(Commands.literal("scheduler")
@@ -147,6 +157,15 @@ public class FarmCraftCommand {
                                 .executes(context -> toggleLanNotice(context.getSource())));
 
                 pDispatcher.register(builder);
+                pDispatcher.register(Commands.literal("farmcraft")
+                                .then(Commands.literal("admin").requires(source -> source.hasPermission(2))
+                                                .then(Commands.literal("settings")
+                                                                .then(Commands.literal("mobTorchBreaking")
+                                                                                .then(Commands.argument("value",
+                                                                                                com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                                                                                .executes(ctx -> setAdminSetting(
+                                                                                                                ctx.getSource(), "mobTorchBreaking",
+                                                                                                                com.mojang.brigadier.arguments.BoolArgumentType.getBool(ctx, "value"))))))));
 
                 // /farmcraft admin settings - view/toggle world settings (admin only)
                 pDispatcher.register(Commands.literal("farmcraft")
@@ -401,6 +420,7 @@ public class FarmCraftCommand {
                         return 0;
                 }
                 String dimId = player.level().dimension().location().toString();
+                setVillageMapPreference(player, true);
                 EDBMessages.sendToPlayer(new ShowVillageChunksPacket(chunks, true, dimId), player);
                 source.sendSuccess(() -> Component.literal(
                                 "Showing " + chunks.size()
@@ -412,6 +432,10 @@ public class FarmCraftCommand {
         // Rebuild and redraw all village chunk overlays for this player.
         // This clears stale colors first, then re-renders from current DB data.
         public static void refreshVillageChunksOverlay(ServerPlayer player) {
+                PlayerData data = ModEvents.getPlayerDatabase().getData(player.getUUID());
+                if (data == null || !data.isVillageMapShow()) {
+                        return;
+                }
                 List<int[]> chunks = buildVillageChunkOverlayData(player);
                 if (chunks == null) {
                         return;
@@ -436,7 +460,7 @@ public class FarmCraftCommand {
                 for (ChunkPos cp : village.getClaimedChunks()) {
                         ChunkData cd = chunkDb.getData(cp.toLong());
                         String type = cd != null ? cd.getType() : "village";
-                        boolean hasPlot = !type.equalsIgnoreCase("village") && !type.equalsIgnoreCase("village center");
+                        boolean hasPlot = cp.equals(village.getPosition()) || !type.equalsIgnoreCase("village");
                         int color = hasPlot ? 0x0055FF : 0x00E000; // blue = plot, green = village-only
                         chunks.add(new int[] { cp.x, cp.z, color });
                 }
@@ -454,6 +478,7 @@ public class FarmCraftCommand {
                         return 0;
                 }
                 String dimId = player.level().dimension().location().toString();
+                setVillageMapPreference(player, false);
                 EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimId), player);
                 source.sendSuccess(() -> Component.literal("Village chunk overlays cleared.")
                                 .withStyle(ChatFormatting.GREEN), false);
@@ -471,10 +496,19 @@ public class FarmCraftCommand {
                         return 0;
                 }
                 String dimId = player.level().dimension().location().toString();
+                setVillageMapPreference(player, false);
                 EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimId), player);
                 source.sendSuccess(() -> Component.literal("All map overlays cleared.")
                                 .withStyle(ChatFormatting.GREEN), false);
                 return 1;
+        }
+
+        private static void setVillageMapPreference(ServerPlayer player, boolean show) {
+                var database = ModEvents.getPlayerDatabase();
+                PlayerData data = database.getData(player.getUUID());
+                if (data == null) throw new IllegalStateException("Missing player data for " + player.getUUID());
+                data.setVillageMapShow(show);
+                database.putData(player.getUUID(), data);
         }
 
         public static int showAdminSettings(CommandSourceStack source) {
@@ -493,6 +527,8 @@ public class FarmCraftCommand {
                                 .append(Component.literal(String.valueOf(worldData.isLycaniteLightBlock()) + "\n")
                                                 .withStyle(worldData.isLycaniteLightBlock() ? ChatFormatting.GREEN
                                                                 : ChatFormatting.RED));
+                response.append(Component.literal("mobTorchBreaking: " + worldData.isMobTorchBreaking() + "\n")
+                                .withStyle(worldData.isMobTorchBreaking() ? ChatFormatting.GREEN : ChatFormatting.RED));
                 source.sendSuccess(() -> response, false);
                 return 1;
         }
@@ -507,6 +543,8 @@ public class FarmCraftCommand {
                         worldData.setUseBiomeCropRules(value);
                 } else if (setting.equals("lycaniteLightBlock")) {
                         worldData.setLycaniteLightBlock(value);
+                } else if (setting.equals("mobTorchBreaking")) {
+                        worldData.setMobTorchBreaking(value);
                 } else {
                         source.sendFailure(Component.literal("Unknown setting: " + setting));
                         return 0;

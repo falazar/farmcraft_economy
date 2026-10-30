@@ -262,7 +262,10 @@ public class AnimalsManager {
             // This lets interactions like sheep shearing pass through normally.
             if (!usedStack.is(FUCTags.VANILLA_CROPS)
                     && !usedStack.is(FUCTags.MODDED_CROPS)
-                    && !usedStack.is(FUCTags.MODDED_SEEDS)) {
+                    && !usedStack.is(FUCTags.MODDED_SEEDS)
+                    && !usedStack.is(Items.WHEAT)
+                    && !AnimalGrainAssigner.GRAIN_POOL.contains(getItemId(usedStack))
+                    && !animal.isFood(usedStack)) {
                 return;
             }
 
@@ -294,27 +297,23 @@ public class AnimalsManager {
     // Returns true if this animal is one of the pasture-managed species (pasture +
     // cap rules apply).
     private static boolean isPastureAnimal(Animal animal) {
-        return animal instanceof Cow
-                || animal instanceof Sheep
-                || animal instanceof Pig
-                || animal instanceof Chicken
+        return isFarmAnimal(animal)
                 || animal instanceof Horse
                 || animal instanceof Goat;
     }
 
     // Returns true if this is a farm animal (village species restriction applies).
     private static boolean isFarmAnimal(Animal animal) {
-        return animal instanceof Cow
-                || animal instanceof Sheep
-                || animal instanceof Pig
-                || animal instanceof Chicken;
+        return !"unknown".equals(getAnimalSpeciesName(animal));
     }
 
     // Returns the short species name matching village animalType values.
     private static String getAnimalSpeciesName(Animal animal) {
+        if (new ResourceLocation("naturalist", "duck").equals(ForgeRegistries.ENTITY_TYPES.getKey(animal.getType())))
+            return "duck";
         if (animal instanceof Cow)
             return "cow";
-        if (animal instanceof Sheep)
+        if (animal instanceof Sheep || animal instanceof Goat)
             return "sheep";
         if (animal instanceof Pig)
             return "pig";
@@ -388,6 +387,10 @@ public class AnimalsManager {
 
             // STEP 5: Grain requirement — player must have required grains.
             String animalSpecies = getAnimalSpeciesName(animal);
+            if ("duck".equals(animalSpecies) && village != null) {
+                if (AnimalGrainAssigner.ensureDuckGrain(village)) villageDb.putData(village.getUUID(), village);
+                if (animal.isFood(usedStack)) return false;
+            }
             boolean blocked = enforceBreedingGrainRule(event, player, usedStack, animalSpecies, playerData, village,
                     villageDb);
             if (blocked)
@@ -428,7 +431,8 @@ public class AnimalsManager {
         if (usedItemId == null || !required.contains(usedItemId)) {
             List<String> options = toDisplayNames(required);
             return cancelWithError(event, player,
-                    "To breed " + animalSpecies + "s, hold either: " + String.join(" or ", options));
+                    "To breed " + animalSpecies + "s, hold either: " + String.join(" or ", options)
+                            + ("duck".equals(animalSpecies) ? " or its usual Naturalist food (fish)" : ""));
         }
 
         // No extra consume here; vanilla breeding consumes one item from the used hand.

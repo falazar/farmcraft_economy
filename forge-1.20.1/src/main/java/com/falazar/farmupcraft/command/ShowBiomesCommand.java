@@ -1,5 +1,7 @@
 package com.falazar.farmupcraft.command;
 
+import com.falazar.farmupcraft.util.ShowNameAliases;
+
 import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
@@ -15,6 +17,7 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.coordinates.Vec3Argument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
@@ -32,6 +35,7 @@ import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.registries.ForgeRegistries;
 import org.jetbrains.annotations.NotNull;
@@ -56,13 +60,16 @@ public class ShowBiomesCommand {
                                 .executes(c -> showBiomes(c, Vec3Argument.getVec3(c, "pos"),
                                         IntegerArgumentType.getInteger(c, "radius")))))
                 .requires(s -> s.hasPermission(2)); // Adjust permission as needed
+        builder.then(Commands.literal("plotcrops").executes(c -> showPlotCrops(c.getSource())));
         // Add the "biomes" sub-command to the "show" command
         builder.then(biomesBuilder);
 
         // show cropbiomes tomato
         // Define the "cropbiomes" sub-command with crop name argument
         LiteralArgumentBuilder<CommandSourceStack> cropbiomesBuilder = Commands.literal("cropbiomes")
-                .then(Commands.argument("crop", StringArgumentType.string())
+                .then(Commands.argument("crop", StringArgumentType.greedyString())
+                        .suggests((context, suggestions) -> SharedSuggestionProvider.suggest(
+                                cropAliases(context.getSource()).keySet(), suggestions))
                         .executes(c -> {
                             // Handle the cropbiomes command here
                             String cropName = StringArgumentType.getString(c, "crop");
@@ -75,7 +82,10 @@ public class ShowBiomesCommand {
 
         // Define the "biomecrops" sub-command with biome name argument.
         LiteralArgumentBuilder<CommandSourceStack> biomecropsBuilder = Commands.literal("biomecrops")
-                .then(Commands.argument("biome", StringArgumentType.string())
+                .executes(c -> showCurrentBiomeCrops(c.getSource()))
+                .then(Commands.argument("biome", StringArgumentType.greedyString())
+                        .suggests((context, suggestions) -> SharedSuggestionProvider.suggest(
+                                biomeAliases(context.getSource()).keySet(), suggestions))
                         .executes(c -> {
                             // Handle the biomecrops command here
                             String biomeName = StringArgumentType.getString(c, "biome");
@@ -88,6 +98,69 @@ public class ShowBiomesCommand {
 
         // Register the main "show" command with the dispatcher
         pDispatcher.register(builder);
+    }
+
+    public static int showPlotCrops(CommandSourceStack source) {
+        var player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Only players can use /show plotcrops."));
+            return 0;
+        }
+        var manager = BiomeRulesManager.get(source.getLevel());
+        if (!manager.hasRules()) {
+            source.sendFailure(Component.literal("No biome crop rules are configured."));
+            return 0;
+        }
+        var chunk = new ChunkPos(player.blockPosition());
+        Map<String, Holder<Biome>> biomes = new TreeMap<>();
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                var biome = source.getLevel().getBiome(new BlockPos(
+                        chunk.x * 16 + x, player.blockPosition().getY() - 1, chunk.z * 16 + z));
+                biome.unwrapKey().ifPresent(key -> biomes.put(key.location().toString(), biome));
+            }
+        }
+        Set<Item> crops = new LinkedHashSet<>();
+        MutableComponent message = Component.literal("Plot biomes: ").withStyle(ChatFormatting.AQUA);
+        for (var entry : biomes.entrySet()) {
+            if (!crops.isEmpty() || message.getSiblings().size() > 0) message.append(", ");
+            message.append(Component.translatable(getBiomeLangKey(new ResourceLocation(entry.getKey())))
+                    .withStyle(ChatFormatting.YELLOW));
+            var rules = manager.getBiomeRules(entry.getValue());
+            if (rules != null) crops.addAll(rules.getCrops(source.getLevel()));
+            else message.append(Component.literal(" (no crop rules)").withStyle(ChatFormatting.GRAY));
+        }
+        message.append(Component.literal("\nCombined crops for this plot: ").withStyle(ChatFormatting.AQUA))
+                .append(com.falazar.farmupcraft.util.CropListChat.crops(crops, player));
+        message.append(Component.literal("\nBiome-specific planting restrictions still apply; farm level 3+ allows crops from any biome in the chunk.")
+                .withStyle(ChatFormatting.GRAY));
+        source.sendSuccess(() -> message, false);
+        return 1;
+    }
+
+    public static int showCurrentBiomeCrops(CommandSourceStack source) {
+        var player = source.getPlayer();
+        if (player == null) {
+            source.sendFailure(Component.literal("Only players can use /show biomecrops without a biome."));
+            return 0;
+        }
+        var key = player.level().getBiome(player.blockPosition()).unwrapKey();
+        if (key.isEmpty()) {
+            source.sendFailure(Component.literal("Your current biome has no registered identifier."));
+            return 0;
+        }
+        showBiomeCrops(source, key.get().location().toString());
+        return 0;
+    }
+
+    static Map<String, String> cropAliases(CommandSourceStack source) {
+        return ShowNameAliases.create(BiomeRulesManager.get(source.getLevel()).getItems().stream()
+                .map(item -> ForgeRegistries.ITEMS.getKey(item).toString()).toList(), true);
+    }
+
+    static Map<String, String> biomeAliases(CommandSourceStack source) {
+        return ShowNameAliases.create(source.registryAccess().registryOrThrow(Registries.BIOME)
+                .keySet().stream().map(Object::toString).toList(), false);
     }
 
     // Given a crop name show all biomes you can plant this in.
@@ -105,7 +178,8 @@ public class ShowBiomesCommand {
 
         // STEP 2: Get the crop item from the name from main item thing registry.
         // DEBUG grab from minecraft or pams for now, whichever exists.
-        String cropNameWithMod = "pamhc2crops:" + cropName + "item";
+        String resolvedCrop = cropAliases(source).getOrDefault(cropName, cropName);
+        String cropNameWithMod = resolvedCrop.contains(":") ? resolvedCrop : "pamhc2crops:" + resolvedCrop + "item";
         LOGGER.info("DEBUG: cropNameWithMod is " + cropNameWithMod);
         Item cropItem = ForgeRegistries.ITEMS.getValue(new ResourceLocation(cropNameWithMod));
         LOGGER.info("DEBUG: cropItem is " + cropItem);
@@ -217,16 +291,16 @@ public class ShowBiomesCommand {
         // Holder.direct, so map lookup works).
         Registry<Biome> biomeReg = source.getLevel().registryAccess().registryOrThrow(Registries.BIOME);
         ResourceKey<Biome> biomeKey = ResourceKey.create(Registries.BIOME,
-                new ResourceLocation("minecraft", biomeName));
+                new ResourceLocation(biomeAliases(source).getOrDefault(biomeName, biomeName)));
         Optional<Holder.Reference<Biome>> biomeHolderOpt = biomeReg.getHolder(biomeKey);
-        if (biomeHolderOpt.isEmpty()) {
+        if (biomeHolderOpt.isEmpty() && !biomeName.contains(":")) {
             // Second guess with a biomesoplenty biome name.
             biomeKey = ResourceKey.create(Registries.BIOME, new ResourceLocation("biomesoplenty", biomeName));
             biomeHolderOpt = biomeReg.getHolder(biomeKey);
-            if (biomeHolderOpt.isEmpty()) {
-                playerSource.displayClientMessage(Component.literal("Biome not found: " + biomeName), false);
-                return;
-            }
+        }
+        if (biomeHolderOpt.isEmpty()) {
+            source.sendFailure(Component.literal("Biome not found: " + biomeName));
+            return;
         }
         Holder<Biome> biomeHolder = biomeHolderOpt.get();
         LOGGER.info("DEBUG1: biome is " + biomeHolder.value());
@@ -235,50 +309,8 @@ public class ShowBiomesCommand {
             return;
         LOGGER.info("DEBUG2: instance is " + instance);
 
-        // STEP 0: Get player's village biome set so we can color crops green if
-        // plantable in village
-        final Set<String> finalVillageBiomeSet = getPlayerVillageBiomeSet(playerSource);
-
-        // STEP 3: List the crops allowed in the current biome, green if plantable in a
-        // village biome
-        Map<String, Boolean> cropEntries = new LinkedHashMap<>();
-        instance.getCrops((ServerLevel) source.getLevel()).stream()
-                .map(item -> {
-                    String locationString = item.getDescriptionId();
-                    String translatedName = Component.translatable(locationString).getString();
-
-                    // Handle special cases where we want to avoid filtering out specific seeds
-                    if (locationString.contains("sesameseedsseeditem")) {
-                        translatedName = "Sesame";
-                    } else if (locationString.contains("mustardseedsseeditem")) {
-                        translatedName = "Mustard";
-                    } else if (locationString.contains("sesameseedsitem")) {
-                        translatedName = "Sesame Seeds"; // Same display name to keep only one of them
-                    } else if (locationString.contains("mustardseedsitem")) {
-                        translatedName = "Mustard Seeds"; // Same display name to keep only one of them
-                    } else if (locationString.contains("wheat_seeds")) {
-                        translatedName = "Wheat"; // Same display name to keep only one of them
-                    }
-
-                    // Check if any of this crop's allowed biomes are in the player's village
-                    boolean inVillage = manager.getBiomesForItem(item).stream()
-                            .anyMatch(bh -> bh.unwrapKey()
-                                    .map(k -> finalVillageBiomeSet.contains(k.location().toString()))
-                                    .orElse(false));
-
-                    return Map.entry(translatedName, inVillage);
-                })
-                .filter(e -> !e.getKey().toLowerCase().contains("seed"))
-                .sorted(Map.Entry.comparingByKey())
-                // Deduplicate by name, keeping green (true) over white (false)
-                .forEach(e -> cropEntries.merge(e.getKey(), e.getValue(), Boolean::logicalOr));
-
-        Component cropsAllowedShow = cropEntries.entrySet().stream()
-                .map(e -> Component.literal(e.getKey())
-                        .withStyle(e.getValue() ? ChatFormatting.GREEN : ChatFormatting.WHITE))
-                .reduce((comp1, comp2) -> comp1.append(Component.literal(", ").withStyle(ChatFormatting.WHITE))
-                        .append(comp2))
-                .orElse(Component.literal("None").withStyle(ChatFormatting.WHITE));
+        Component cropsAllowedShow = com.falazar.farmupcraft.util.CropListChat.crops(
+                instance.getCrops(source.getLevel()), playerSource);
 
         // Create the final message component
         MutableComponent component = Component.literal("§bCrops you can plant in " + biomeName + ": ")
@@ -314,7 +346,9 @@ public class ShowBiomesCommand {
 
                                 // Only consider blocks within the radius
                                 if (distance <= radius * radius) {
-                                    Biome biome = level.getBiome(blockPos).value();
+                                    int surfaceY = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES,
+                                            blockPos.getX(), blockPos.getZ());
+                                    Biome biome = level.getBiome(blockPos.atY(surfaceY)).value();
                                     ResourceLocation biomeName = level.registryAccess()
                                             .registryOrThrow(Registries.BIOME).getKey(biome);
                                     if (biomeName != null) {
@@ -328,7 +362,7 @@ public class ShowBiomesCommand {
 
                 // Build a response message
                 if (!biomesInRadius.isEmpty()) {
-                    MutableComponent response = Component.literal("Biomes within radius " + radius + " blocks: ");
+                    MutableComponent response = Component.literal("Surface biomes within radius " + radius + " blocks: ");
                     for (ResourceLocation biome : biomesInRadius) {
                         // Remove mod tag, dont need really. With regex all before the ":"
                         String biomeName = biome.toString().replaceAll("^[^:]+:", "");

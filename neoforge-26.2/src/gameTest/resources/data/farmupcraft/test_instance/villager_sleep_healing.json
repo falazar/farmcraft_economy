@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:villager_sleep_healing",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 100
+}

@@ -32,6 +32,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.RecipeType;
 
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -117,6 +118,8 @@ public class MarketCommand {
                                     return 0;
                                 })))
                 // importtxt <type> - import items from txt file
+                .then(Commands.literal("importall")
+                        .executes(context -> importAllMarketItems(context.getSource())))
                 .then(Commands.literal("importtxt")
                         .then(Commands.argument("type", StringArgumentType.string())
                                 .executes(context -> {
@@ -307,6 +310,10 @@ public class MarketCommand {
      * 0 if no items could be seeded.
      */
     public static int seedMarketType(CommandSourceStack source, String type) {
+        return seedMarketType(source, type, true);
+    }
+
+    private static int seedMarketType(CommandSourceStack source, String type, boolean resetPrice) {
         int seedCount = switch (type) {
             case "food" -> 15;
             case "general" -> 10;
@@ -318,12 +325,12 @@ public class MarketCommand {
                 () -> Component.literal("Market " + type + " is empty — seeding with " + seedCount + " items..."),
                 false);
         for (int i = 0; i < seedCount; i++) {
-            addRandomItemToMarket(source, type);
+            addRandomItemToMarket(source, type, resetPrice);
         }
         Collection<GoodsData> check = getFilteredActiveGoods(type);
         if (check == null || check.isEmpty()) {
             source.sendFailure(Component.literal("Could not seed market for type: " + type
-                    + " — no items imported yet? Run /market importall first."));
+                    + " — no items imported yet? Ask an admin to run /market admin importall."));
             return 0;
         }
         return 1;
@@ -1008,10 +1015,30 @@ public class MarketCommand {
         return 0;
     }
 
-    public static void importMarketItemsTXT(CommandSourceStack source, String type) {
-        try {
-            InputStream inputStream = MarketCommand.class.getClassLoader()
-                    .getResourceAsStream("data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt");
+    public static int importAllMarketItems(CommandSourceStack source) {
+        int result = 1;
+        for (String type : List.of("food", "wood", "stone", "general")) {
+            if (!importMarketItemsTXT(source, type)) result = 0;
+        }
+        return result;
+    }
+
+    public static void initializeMarket(CommandSourceStack source) {
+        for (String type : List.of("food", "wood", "stone", "general")) {
+            Collection<GoodsData> goods = getFilteredGoods(type);
+            if ((goods == null || goods.isEmpty()) && !importMarketItemsTXT(source, type)) continue;
+            Collection<GoodsData> activeGoods = getFilteredActiveGoods(type);
+            if (activeGoods == null) {
+                LOGGER.error("Could not read active market goods for type: " + type);
+            } else if (activeGoods.isEmpty()) {
+                seedMarketType(source, type, false);
+            }
+        }
+    }
+
+    public static boolean importMarketItemsTXT(CommandSourceStack source, String type) {
+        try (InputStream inputStream = MarketCommand.class.getClassLoader()
+                    .getResourceAsStream("data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt")) {
             if (inputStream == null) {
                 throw new FileNotFoundException(
                         "Resource not found: data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt");
@@ -1060,10 +1087,12 @@ public class MarketCommand {
                     false);
 
             // NOTE: This wont remove any older ones, manually do that.
+            return true;
 
-        } catch (Exception ex) {
+        } catch (IOException | IllegalArgumentException | IllegalStateException | ArithmeticException ex) {
             source.sendFailure(Component.literal("Import Market Items Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error(ex.getMessage(), ex);
+            return false;
         }
     }
 
@@ -1214,16 +1243,19 @@ public class MarketCommand {
     }
 
     public static void addRandomItemToMarket(CommandSourceStack source, String type) {
+        addRandomItemToMarket(source, type, true);
+    }
+
+    private static void addRandomItemToMarket(CommandSourceStack source, String type, boolean resetPrice) {
         try {
-            Entity nullableSummoner = source.getEntity();
-            Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
-            if (playerSource == null) {
-                source.sendFailure(Component.literal("Player not found."));
+            Collection<GoodsData> allGoods = getFilteredGoods(type);
+            if (allGoods == null) {
+                source.sendFailure(Component.literal("No goods found for type: " + type));
                 return;
             }
-
-            // Get a random item from the filtered goods.
-            Collection<GoodsData> goods = getFilteredGoods(type);
+            Collection<GoodsData> goods = allGoods.stream()
+                    .filter(good -> !good.isActive() && good.getItem() != null && good.getItem() != Items.AIR)
+                    .toList();
             if (goods.isEmpty()) {
                 source.sendFailure(Component.literal("No goods found for type: " + type));
                 return;
@@ -1237,7 +1269,7 @@ public class MarketCommand {
 
             if (randomGood != null) {
                 randomGood.setActive(true); // Set it active
-                randomGood.setCost(5); // Set a default cost
+                if (resetPrice) randomGood.setCost(5);
                 ModEvents.getGoodsDataDatabase().putData(randomGood.getItemId(), randomGood);
                 source.sendSuccess(
                         () -> Component.literal(
@@ -1246,9 +1278,9 @@ public class MarketCommand {
             } else {
                 source.sendFailure(Component.literal("No valid item found to add to market."));
             }
-        } catch (Exception ex) {
+        } catch (IllegalArgumentException | IllegalStateException | ArithmeticException ex) {
             source.sendFailure(Component.literal("Add Random Item to Market Exception thrown - see log"));
-            ex.printStackTrace();
+            LOGGER.error(ex.getMessage(), ex);
         }
     }
 
@@ -1269,26 +1301,13 @@ public class MarketCommand {
                 ? itemName + ": " + costStr + " coins (" + inventoryCount + " cnt)\n"
                 : itemName + ": " + costStr + " coins\n";
 
-        HoverEvent hoverEvent = new HoverEvent(HoverEvent.Action.SHOW_ITEM,
-                new HoverEvent.ItemStackInfo(item.getDefaultInstance()));
-
         // Check if item has any crafting recipe.
         boolean hasRecipe = source.getServer() != null && source.getServer().getRecipeManager()
                 .getAllRecipesFor(RecipeType.CRAFTING)
                 .stream()
                 .anyMatch(r -> r.getResultItem(source.getServer().registryAccess()).getItem() == item);
 
-        Style style;
-        if (hasRecipe) {
-            // /frecipe uses greedyString — no quotes needed, they would be included literally.
-            ClickEvent clickEvent = new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/frecipe " + itemId);
-            ChatFormatting color = inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA;
-            style = Style.EMPTY.withColor(color).withUnderlined(true)
-                    .withClickEvent(clickEvent).withHoverEvent(hoverEvent);
-        } else {
-            ChatFormatting color = inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE;
-            style = Style.EMPTY.withColor(color).withHoverEvent(hoverEvent);
-        }
+        Style style = itemLineStyle(item, itemId, inInventory, hasRecipe);
 
         // Strip trailing newline from label so we can append the [x] on the same line.
         String labelNoNewline = label.endsWith("\n") ? label.substring(0, label.length() - 1) : label;
@@ -1310,6 +1329,20 @@ public class MarketCommand {
         }
 
         return line.append(Component.literal("\n"));
+    }
+
+    static Style itemLineStyle(Item item, String itemId, boolean inInventory, boolean hasRecipe) {
+        if (hasRecipe) {
+            // Item tooltips can consume chat clicks; recipe links use text tooltips instead.
+            return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA)
+                    .withUnderlined(true)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/frecipe " + itemId))
+                    .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                            Component.literal("Click to view recipe in JEI\n" + itemId)));
+        }
+        return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE)
+                .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM,
+                        new HoverEvent.ItemStackInfo(item.getDefaultInstance())));
     }
 
     public static int showHighValueItems(CommandSourceStack source, int minCoins) {

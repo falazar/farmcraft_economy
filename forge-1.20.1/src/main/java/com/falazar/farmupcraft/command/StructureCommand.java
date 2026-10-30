@@ -487,8 +487,7 @@ public class StructureCommand {
 
         // Save to GameStructureData database (only if not already saved)
         if (!gameStructureDatabase.containsKey(id)) {
-            DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
-            boolean isOnClaimedPlot = isAnyStructureChunkClaimed(chunkDatabase, pieceChunks);
+            boolean isOnClaimedPlot = false;
 
             GameStructureData structureData = new GameStructureData(
                     id, // Use the Long ID directly
@@ -527,22 +526,6 @@ public class StructureCommand {
             if (existingData != null) {
                 boolean changed = false;
 
-                // Only update claimed status if the structure has been visited —
-                // unvisited structures should not be marked claimed by a scan.
-                if (existingData.wasVisited()) {
-                    DataBase<Long, ChunkData> chunkDatabase = ModEvents.getChunkDataDatabase();
-                    java.util.Collection<Long> chunksForClaimCheck = existingData.hasChunkPositions()
-                            ? existingData.getChunkPositions()
-                            : pieceChunks;
-                    boolean isOnClaimedPlot = isAnyStructureChunkClaimed(chunkDatabase, chunksForClaimCheck);
-                    if (existingData.isOnClaimedPlot() != isOnClaimedPlot) {
-                        existingData.setOnClaimedPlot(isOnClaimedPlot);
-                        changed = true;
-                        LOGGER.info("Updated structure claimed status: " + type + " (ID: " + id + ") claimed: "
-                                + isOnClaimedPlot);
-                    }
-                }
-
                 // Backfill bounding box if not stored yet.
                 if (!existingData.hasBoundingBox()) {
                     existingData.setMinPos(new BlockPos(structureStart.getBoundingBox().minX(),
@@ -561,6 +544,7 @@ public class StructureCommand {
                     changed = true;
                 }
 
+                changed |= refreshStructureClaim(existingData, ModEvents.getChunkDataDatabase());
                 if (changed) {
                     gameStructureDatabase.putData(id, existingData);
                     gameStructureDatabase.setDirty();
@@ -608,6 +592,29 @@ public class StructureCommand {
         return false;
     }
 
+    public static boolean refreshStructureClaim(GameStructureData structure, DataBase<Long, ChunkData> chunks) {
+        boolean claimed = structure.wasVisited() && isAnyStructureChunkClaimed(chunks,
+                List.of(new ChunkPos(structure.getCenterPos()).toLong()));
+        if (structure.isOnClaimedPlot() == claimed) {
+            return false;
+        }
+        structure.setOnClaimedPlot(claimed);
+        return true;
+    }
+
+    public static void refreshStructureClaims(DataBase<Long, GameStructureData> structures,
+            DataBase<Long, ChunkData> chunks) {
+        for (Long id : structures.getKeys()) {
+            GameStructureData structure = structures.getData(id);
+            if (structure != null && refreshStructureClaim(structure, chunks)) {
+                structures.putData(id, structure);
+                structures.setDirty();
+                LOGGER.info("Corrected structure claim: {} (ID: {}) claimed: {}",
+                        structure.getName(), id, structure.isOnClaimedPlot());
+            }
+        }
+    }
+
     // Function to get common name for a structure based on the type.
     public static String getCommonNameForStructure(String type) {
         switch (type) {
@@ -651,6 +658,7 @@ public class StructureCommand {
     public static int listStructuresFromDatabase(CommandSourceStack source, int count, String filter) {
         ServerLevel world = (ServerLevel) source.getLevel();
         var gameStructureDatabase = ModEvents.getGameStructureDatabase(world);
+        refreshStructureClaims(gameStructureDatabase, ModEvents.getChunkDataDatabase());
 
         if (gameStructureDatabase.getSize() == 0) {
             source.sendSystemMessage(
@@ -804,20 +812,19 @@ public class StructureCommand {
                 }
 
                 // Check if this structure is in the specified chunk
-                ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
-                if (!structureChunk.equals(chunkPos)) {
+                boolean coversChunk = structureData.hasChunkPositions()
+                        ? structureData.getChunkPositions().contains(chunkPos.toLong())
+                        : new ChunkPos(structureData.getCenterPos()).equals(chunkPos);
+                if (!coversChunk) {
                     continue;
                 }
 
-                // Only update claimed status if the structure has been visited first.
-                // Unvisited structures should not be marked claimed just because a plot was
-                // bought nearby.
-                if (structureData.wasVisited() && structureData.isOnClaimedPlot() != isClaimed) {
-                    structureData.setOnClaimedPlot(isClaimed);
+                if (refreshStructureClaim(structureData, ModEvents.getChunkDataDatabase())) {
                     gameStructureDatabase.putData(structureId, structureData);
                     gameStructureDatabase.setDirty();
                     LOGGER.info("Updated structure claimed status: " + structureData.getName() +
-                            " (ID: " + structureId + ") in chunk " + chunkPos + " claimed: " + isClaimed);
+                            " (ID: " + structureId + ") in chunk " + chunkPos + " claimed: "
+                            + structureData.isOnClaimedPlot());
                 }
             }
 
@@ -851,6 +858,7 @@ public class StructureCommand {
             }
 
             structureData.setWasVisited(false);
+            structureData.setOnClaimedPlot(false);
             gameStructureDatabase.putData(structureId, structureData);
             gameStructureDatabase.setDirty();
 

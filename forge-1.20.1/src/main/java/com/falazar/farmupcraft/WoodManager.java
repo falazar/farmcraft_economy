@@ -25,6 +25,7 @@ public class WoodManager {
     // You can increase the rate with skills and special items.
     @SubscribeEvent
     public static void onBreakLogs(BlockEvent.BreakEvent event) {
+        if (event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent) return;
         Player player = event.getPlayer();
         if (player == null) {
             return;

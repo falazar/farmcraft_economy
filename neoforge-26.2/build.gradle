@@ -19,6 +19,25 @@ sourceSets.main.resources {
     srcDir('src/generated/resources')
 }
 
+sourceSets {
+    gameTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+    networkTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+    persistenceTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+    visualTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
+}
+
 repositories {
     mavenCentral()
     maven {
@@ -45,7 +64,22 @@ repositories {
 configurations {
     localRuntime
     runtimeClasspath.extendsFrom localRuntime
+    gameTestImplementation.extendsFrom implementation
+    gameTestRuntimeOnly.extendsFrom localRuntime
+    networkTestImplementation.extendsFrom implementation
+    networkTestCompileOnly.extendsFrom compileOnly
+    networkTestRuntimeOnly.extendsFrom localRuntime
+    persistenceTestImplementation.extendsFrom implementation
+    persistenceTestCompileOnly.extendsFrom compileOnly
+    persistenceTestRuntimeOnly.extendsFrom localRuntime
+    visualTestImplementation.extendsFrom implementation
+    visualTestCompileOnly.extendsFrom compileOnly
+    visualTestRuntimeOnly.extendsFrom localRuntime
 }
+
+sourceSets.test.java.srcDir('src/networkTest/test')
+sourceSets.test.compileClasspath += sourceSets.networkTest.output
+sourceSets.test.runtimeClasspath += sourceSets.networkTest.output
 
 dependencies {
     implementation project(':common')
@@ -59,6 +93,10 @@ dependencies {
     localRuntime "maven.modrinth:villager-names-serilum:${villagernames_modrinth_version}"
     localRuntime "maven.modrinth:collective:${collective_modrinth_version}"
 
+    if (providers.gradleProperty('withPipez').map { it.toBoolean() }.getOrElse(false)) {
+        localRuntime "maven.modrinth:pipez:${pipez_modrinth_version}"
+    }
+
     implementation "curse.maven:food-core-372534:${harvestcraft_foodcore_file}"
     implementation "curse.maven:crops-361385:${harvestcraft_crops_file}"
     implementation "curse.maven:food-extended-402231:${harvestcraft_foodextended_file}"
@@ -69,7 +107,8 @@ dependencies {
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
-    testImplementation "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
+    testCompileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
+    testRuntimeOnly "maven.modrinth:jei:${jei_modrinth_version}"
     testImplementation "info.journeymap:journeymap-api-neoforge:${journeymap_api_version}"
     testImplementation "net.neoforged:testframework:${neo_version}"
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -90,6 +129,91 @@ neoForge {
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
         }
 
+        serverData {
+            type = 'serverData'
+            gameDirectory = layout.buildDirectory.dir('datagen-run')
+            programArguments.addAll '--mod', project.mod_id, '--all',
+                    '--output', layout.buildDirectory.dir('datagen-verification').get().asFile.absolutePath,
+                    '--existing', file('src/main/resources').absolutePath,
+                    '--existing', file('src/generated/resources').absolutePath
+        }
+
+        networkAcceptanceServer {
+            server()
+            sourceSet = sourceSets.networkTest
+            gameDirectory = layout.buildDirectory.dir('network-acceptance/server')
+            programArgument '--nogui'
+            systemProperty 'farmupcraft.networkAcceptance', 'true'
+            systemProperty 'farmupcraft.networkAcceptanceRoot',
+                    layout.buildDirectory.dir('network-acceptance').get().asFile.absolutePath
+        }
+
+        networkAcceptanceClient {
+            client()
+            sourceSet = sourceSets.networkTest
+            gameDirectory = layout.buildDirectory.dir('network-acceptance/client')
+            programArguments.addAll '--username', 'NetworkProbe',
+                    '--quickPlayMultiplayer', '127.0.0.1:25576'
+            systemProperty 'farmupcraft.networkAcceptance', 'true'
+            systemProperty 'farmupcraft.networkAcceptanceRoot',
+                    layout.buildDirectory.dir('network-acceptance').get().asFile.absolutePath
+        }
+
+        persistenceSeedServer {
+            server()
+            sourceSet = sourceSets.persistenceTest
+            gameDirectory = layout.buildDirectory.dir('persistence-acceptance')
+            programArgument '--nogui'
+            systemProperty 'farmupcraft.persistence.enabled', 'true'
+            systemProperty 'farmupcraft.persistence.root',
+                    layout.buildDirectory.dir('persistence-acceptance').get().asFile.absolutePath
+            systemProperty 'farmupcraft.persistence.phase', 'seed'
+        }
+
+        persistenceVerifyServer {
+            server()
+            sourceSet = sourceSets.persistenceTest
+            gameDirectory = layout.buildDirectory.dir('persistence-acceptance')
+            programArgument '--nogui'
+            systemProperty 'farmupcraft.persistence.enabled', 'true'
+            systemProperty 'farmupcraft.persistence.root',
+                    layout.buildDirectory.dir('persistence-acceptance').get().asFile.absolutePath
+            systemProperty 'farmupcraft.persistence.phase', 'verify'
+        }
+
+        visualAcceptanceServer {
+            server()
+            sourceSet = sourceSets.visualTest
+            gameDirectory = layout.buildDirectory.dir('visual-acceptance/server')
+            programArgument '--nogui'
+            systemProperty 'farmupcraft.visualAcceptance', 'true'
+            systemProperty 'farmupcraft.visualAcceptanceRoot',
+                    layout.buildDirectory.dir('visual-acceptance').get().asFile.absolutePath
+        }
+
+        visualAcceptanceClient {
+            client()
+            sourceSet = sourceSets.visualTest
+            gameDirectory = layout.buildDirectory.dir('visual-acceptance/client')
+            programArguments.addAll '--username', 'VisualProbe',
+                    '--quickPlayMultiplayer', '127.0.0.1:25579'
+            systemProperty 'farmupcraft.visualAcceptance', 'true'
+            systemProperty 'farmupcraft.visualAcceptanceRoot',
+                    layout.buildDirectory.dir('visual-acceptance').get().asFile.absolutePath
+        }
+
+        gameTestServer {
+            type = 'gameTestServer'
+            sourceSet = sourceSets.gameTest
+            gameDirectory = layout.buildDirectory.dir('gameTest')
+            programArgument '--universe'
+            programArgument 'world'
+            programArgument '--tests'
+            programArgument providers.gradleProperty('gameTests').getOrElse("${project.mod_id}:*")
+            programArgument '--report'
+            programArgument layout.buildDirectory.file('gameTest-results.xml').get().asFile.absolutePath
+        }
+
         configureEach {
             systemProperty 'forge.logging.markers', 'REGISTRIES'
             systemProperty 'forge.logging.console.level', 'debug'
@@ -100,8 +224,17 @@ neoForge {
         "${mod_id}" {
             sourceSet(sourceSets.main)
             sourceSet(project(':common').sourceSets.main)
+            sourceSet(sourceSets.gameTest)
+            sourceSet(sourceSets.networkTest)
+            sourceSet(sourceSets.persistenceTest)
+            sourceSet(sourceSets.visualTest)
         }
     }
+
+    neoForge.addModdingDependenciesTo(sourceSets.gameTest)
+    neoForge.addModdingDependenciesTo(sourceSets.networkTest)
+    neoForge.addModdingDependenciesTo(sourceSets.persistenceTest)
+    neoForge.addModdingDependenciesTo(sourceSets.visualTest)
 
     unitTest {
         enable()

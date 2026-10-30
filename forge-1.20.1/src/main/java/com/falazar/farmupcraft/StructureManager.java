@@ -105,6 +105,7 @@ public class StructureManager {
 
     @SubscribeEvent
     public static void onSpecialChestBreak(BlockEvent.BreakEvent event) {
+        if (event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent) return;
         if (event.getLevel().isClientSide())
             return;
         net.minecraft.world.level.Level level = (net.minecraft.world.level.Level) event.getLevel();

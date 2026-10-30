@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:surface_biome_scan",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 100
+}

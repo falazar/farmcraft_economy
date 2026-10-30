@@ -73,10 +73,9 @@ public class CropsManager {
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
 
+        if (event.getLevel().isClientSide()) return;
         // Step 1: If in creative mode, skip all rules and allow planting all.
         Player player = (Player) event.getEntity();
-        if (player.getUsedItemHand() != InteractionHand.MAIN_HAND)
-            return;
         if (player.isCreative()) {
             // LOGGER.info("DEBUG: Player is in creative mode, skipping all rules.");
             return;
@@ -116,7 +115,7 @@ public class CropsManager {
         if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
             boolean useFarms = ModEvents.getWorldData().isUseVillageFarms();
             if (useFarms && !ChunkManager.getPlotType(clickedPos, level).equals("farm")) {
-                event.setCanceled(true);
+                cancelPredictedPlacement(event);
                 player.displayClientMessage(Component.literal(
                         "Sugar cane and sweet berries can only be planted on farm plots. Use /plot buy farm to purchase one.")
                         .withStyle(ChatFormatting.RED), false);
@@ -169,7 +168,21 @@ public class CropsManager {
         // Check if the crop is allowed in the biome
         if (!isCropAllowed(manager, instance, stack, biome, event)) {
             // Cancel event and return now.
-            event.setCanceled(true);
+            cancelPredictedPlacement(event);
+        }
+    }
+
+    private static void cancelPredictedPlacement(PlayerInteractEvent.RightClickBlock event) {
+        event.setCanceled(true);
+        event.setCancellationResult(net.minecraft.world.InteractionResult.FAIL);
+        if (event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player) {
+            player.connection.send(new net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket(
+                    event.getLevel(), event.getPos()));
+            if (event.getFace() != null) {
+                player.connection.send(new net.minecraft.network.protocol.game.ClientboundBlockUpdatePacket(
+                        event.getLevel(), event.getPos().relative(event.getFace())));
+            }
+            player.inventoryMenu.sendAllDataToRemote();
         }
     }
 
@@ -556,40 +569,8 @@ public class CropsManager {
                 .append(biomeNameShow);
         playerSource.displayClientMessage(component, false);
 
-        // STEP 3: List the crops allowed in the current biome
-        // TODO make method, copied in one spot.
-        Component cropsAllowedShow = instance.getCrops((ServerLevel) event.getLevel()).stream()
-                // Map item to a custom string for special cases and then translate
-                .map(item -> {
-                    String locationString = item.getDescriptionId();
-                    String translatedName = Component.translatable(locationString).getString();
-
-                    // Handle special cases where we want to avoid filtering out specific seeds
-                    if (locationString.contains("sesameseedsseeditem")) {
-                        translatedName = "Sesame";
-                    } else if (locationString.contains("mustardseedsseeditem")) {
-                        translatedName = "Mustard";
-                    } else if (locationString.contains("sesameseedsitem")) {
-                        translatedName = "Sesame Seeds"; // Same display name to keep only one of them
-                    } else if (locationString.contains("mustardseedsitem")) {
-                        translatedName = "Mustard Seeds"; // Same display name to keep only one of them
-                    } else if (locationString.contains("wheat_seeds")) {
-                        translatedName = "Wheat"; // Same display name to keep only one of them
-                    }
-
-                    return translatedName; // Return the adjusted or original translated name
-                })
-                // Filter out the remaining names that still include "Seed" or "Seeds" but not
-                // the special cases
-                .filter(translatedName -> !translatedName.toLowerCase().contains("seed"))
-                // Sort the remaining names alphabetically
-                .sorted()
-                .distinct() // Ensure each name is unique
-                // Map the filtered names back to Component
-                .map(Component::literal)
-                // Join the names with commas
-                .reduce((comp1, comp2) -> comp1.append(", ").append(comp2))
-                .orElse(Component.literal("None"));
+        Component cropsAllowedShow = com.falazar.farmupcraft.util.CropListChat.crops(
+                instance.getCrops((ServerLevel) event.getLevel()), playerSource);
         // Construct the message for the crops that can be planted in the biome
         component = Component.literal("§aCrops you can plant in ")
                 .append(biomeNameShow)

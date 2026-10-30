@@ -10,6 +10,20 @@ loaderVersion="${loader_version_range}" #mandatory This is typically bumped ever
 # The license for you mod. This is mandatory metadata and allows for easier comprehension of your redistributive properties.
 # Review your options at https://choosealicense.com/. All rights reserved is the default copyright stance, and is thus the default here.
 license="${mod_license}"
+
+[[dependencies.${mod_id}]]
+modId="pamhc2foodcore"
+mandatory=false
+versionRange="[0,)"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="solonion"
+mandatory=false
+versionRange="[0,)"
+ordering="BEFORE"
+side="BOTH"
 # A URL to refer people to when problems occur with this mod
 #issueTrackerURL="https://change.me.to.your.issue.tracker.example.invalid/" #optional
 # A list of mods - how many allowed here is determined by the individual mod loader

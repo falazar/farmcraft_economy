@@ -13,10 +13,6 @@
       "required": false
     },
     {
-      "id": "biomesoplenty:clover_patch",
-      "required": false
-    },
-    {
       "id": "biomesoplenty:cold_desert",
       "required": false
     },
@@ -61,11 +57,19 @@
       "required": false
     },
     {
-      "id": "biomesoplenty:grassland",
+      "id": "biomesoplenty:glowing_grotto",
+      "required": false
+    },
+    {
+      "id": "biomesoplenty:gravel_beach",
       "required": false
     },
     {
       "id": "biomesoplenty:highland",
+      "required": false
+    },
+    {
+      "id": "biomesoplenty:hot_springs",
       "required": false
     },
     {
@@ -74,10 +78,6 @@
     },
     {
       "id": "biomesoplenty:lavender_field",
-      "required": false
-    },
-    {
-      "id": "biomesoplenty:lavender_forest",
       "required": false
     },
     {
@@ -133,6 +133,10 @@
       "required": false
     },
     {
+      "id": "biomesoplenty:overgrown_greens",
+      "required": false
+    },
+    {
       "id": "biomesoplenty:pasture",
       "required": false
     },
@@ -169,10 +173,6 @@
       "required": false
     },
     {
-      "id": "biomesoplenty:seasonal_orchard",
-      "required": false
-    },
-    {
       "id": "biomesoplenty:shrubland",
       "required": false
     },
@@ -193,6 +193,14 @@
       "required": false
     },
     {
+      "id": "biomesoplenty:spider_nest",
+      "required": false
+    },
+    {
+      "id": "biomesoplenty:subtropics",
+      "required": false
+    },
+    {
       "id": "biomesoplenty:tropics",
       "required": false
     },
@@ -201,11 +209,11 @@
       "required": false
     },
     {
-      "id": "biomesoplenty:volcano",
+      "id": "biomesoplenty:volcanic_plains",
       "required": false
     },
     {
-      "id": "biomesoplenty:volcanic_plains",
+      "id": "biomesoplenty:volcano",
       "required": false
     },
     {
@@ -218,6 +226,10 @@
     },
     {
       "id": "biomesoplenty:wetland",
+      "required": false
+    },
+    {
+      "id": "biomesoplenty:wintry_origin_valley",
       "required": false
     },
     {

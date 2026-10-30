@@ -1,0 +1,322 @@
+DISPOSABLE GRAPHICAL ACCEPTANCE (DEVELOPMENT SOURCE SET ONLY)
+
+This harness never belongs in the production jar. It requires the
+`farmupcraft.visualAcceptance=true` gate, a non-production loader environment,
+and an absolute `farmupcraft.visualAcceptanceRoot` ending in
+`build\visual-acceptance`. The two game directories must be its `server` and
+`client` children, with no junction/symlink redirection. Both runs must use the
+same sources and matching production mods. Ordinary runs without the gate do
+nothing.
+
+PARENT-OWNED SETUP AND EXECUTION
+
+No launcher, Gradle task, game, EULA, configuration, save, or global option is
+created/changed by preparing these sources. Runtime execution is separate:
+
+1. Use fresh disposable game directories. Existing `visual-receipt.txt` or
+   `visual-shots` is a hard startup failure; archive prior evidence rather than
+   reusing it. Never point either run at an existing live world.
+2. These strictly verified NeoForge development launches bypass the EULA file
+   check in the dev launcher. Do not create, edit, or accept an EULA for this
+   harness. This is not a production-server launch procedure: production still
+   requires the operator's own EULA acceptance.
+   Prepare only the disposable server's server.properties using the setup block
+   below. Offline mode is solely for this loopback development identity.
+3. Use the already-wired `visualAcceptanceServer` run, then promptly the
+   `visualAcceptanceClient` run, username `VisualProbe`, quick-play
+   `127.0.0.1:25579`. Install the normal required runtime companions, particularly
+   HarvestCraft Food Core (`pamhc2foodcore:potitem`). The client needs working GPU,
+   window and asset support. Use a visible, non-minimized window at least 320x180.
+   Avoid user interaction during the run. JEI and JourneyMap are mandatory for
+   the extended stages (no skip-on-missing-mod path).
+4. Each JVM has a 240-second watchdog from common setup, including shutdown. Do
+   not delay starting the client after server readiness. A stalled stage remains
+   incomplete and ends with a deadline failure, not a visual success.
+
+EXACT DISPOSABLE SETUP BLOCK (PARENT EXECUTES; NOT EXECUTED BY THIS DOCUMENT)
+
+Run this PowerShell block from the repository's neoforge-26.2 module directory.
+It refuses an existing acceptance root, does not delete anything, rejects
+redirected ancestors, and writes no EULA. If prior evidence exists, stop and
+archive it separately before choosing to prepare another fresh run.
+
+$ErrorActionPreference = 'Stop'
+$module = [IO.Path]::GetFullPath((Get-Location).Path)
+if ((Split-Path $module -Leaf) -ne 'neoforge-26.2' -or
+    !(Test-Path -LiteralPath (Join-Path $module 'build.gradle') -PathType Leaf)) {
+    throw 'Run only from the neoforge-26.2 module directory.'
+}
+$root = [IO.Path]::GetFullPath((Join-Path $module 'build\visual-acceptance'))
+if (Test-Path -LiteralPath $root) {
+    throw 'Acceptance root already exists; preserve evidence and stop. No automatic cleanup.'
+}
+$ancestor = Split-Path $root -Parent
+while ($ancestor) {
+    if (Test-Path -LiteralPath $ancestor) {
+        $entry = Get-Item -LiteralPath $ancestor -Force
+        if (($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Redirected acceptance ancestor: $ancestor"
+        }
+    }
+    $parent = Split-Path $ancestor -Parent
+    if ($parent -eq $ancestor) { break }
+    $ancestor = $parent
+}
+$server = Join-Path $root 'server'
+$client = Join-Path $root 'client'
+New-Item -ItemType Directory -Path $server, $client | Out-Null
+$utf8 = New-Object Text.UTF8Encoding($false)
+$markerPath = Join-Path $root 'visual-launch-marker.txt'
+$marker = "FarmUpCraft visual acceptance DEVELOPMENT ONLY`r`nroot=$root`r`n"
+$stream = [IO.File]::Open($markerPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+try {
+    $bytes = $utf8.GetBytes($marker)
+    $stream.Write($bytes, 0, $bytes.Length)
+} finally {
+    $stream.Dispose()
+}
+$properties = @'
+server-ip=127.0.0.1
+server-port=25579
+online-mode=false
+max-players=1
+level-name=visual-fixture
+level-type=minecraft:flat
+generate-structures=false
+spawn-protection=0
+difficulty=peaceful
+view-distance=4
+simulation-distance=4
+'@
+[IO.File]::WriteAllText((Join-Path $server 'server.properties'), $properties, $utf8)
+
+The root marker is a setup/operator safeguard, NOT a Java-enforced prerequisite
+or a result receipt. Preserve it; it identifies this root as disposable, not any
+other world. Never use marker presence to authorize deleting another directory.
+The Java harness independently checks the gate, non-production environment,
+absolute expected root, exact server/client game directories and redirection.
+Server fixture seeding additionally requires a world path beneath its disposable
+server directory, dedicated-server mode, exact loopback bind and port, and only
+the expected participant. Existing per-side receipt/screenshot markers fail
+startup; they are never overwritten to manufacture a clean result.
+
+Do not copy or edit live configs, saves, EULA files or global settings. This
+setup block creates no client options file. The game manages only its disposable
+client options, including the pause/weather test's temporary volume changes.
+The normal required companion jars must be on both development run classpaths;
+this setup block neither installs nor downloads them.
+
+ORDERED PROTOCOL AND EVIDENCE
+
+Server creates a single flat claim in chunk 0,0 at y=80, a named home village,
+123456 coins, a diamond, wheat seeds (the production crop tag includes seeds,
+not wheat), and a HarvestCraft pot with 250/500 uses. Cookware is prepared through
+the production crafted-event handler; this is not a recipe/JEI test.
+
+For the HUD/border image, the survival-mode observer stands on a single stone
+support at (4,91,4), feet (4.5,92,4.5), yaw -45 and pitch 38 degrees. This elevated
+diagonal view looks down toward the southeast claim corner at (16,80,16), putting
+the south/east walls against grass rather than the blue horizon. No flight,
+creative-mode inventory, FOV or global camera settings are used. HUD capture
+requires the synchronized player position/rotation to match that fixed framing.
+Once observation starts, each client tick clears initial chat/history, queued
+and visible toasts (including security/recipe/advancement/social notifications),
+HUD titles and overlay messages through public Hud/ChatComponent/ToastManager
+APIs. This affects only the disposable client session, not persistent notification
+settings or the production HUD layer. Tooltip and real pause rendering remain
+ordinary game UI. Cleared transient UI is explicitly noted in source receipts.
+
+The connected client waits for real synchronized databases and inventory. Each
+stage settles for at least one second (three seconds for HUD/borders) and five
+consecutive observed render
+frames, persists its framebuffer PNG, then sends a cumulative receipt mask.
+The server validates identity, authoritative fixture state and strictly ordered
+masks, and acknowledges each before the client advances:
+
+Before those visual stages, the real client play connection sends CLIENT_READY
+mask=0. The server waits two further server ticks so initial login work drains,
+then seeds the fixture. It invokes only the production EDBMessages snapshot
+sender (not the login event bus/player initialization) to send fresh authoritative
+full snapshots for ALL auto-synchronized databases. It queues an ACK mask=0
+fixture barrier after those snapshot sends. The client must receive that barrier
+AND observe all original fixture assertions before stage 0 starts. This prevents
+initial empty login snapshots from replacing the fixture after observation began.
+Both sides record readiness and barrier markers in their existing receipt files.
+
+| Mask | PNG in `client\visual-shots` | Machine observations |
+|---|---|---|
+| 1 | `hud-borders.png` | Actual production HUD-layer event; four expected source lines; actual extracted border snapshot has four full-height blue walls |
+| 3 | `crop-tooltip.png` | Ordinary inventory extraction, deterministic hover over wheat seeds; actual tooltip submission and production farm/biome source text |
+| 7 | `cookware.png` | Ordinary inventory extraction, pot hover and tooltip submission; synchronized 250/500 uses; production item-stack mixin returns visible 7/13 durability bar |
+| 15 | `pause-weather.png` | `Minecraft.pauseGame(false)` opens real `PauseScreen`; production screen hooks mute weather 0.625 -> 0.0, then restore 0.625 on real close; both option object and disposable `options.txt` checked |
+| 31 | `jei-output-focus.png` | Production OpenJeiRecipePacket opens actual JEI RecipesGui; its real lookup state contains exactly one OUTPUT focus for minecraft:bread and a nonempty visible recipe layout list |
+| 63 | `journeymap-waypoints.png` | Production AddJMWaypointPacket creates native owner=journeymap, origin tag=farmupcraft, persistent=true, gold waypoint at 8,81,8; production ScanWaypointsPacket creates tracked temporary green waypoint at 24,81,8; real native manager view model lists native GUID |
+| 127 | `journeymap-editor.png` | Actual native layered editor for that waypoint; real vanilla name EditBox changed to Visual Acceptance Edited; after PNG persistence, real Enter key/save handler must rename API state before receipt |
+| 255 | `journeymap-polygons.png` | Production highlight/village packets register red chunk 0,0 and blue chunk 1,0 polygons; exact 16-block source geometry/styles and API existence; active real fullscreen with both handles in prepared overlay draw steps; edited waypoint still has persistent flag |
+| 511 | `journeymap-cleanup.png` | Real native manager after server-sent scan CLEAR, filtered native removal and polygon clear; both native names/scan absent from API, tracked scans/map empty, both previously observed polygon handles no longer registered |
+
+Masks 1,3,7,15 retain their original meanings but 15 is no longer final.
+Server sends each production integration payload before the preceding stage's
+ACK; ordinary registered codecs/production client payload handlers process them
+over the real connection, never a mock payload context. The harness does not
+call production GUI-opening methods as a substitute for those handlers.
+No new fixture wire type is needed; cumulative receipt/ACK records remain ints.
+Both peers now register fixture protocol version visual-acceptance-4.
+
+The extended probe was checked against cached pinned JEI 30.48.0.244
+(Modrinth lU7Sz0zI), JourneyMap S0bNIQSq, and JourneyMap API 26.2-2.0.0 using
+javap signatures/bytecode. Runtime-only GUI classes are constructed through
+their actual public constructors using reflection; every result is checked
+with instanceof (no unchecked implementation casts). Narrow reflection reads
+JEI's actual logic/state/layout model, JourneyMap's manager view model and the
+production polygon handle map. Public JourneyMap prepared-draw-step APIs are
+queried to relate those handles to the fullscreen preparation. Any pinned
+member/type mismatch fails closed with its member name; it is not swallowed.
+
+The manager opens focused on the native waypoint. Its editor is displayed
+through LayeredScreen.display(), not a substitute screen. After the editor
+framebuffer is written, KeyEvent(257,0,0) takes the pinned editor's actual Enter
+save route. The next stages verify the edited API name and persistent flag.
+The map uses the real Fullscreen, follow=false, zoom=2048, preserving its
+supported initial player-centered viewport at exactly (4,4), with the fixture
+player remaining at x/z=(4.5,4.5). No pan or custom center is requested.
+The pinned renderer's zoom is a scale numerator, not a discrete zoom index:
+UIState.blockSize is zoom/512. Thus 2048 means 4 render pixels per block and
+each 16-block polygon projects to 64x64 pixels (the pair spans 128x64).
+The former zoom=2 would mean 1/256 pixel per block and cannot provide useful
+polygon visibility. MapRenderer also quantizes centers to screen pixels using
+512/zoom, making tiny-scale centering inappropriate for this fixture.
+After a real active fullscreen frame is observed, the next client tick uses
+public zoomIn/zoomOut controls (at most 16 operations) and setFollow(false),
+once. This avoids applying framing before first-open renderer initialization/
+reset. No recentering or synthetic viewport is used. The prior requested custom
+center (16,8) was not retained by the actual pinned runtime; the deliberate
+alternative is its supported initial fixture-player center, never an arbitrary
+center or scale fallback.
+The stage requires actual follow=false, zoom=2048, blockSize=4, center exactly
+(4,4), fixture player x/z=(4.5,4.5) within 0.1 block, both full chunk extents in API block bounds, and a display
+at least 256x192 render pixels. All exact geometry/style and prepared draw-step
+assertions remain in force before the normal settled framebuffer capture.
+On a fresh JourneyMap profile, its actual first-open AboutScreen may interpose.
+During stage 7 only, a client tick locates the unique public vanilla Button
+whose label is jm.common.close and activates its real onPress callback once.
+The callback must return to the same actual Fullscreen through JourneyMap's
+normal return stack. Since UIManager.open resets that screen, framing waits
+until its first actual active fullscreen frame after the callback.
+UI_INTERSTITIAL/UI_FRAMING receipts record these actions, not a successful
+stage. No preferences are preseeded, no interstitial is replaced by setScreen,
+and no fake framebuffer/state is accepted: the unchanged active fullscreen,
+polygon model/prepared-draw and real PNG gates must still pass. An absent,
+disabled, ambiguous or repeating Close button fails within the existing bounds.
+No mock JEI/JourneyMap API or custom recipe/map renderer is used.
+The polygon style gate compares exact ARGB getter values, FFFF0000 and FF0000FF,
+not the RGB payload literals. The pinned ShapeProperties.setStrokeColor and
+setFillColor call Displayable.clampRGB, whose implementation is 0xFF000000 | RGB.
+Both fill/stroke colors, stroke widths, stroke/fill opacities, four points,
+chunk bounds and y=64 are checked; a mismatch reports actual geometry/style.
+
+Inventory subclass changes only hover coordinates; it does not draw substitute
+HUD, borders, tooltip text or cookware. The initial disposable weather volume
+is restored after the pause assertion (also best-effort on failure).
+
+`Screenshot.takeScreenshot(gameRenderer.mainRenderTarget(), ...)` runs after
+the rendered frame. It reads GPU target pixels, never the desktop. Receipts
+include PNG dimensions, byte count and SHA-256; a coarse nonblank check is not
+pixel recognition.
+
+Exact result paths relative to the neoforge-26.2 module:
+
+  build\visual-acceptance\server\visual-receipt.txt
+  build\visual-acceptance\client\visual-receipt.txt
+  build\visual-acceptance\client\visual-shots\hud-borders.png
+  build\visual-acceptance\client\visual-shots\crop-tooltip.png
+  build\visual-acceptance\client\visual-shots\cookware.png
+  build\visual-acceptance\client\visual-shots\pause-weather.png
+  build\visual-acceptance\client\visual-shots\jei-output-focus.png
+  build\visual-acceptance\client\visual-shots\journeymap-waypoints.png
+  build\visual-acceptance\client\visual-shots\journeymap-editor.png
+  build\visual-acceptance\client\visual-shots\journeymap-polygons.png
+  build\visual-acceptance\client\visual-shots\journeymap-cleanup.png
+
+The server also creates its own empty visual-shots directory as a fresh-run
+marker. It does not produce graphical screenshots.
+
+Each visual-receipt.txt contains side-specific source observations and stage/ACK
+evidence. START records MACHINE=INCOMPLETE and VISUAL_JUDGMENT=PENDING.
+CLIENT_RECEIPT and CLIENT_ACK are intermediate, not success markers.
+SERVER_ACK validates each ordered mask. Only both final MACHINE_COMPLETE
+receipts plus all nine
+PNGs establish machine completion. `FAIL`, missing receipts/PNGs, an unfinished
+mask, cancellation, crash, or startup failure mean **incomplete/failed**, even
+if a process exits zero. Files are flushed before a screenshot receipt is sent.
+
+AUTOMATIC TERMINATION
+
+After the final server ACK, the client writes its MACHINE_COMPLETE receipt,
+marks completion, and requests normal Minecraft shutdown. The server writes its
+MACHINE_COMPLETE receipt and requests normal shutdown after 40 further server
+ticks (normally about two seconds). Client runtime failures write FAIL and
+request shutdown; server runtime failures write FAIL and request server halt.
+A premature client disconnect is failure on either side before completion.
+The initial playerless pre-connection world teardown is ignored; once client
+LoggingIn has occurred, LoggingOut before the final ACK remains a failure.
+
+Each JVM's daemon watchdog starts during common setup and wakes after 240
+seconds. If that JVM is incomplete, it appends a deadline FAIL then forcibly
+halts with status 2. If already complete but shutdown stalled, it forcibly halts
+with status 0. Normal shutdown usually occurs earlier. The deadline covers
+stage waiting and stuck shutdown, not the launcher time before common setup.
+Startup guard rejection may terminate before receipts or the watchdog exist:
+that is startup failure, never success. Inspect evidence, not exit status alone.
+Hard termination/crashes cannot guarantee best-effort option restoration; all
+affected options remain confined to the disposable client directory.
+Successful JourneyMap cleanup uses production packets and is itself a captured,
+acknowledged stage. On responsive client failure, the probe also attempts the
+production scan-clear, name-filtered native removal and polygon-clear methods
+before shutdown. This fallback is cleanup only, never a successful stage or
+substitute for the network-driven cleanup assertions. It touches only this
+disposable connection's integration state; no live JourneyMap data is read.
+An additional responsive-client guard fails each ready/visual-stage wait after
+30 seconds; it does not extend the 240-second JVM deadline. Every five seconds
+of waiting, CLIENT_WAIT records barrier/capture/ACK status, actual coins/home,
+claim, village count/presence, inventory, position/rotation, screen and the last
+render frame's fixture/HUD/border/tooltip guards. These diagnostics do not relax
+any assertion. The server also bounds waiting for the production player database
+after CLIENT_READY to 30 seconds. Stalled render threads still use the JVM
+watchdog even if client ticks cannot emit further diagnostics.
+
+EXPLICIT VISUAL LIMITATIONS
+
+`VISUAL_JUDGMENT=PENDING` is intentional, including after machine completion.
+A person must inspect PNGs for readable HUD/tooltip text, actual blue wall
+visibility, cookware texture/bar placement, clipping, overlap and pause layout.
+Inspect the JEI PNG for bread output recipe rendering and JourneyMap PNGs for
+native manager/editability, edited name, actual red/blue polygon visibility,
+map alignment and labels. Prepared overlay draw steps prove preparation, not
+GPU visibility or pixel correctness.
+Source extraction/submission proves neither pixel correctness nor geometry
+visibility. There is no automatic visual PASS or reference-image comparison.
+Weather validation checks real screen lifecycle and persisted volume, not audible
+rain, actual weather, or dedicated-server pausing. The multiplayer server keeps
+running. The native waypoint's persistent flag and real editor save/API update
+do not establish restart durability or a particular disk-file serialization.
+The editor screenshot precedes saving; a SOURCE receipt after that framebuffer
+records save/API verification. Recipe crafting/transfer, recipe correctness
+beyond actual bread OUTPUT focus/layouts, custom icon editing, remote/shared
+waypoint synchronization, restart persistence, biome gameplay and multi-client
+rendering remain outside this bounded harness.
+
+PARENT VALIDATION (NO CHILD LAUNCHES OR EVIDENCE ROOT MUTATION)
+
+From the repository root, compile only:
+  .\neoforge-26.2\gradlew.bat -p .\neoforge-26.2 compileVisualTestJava
+
+After compilation, the parent must separately preserve existing evidence and
+prepare fresh disposable directories using its accepted setup/launcher. Do not
+run either game in the current evidence root. The existing schema-2 exported
+VisualAcceptanceServer/Client args refer to the visualTest output directories
+and need no argument/schema change for these sources. The parent launches the
+server/client with those exact exported Java executable/args and working
+directories. Require both MACHINE_COMPLETE markers, masks
+1,3,7,15,31,63,127,255,511 in order, nine PNG hashes, no FAIL, and manual review.
+Source preparation/API inspection alone is NOT runtime or graphical acceptance.

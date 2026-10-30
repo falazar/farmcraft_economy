@@ -13,6 +13,7 @@ import com.falazar.farmupcraft.database.message.DataBaseFullS2C;
 import com.falazar.farmupcraft.database.message.EDBMessages;
 import com.falazar.farmupcraft.database.message.RemoveModWaypointsPacket;
 import com.falazar.farmupcraft.util.AsyncLocator;
+import com.falazar.farmupcraft.util.ChoresFile;
 import io.netty.buffer.Unpooled;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -66,6 +67,22 @@ import java.util.concurrent.CompletableFuture;
 @Mod.EventBusSubscriber(modid = FarmUpCraft.MODID, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class ForgeEvents {
     private static final String NO_CHORES_MSG = "You should make a chores list instead";
+
+    public static void initializeWorldDefaults(net.minecraft.server.MinecraftServer server) {
+        try {
+            if (com.falazar.farmupcraft.util.StartupDefaults.initializeWorld(
+                    server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT), () -> {
+                        var rules = server.overworld().getGameRules();
+                        rules.getRule(net.minecraft.world.level.GameRules.RULE_RANDOMTICKING).set(1, server);
+                        rules.getRule(net.minecraft.world.level.GameRules.RULE_PLAYERS_SLEEPING_PERCENTAGE).set(50, server);
+                        server.saveEverything(false, false, true);
+                    })) {
+                FarmUpCraft.LOGGER.info("Initialized world defaults: random tick speed 1, sleeping percentage 50.");
+            }
+        } catch (java.io.IOException error) {
+            throw new java.io.UncheckedIOException("Could not initialize world gameplay defaults", error);
+        }
+    }
     // 5 minutes at 20 TPS
     private static final int DIFFICULTY_WARN_INTERVAL = 6000;
     private static int difficultyWarnTick = 0;
@@ -94,9 +111,19 @@ public class ForgeEvents {
      */
     @SubscribeEvent
     public static void serverStarted(final ServerStartedEvent event) {
+        initializeWorldDefaults(event.getServer());
+        Path chores = ChoresFile.getPath(FMLPaths.CONFIGDIR.get());
+        try {
+            if (ChoresFile.seedIfMissing(FMLPaths.CONFIGDIR.get(), FMLPaths.GAMEDIR.get())) {
+                FarmUpCraft.LOGGER.info("Created editable daily chores file at {}", chores);
+            }
+        } catch (IOException error) {
+            FarmUpCraft.LOGGER.error("Could not initialize daily chores at {}", chores, error);
+        }
         CropBlockDataJsonManager.populateCropBlockEntries(event.getServer().overworld());
         CropItemDataJsonManager.populateCropItemEntries(event.getServer().overworld());
         BiomeRulesDataJsonManager.populateBiomeRulesInstances(event.getServer().overworld());
+        com.falazar.farmupcraft.command.MarketCommand.initializeMarket(event.getServer().createCommandSourceStack());
     }
 
     /**
@@ -181,6 +208,17 @@ public class ForgeEvents {
             }
 
             ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
+            PlayerData welcomeData = playerDatabase.getData(uuid);
+            FarmCraftCommand.refreshVillageChunksOverlay(serverPlayer);
+            var today = java.time.LocalDate.now();
+            if (welcomeData.getFirstWelcomeDay() == com.falazar.farmupcraft.util.PlayerOnboarding.UNSET_DAY) {
+                welcomeData.setFirstWelcomeDay(today.toEpochDay());
+                playerDatabase.putData(uuid, welcomeData);
+            }
+            if (com.falazar.farmupcraft.util.PlayerOnboarding.shouldWelcome(welcomeData.getFirstWelcomeDay(), today)) {
+                serverPlayer.sendSystemMessage(Component.literal(com.falazar.farmupcraft.util.PlayerOnboarding.WELCOME)
+                        .withStyle(ChatFormatting.GOLD));
+            }
 
             // First login: explain the upkeep system once.
             if (isFirstLogin) {
@@ -259,7 +297,7 @@ public class ForgeEvents {
      */
     public static void sendDailyTaskSuggestions(ServerPlayer player) {
         try {
-            Path taskFile = FMLPaths.GAMEDIR.get().resolve("Rimfog").resolve("chores.md");
+            Path taskFile = ChoresFile.getPath(FMLPaths.CONFIGDIR.get());
             if (!Files.exists(taskFile)) {
                 player.sendSystemMessage(Component.literal(NO_CHORES_MSG).withStyle(ChatFormatting.GRAY));
                 return;

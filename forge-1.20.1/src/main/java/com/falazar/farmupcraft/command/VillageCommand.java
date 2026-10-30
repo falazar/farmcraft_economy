@@ -205,6 +205,7 @@ public class VillageCommand {
                             builder2.suggest("sheep");
                             builder2.suggest("pig");
                             builder2.suggest("chicken");
+                            builder2.suggest("duck");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
@@ -350,7 +351,7 @@ public class VillageCommand {
             int cost = calculateVillageBuyCost();
             if (playerData.getCoins() < cost) {
                 source.sendFailure(Component.literal("Not enough coins to buy a village. Cost: " + cost
-                        + ", you have: " + playerData.getCoins()));
+                        + ", you have: " + playerData.getCoins() + ". Use /market."));
                 return 0;
             }
 
@@ -398,15 +399,13 @@ public class VillageCommand {
                 ChunkData chunk = new ChunkData("village", player.getId(), villageId);
                 chunkDataDatabase.putData(pos.toLong(), chunk);
 
-                // Update structure claim flags for this chunk
-                if (player.level() instanceof ServerLevel serverLevel) {
-                    StructureCommand.updateStructuresInChunk(pos, true, serverLevel);
-                }
             }
             // Mark the center chunk as village center.
             ChunkData data = chunkDataDatabase.getData(chunkPos.toLong());
             data.setType("village center");
             chunkDataDatabase.putData(chunkPos.toLong(), data);
+            StructureCommand.refreshStructureClaims(ModEvents.getGameStructureDatabase(source.getLevel()),
+                    chunkDataDatabase);
 
             LOGGER.info("Plot bought at " + chunkPos);
 
@@ -437,6 +436,7 @@ public class VillageCommand {
             response = response.append(Component.literal(" for " + cost + " coins."));
             MutableComponent finalResponse = response;
             source.sendSuccess(() -> finalResponse, false);
+            FarmCraftCommand.showVillageChunks(source);
         } catch (Exception ex) {
             source.sendFailure(Component.literal("Exception thrown - see log"));
             ex.printStackTrace();
@@ -472,12 +472,14 @@ public class VillageCommand {
             }
             source.sendSuccess(() -> Component.literal("=== " + village.getName() + " Animal Grain Requirements ===")
                     .withStyle(ChatFormatting.GOLD), false);
+            if (AnimalGrainAssigner.ensureDuckGrain(village)) villageDb.putData(village.getUUID(), village);
             java.util.Map<String, java.util.List<String>> map = village.getAnimalGrainsMap();
             for (String animal : AnimalGrainAssigner.ANIMAL_TYPES) {
                 java.util.List<String> grains = map.getOrDefault(animal, java.util.List.of());
                 String grainsText = grains.stream()
                         .map(AnimalGrainAssigner::displayName)
-                        .collect(java.util.stream.Collectors.joining(" & "));
+                        .collect(java.util.stream.Collectors.joining(" & "))
+                        + ("duck".equals(animal) ? " or usual Naturalist food (fish)" : "");
                 source.sendSuccess(() -> Component.literal("  " + capitalize(animal) + ": ")
                         .withStyle(ChatFormatting.YELLOW)
                         .append(Component.literal(grainsText).withStyle(ChatFormatting.WHITE)), false);
@@ -1136,6 +1138,7 @@ public class VillageCommand {
             playerDb.putData(player.getUUID(), playerData);
             village.addMember(player.getUUID());
             ModEvents.getVillageDatabase().putData(village.getUUID(), village);
+            FarmCraftCommand.showVillageChunks(source);
 
             source.sendSuccess(() -> Component.literal(
                     "You have joined the village '" + village.getName() + "'! Welcome!")
@@ -1202,7 +1205,7 @@ public class VillageCommand {
 
     // -------------------------------------------------------------------------
 
-    private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken");
+    private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken", "duck");
 
     // Sets the village's allowed breeding animal type. Can only be changed once
     // every two weeks.
@@ -1216,7 +1219,7 @@ public class VillageCommand {
             }
 
             if (!VALID_ANIMAL_TYPES.contains(animalType.toLowerCase())) {
-                source.sendFailure(Component.literal("Invalid animal type. Must be: cow, sheep, pig, or chicken."));
+                source.sendFailure(Component.literal("Invalid animal type. Must be: cow, sheep, pig, chicken, or duck."));
                 return 0;
             }
 
@@ -1381,6 +1384,9 @@ public class VillageCommand {
 
             PENDING_INVITES.remove(targetUuid);
 
+            if (onlineTarget != null) {
+                FarmCraftCommand.showVillageChunks(onlineTarget.createCommandSourceStack());
+            }
             final String targetNameFinal = normalizedName;
             source.sendSuccess(
                     () -> Component.literal("Added " + targetNameFinal + " to village '" + village.getName() + "'."),
@@ -1487,6 +1493,12 @@ public class VillageCommand {
             // STEP 6: Add new chunks.
             int newChunksCount = addNewVillageChunks(village, playerSource);
             villageDatabase.putData(village.getUUID(), village);
+            for (ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+                PlayerData member = ModEvents.getPlayerDatabase().getData(online.getUUID());
+                if (member != null && village.getUUID().equals(member.getHomeVillageUUID())) {
+                    FarmCraftCommand.refreshVillageChunksOverlay(online);
+                }
+            }
 
             // STEP 7: Find already-visited SURFACE structures now inside the newly claimed
             // chunks.
@@ -2426,6 +2438,8 @@ public class VillageCommand {
 
     // Helper method to get structures in the village
     public static List<Map.Entry<Long, GameStructureData>> getVillageStructuresList(VillageData village, Level level) {
+        StructureCommand.refreshStructureClaims(ModEvents.getGameStructureDatabase(level),
+                ModEvents.getChunkDataDatabase());
         List<Map.Entry<Long, GameStructureData>> structuresList = new ArrayList<>();
         for (Long structureId : ModEvents.getGameStructureDatabase(level).getKeys()) {
             GameStructureData structureData = ModEvents.getGameStructureDatabase(level).getData(structureId);

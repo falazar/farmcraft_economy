@@ -1,0 +1,13 @@
+{
+  "trackCount": 42,
+  "benefits": [
+    {"threshold": 10, "benefit": "{key:\"minecraft:max_health\",op:0,type:\"att\",val:2.0d}"},
+    {"threshold": 15, "benefit": "{key:\"minecraft:strength\",type:\"eff\",val:0.0d}"},
+    {"threshold": 17, "benefit": "{key:\"minecraft:speed\",type:\"eff\",val:0.0d}"},
+    {"threshold": 23, "benefit": "{key:\"minecraft:armor_toughness\",op:0,type:\"att\",val:2.0d}"},
+    {"threshold": 28, "benefit": "{key:\"minecraft:strength\",type:\"eff\",val:1.0d}"},
+    {"threshold": 30, "benefit": "{key:\"minecraft:regeneration\",type:\"eff\",val:0.0d}"},
+    {"threshold": 35, "benefit": "{key:\"minecraft:max_health\",op:0,type:\"att\",val:4.0d}"},
+    {"threshold": 41, "benefit": "{key:\"minecraft:max_health\",op:0,type:\"att\",val:6.0d}"}
+  ]
+}

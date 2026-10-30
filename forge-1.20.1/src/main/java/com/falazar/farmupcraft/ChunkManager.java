@@ -1,5 +1,6 @@
 package com.falazar.farmupcraft;
 
+import com.falazar.farmupcraft.command.StructureCommand;
 import com.falazar.farmupcraft.data.ChunkData;
 import com.falazar.farmupcraft.data.GameStructureData;
 import com.falazar.farmupcraft.data.PlayerData;
@@ -274,18 +275,13 @@ public class ChunkManager {
                 if (!structureData.wasVisited() && !player.isCreative()) {
                     structureData.setWasVisited(true);
 
-                    // Now that it's been visited, check if it's on a claimed plot and sync that
-                    // status.
-                    ChunkPos structureChunk = new ChunkPos(structureData.getCenterPos());
-                    ChunkData chunkData = ModEvents.getChunkDataDatabase().getData(structureChunk.toLong());
-                    boolean isOnClaimedPlot = chunkData != null && !chunkData.getType().equals("village");
-                    structureData.setOnClaimedPlot(isOnClaimedPlot);
+                    StructureCommand.refreshStructureClaim(structureData, ModEvents.getChunkDataDatabase());
 
                     gameStructureDatabase.putData(structureId, structureData);
                     gameStructureDatabase.setDirty();
                     LOGGER.info(
                             "Marked structure as visited: " + structureData.getName() + " (ID: " + structureId + ")"
-                                    + (isOnClaimedPlot ? " [CLAIMED]" : ""));
+                                    + (structureData.isOnClaimedPlot() ? " [CLAIMED]" : ""));
                 }
             }
 
@@ -587,7 +583,7 @@ public class ChunkManager {
         return id.contains("chest") || id.contains("barrel");
     }
 
-    private static boolean isRockPathBlock(BlockState state) {
+    public static boolean isRockPathBlock(BlockState state) {
         String id = net.minecraft.core.registries.BuiltInRegistries.BLOCK
                 .getKey(state.getBlock()).toString();
         return id.contains("rock") && id.contains("path");

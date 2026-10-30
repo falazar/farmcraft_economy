@@ -8,11 +8,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Deterministically assigns two grain/hay requirements per farm animal type
+ * Deterministically assigns two grain/hay choices per original farm animal type
+ * and one additional choice for ducks,
  * for a village, keyed off the village's chunk XZ position.
  *
  * <p>
- * Animal types covered: cow, sheep, pig, chicken.
+ * Animal types covered: cow, sheep, pig, chicken, duck.
  * </p>
  * <p>
  * Grain pool is drawn from PAM's HarvestCraft 2 Crops and vanilla.
@@ -20,7 +21,7 @@ import java.util.Map;
  */
 public class AnimalGrainAssigner {
 
-    public static final List<String> ANIMAL_TYPES = Arrays.asList("cow", "sheep", "pig", "chicken");
+    public static final List<String> ANIMAL_TYPES = Arrays.asList("cow", "sheep", "pig", "chicken", "duck");
 
     /**
      * All available grain and hay items.
@@ -51,12 +52,23 @@ public class AnimalGrainAssigner {
         int hash = Math.abs(village.getPosition().x * 31 + village.getPosition().z) % pool;
 
         Map<String, List<String>> map = new LinkedHashMap<>();
-        for (int i = 0; i < ANIMAL_TYPES.size(); i++) {
+        for (int i = 0; i < 4; i++) {
             String grain1 = GRAIN_POOL.get((hash + i * 2) % pool);
             String grain2 = GRAIN_POOL.get((hash + i * 2 + 1) % pool);
             map.put(ANIMAL_TYPES.get(i), Arrays.asList(grain1, grain2));
         }
         village.setAnimalGrainsFromMap(map);
+        ensureDuckGrain(village);
+    }
+
+    public static boolean ensureDuckGrain(VillageData village) {
+        if (!village.getGrainsForAnimal("duck").isEmpty()) return false;
+        var map = village.getAnimalGrainsMap();
+        int index = (int) (Math.abs((long) village.getPosition().x * 31 + village.getPosition().z + 17)
+                % GRAIN_POOL.size());
+        map.put("duck", List.of(GRAIN_POOL.get(index)));
+        village.setAnimalGrainsFromMap(map);
+        return true;
     }
 
     /**

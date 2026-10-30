@@ -1,4 +1,24 @@
+TODO: Limit JourneyMap visibility to four chunks (64 blocks) away from the player.
+
+TODO TEMP PATCH REMOVAL: Ice and Fire 2.2-mc26.2-unofficial-beta.1 stone-statue rendering workaround (NeoForge 26.2). After an upstream update fixes temporary model entity ID assignment, verify the previously crashing statue renders without our patch, then remove IceAndFireStoneStatueMixin, its farmupcraft.mixins.json client registration, StoneStatueRenderCompat, and the stone_statue_model_id game test/resources. Do not retain this workaround indefinitely.
+
+TODO: Create a Prism Launcher-importable Rimfog2 Modrinth pack (.mrpack) for easy player installation. Pin Minecraft 26.2, NeoForge, and mod versions; include shared gameplay configs and the current FarmUpCraft jar, excluding saves, accounts, and personal settings. Download third-party mods from official sources where supported; check redistribution permissions before bundling jars and document any manual downloads. Version pack releases and provide short install/update instructions so players can match the server.
+
+BUILD MOVE PREVIEW AND CONFIRMATION (BOTH VERSIONS):
+    DONE: After the second corner selection, show red source/green destination particle outlines and the non-air block count / total cost (1 gp per block). Require explicit clickable Confirm / Cancel or /build confirm before moving or charging; recheck blocks, block entity data, permissions, destination block entities, and funds at confirmation. Changed areas require a new preview. Both push and pull movement capped at 10 blocks; building width capped at 20.
+    TODO: Add a client-side ghost-block preview: highlight source blocks that will be removed and render semi-transparent destination blocks without changing the world. Preview only; preserve normal collision, inventories, and server authority. Implement for Forge 1.20.1 and NeoForge 26.2.
+
+TODO: Attempt to log in as a regular non-operator player in our regular world, move, break a block, and place a block; obtain approval before modifying the live world, or use a copied save.
+TODO NEOFORGE COMPATIBILITY TEST: Ported the nine-veswax-to-one-honeycomb recipe, Silk Touch-only veswax loot, optional emu/duck entries in HarvestCraft's c:egg tag, and optional BOP savanna additions. Verify crafting and Silk Touch/no-Silk drops once a working 26.2 Lycanites build is available (currently disabled); verify egg recipes and savanna classification with companion mods installed. Lycanites resources are guarded by mod_loaded; Forge originals are unchanged.
+DONE NEOFORGE PARITY: Restore all 28 legacy vanilla recipe definitions using 26.2 paths/schemas, preserving 16 active and 12 disabled recipes. Three actual-world cases verify loaded recipes, real crafting-menu outputs/remainders, and disabled definitions; load after NeoForge so its compatibility recipes do not override ours.
+DONE NEOFORGE PARITY: Port custom wheat Fortune loot and all six HarvestCraft garden loot-table overrides. Seven actual-world cases verify loaded table bindings and deterministic yields, Fortune, maturity, Silk Touch, and explosion decay.
+DONE NEOFORGE PARITY: Restore /npc createskeleton <name>, retaining createskleleton as an alias. Actual-world coverage verifies both spellings spawn exactly one skeleton with cleared AI goals for game masters and reject non-operators without spawning.
+DONE NEOFORGE EXTERNAL DATAPACK: Convert and bundle all 155 JSONs from Rimfog's harvestcraft_datapack, including 100 tree and 14 garden worldgen resources, oil, three fish/meat tags, two optional Pipez recipes, and the 35 previously restored recipes/loot tables. All 60 world tests pass with and without Pipez; original Rimfog files remain untouched.
+DONE FORGE EXTERNAL DATAPACK: Verify all 155 original JSONs were already bundled in the Forge resources and rebuilt 1.20.1 jar, each exactly once and semantically matching Rimfog's pack. Java 17 build -x copyJar passes; no live deployment or new Forge in-world generation test was performed.
+DONE DAILY CHORES DEFAULTS: Bundle the original chores file in both jars and seed config/farmupcraft/chores.md at server startup only when missing, preferring an existing legacy Rimfog/chores.md. Preserve existing/empty/custom files and log failures. Fourteen shared tests and 60 NeoForge world tests pass; actual first-start copy verified byte-for-byte. Rebuilt jars are not automatically deployed.
+TODO LATER: Complete explicit Forge-to-NeoForge saved-data migration with atomic install/rollback; keep legacy inspection read-only and apply disabled until approved. Never test imports on the only copy of a save.
 TODO: Give double mining bonus for villages at level 7 in any bought claim plot.
+TODO LATER: Make Biomes O' Plenty (BOP) optional in the NeoForge port; safely skip BOP-specific content/rules when absent and verify startup/gameplay without BOP or its dependency chain.
 TODO: Add an /npc claim method to turn a mob into an NPC, allow naming, assign an AI profile file, and set behavior to nonhostile, wary, or hostile.
 TODO: Create npc dragon nearby to talk to.
 TODO: Start on plotline and first hooks for kids.
@@ -253,5 +273,3 @@ QUESTS:
     TODO test dialogue
 
 NOTE: Players can bypass portal plot restriction by building a Nether portal from the Nether side; this will create a new Overworld portal at the corresponding coordinates, even if not on a portal plot. (Vanilla behavior)
-
-

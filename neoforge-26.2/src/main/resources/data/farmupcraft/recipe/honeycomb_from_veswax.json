@@ -1,0 +1,21 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "lycanitesmobs" }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax",
+    "lycanitesmobs:veswax"
+  ],
+  "result": {
+    "id": "minecraft:honeycomb",
+    "count": 1
+  }
+}

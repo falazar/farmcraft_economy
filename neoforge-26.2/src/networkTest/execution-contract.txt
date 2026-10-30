@@ -1,0 +1,184 @@
+CONNECTED DATABASE ACCEPTANCE — DEVELOPMENT ONLY
+
+Separate connected regular-player action acceptance:
+Compile networkTestClasses, then run src\networkTest\run-player-actions.ps1.
+It consumes the existing flattened schema2 NetworkAcceptance launch exports,
+disables the database probe, and enables only the player-action helper.
+Each attempt creates a unique disposable player-action-run root, binds only
+loopback25581 by default, and never opens an existing save or edits an EULA.
+The helper seeds a small wilderness platform, a dirt target and three held dirt,
+then verifies a real non-operator survival participant moves using the client's
+forward-key input, breaks through vanilla start/continueDestroyBlock packets,
+and places through vanilla useItemOn. Server event observations, authoritative
+block states and inventory consumption gate ordered S2C stages; the client
+confirms final state over C2S and waits for the server's final confirmation.
+Both peers must produce PASS and exit0 within bounded watchdogs.
+This tests scripted normal client action paths, not physical mouse/keyboard
+automation, a real authenticated account, or the user's regular world.
+The process-local single-background-thread diagnostic does not establish
+default startup stability. No operator elevation or creative block bypass
+is used for the measured actions; fixture setup is deliberately server-side.
+
+Status: compiled, wired, and passed actual separate localhost client/server
+acceptance with strict dual-receipt verification. The measured full payload was
+1441504 bytes; digest598614650 was acknowledged over real C2S transport.
+Both owned JVMs exited0. Codec/fixture checks alone are NOT connected acceptance.
+
+Existing wiring (neoforge-26.2/build.gradle; do not copy helpers into main):
+
+  sourceSets {
+      networkTest {
+          compileClasspath += sourceSets.main.output
+          runtimeClasspath += sourceSets.main.output
+      }
+  }
+  configurations {
+      networkTestImplementation.extendsFrom implementation
+      networkTestCompileOnly.extendsFrom compileOnly
+      networkTestRuntimeOnly.extendsFrom localRuntime
+  }
+  neoForge.addModdingDependenciesTo(sourceSets.networkTest)
+  neoForge.mods.getByName(project.mod_id).sourceSet(sourceSets.networkTest)
+
+  neoForge.runs {
+      networkAcceptanceServer {
+          server()
+          sourceSet = sourceSets.networkTest
+          gameDirectory = layout.buildDirectory.dir('network-acceptance/server')
+          programArgument '--nogui'
+          systemProperty 'farmupcraft.networkAcceptance', 'true'
+          systemProperty 'farmupcraft.networkAcceptanceRoot',
+              layout.buildDirectory.dir('network-acceptance').get().asFile.absolutePath
+      }
+      networkAcceptanceClient {
+          client()
+          sourceSet = sourceSets.networkTest
+          gameDirectory = layout.buildDirectory.dir('network-acceptance/client')
+          programArguments.addAll '--username', 'NetworkProbe',
+              '--quickPlayMultiplayer', '127.0.0.1:25576'
+          systemProperty 'farmupcraft.networkAcceptance', 'true'
+          systemProperty 'farmupcraft.networkAcceptanceRoot',
+              layout.buildDirectory.dir('network-acceptance').get().asFile.absolutePath
+      }
+  }
+
+The source set must NOT enter the production jar. Both acceptance runs must see
+main + common + networkTest mod outputs and the existing actual localRuntime /
+implementation companion artifacts. Do not remove companions to ease startup.
+Normal runs need not enable the system property; helpers remain dormant.
+
+Optional fixture-only regression wiring:
+  sourceSets.test.java.srcDir('src/networkTest/test')
+  sourceSets.test.compileClasspath += sourceSets.networkTest.output
+  sourceSets.test.runtimeClasspath += sourceSets.networkTest.output
+  tasks.named('compileTestJava') { dependsOn tasks.named('networkTestClasses') }
+Use the existing JUnit task with --tests '*ProbeDataTest'. These two tests assert
+only deterministic fixture size/integrity; they cannot establish connected receipt.
+
+Exclusive execution sequence (parent only; no competing world/client/Gradle runs):
+1. Select the existing Gradle wrapper/project entry as used for baseline validation.
+   Compile networkTestClasses first; resolve API mismatches before runtime.
+2. Ensure neoforge-26.2\build\network-acceptance is a NEW empty disposable root.
+   Never point either launch at production run folders, saves, config, or EULA.
+   Parent prepares only server\server.properties:
+       server-ip=127.0.0.1
+       server-port=25576
+       online-mode=false
+       level-name=network-acceptance-world
+       level-type=minecraft:flat
+       generator-settings={"biome":"minecraft:plains","layers":[{"block":"minecraft:bedrock","height":1},{"block":"minecraft:dirt","height":2},{"block":"minecraft:grass_block","height":1}],"lakes":false,"features":false,"structure_overrides":[]}
+       generate-structures=false
+       spawn-protection=0
+       gamemode=creative
+       view-distance=2
+       simulation-distance=2
+       allow-nether=true
+   For unattended startup, disable only this disposable client's prompts:
+       client\config\neoforge-client.toml: showLoadWarnings = false
+       client\options.txt: onboardAccessibility:false
+   Warnings must remain logged; never bypass fatal loading errors. Initial
+   defaults blocked QuickPlay and caused the first bounded attempt to time out.
+   Handle EULA acceptance only through the already-authorized disposable dev-run
+   process; this helper does not create, accept, copy, or edit any EULA.
+3. Generate normal ModDev launch arg files by the parent's usual workflow.
+   Run dedicated server first and wait for its normal ready/listening log.
+   Launch the separate graphical real client with the normal dev launcher.
+   Prefer direct Java @VM-args @program-args launches after Gradle prepares both
+   runs, to avoid two concurrent Gradle lock-holding execution tasks.
+   Alternately, use runNetworkAcceptanceServer / runNetworkAcceptanceClient only
+   if the parent confirms the existing wrapper supports concurrent run tasks.
+4. Both helpers enforce a 240-second wall-clock observation deadline (checked on
+   ticks). Parent additionally enforces an absolute process bound, e.g. 360 seconds.
+   Server and client intentionally remain open after PASS; parent stops only their
+   exact owned process IDs after collecting results, then reaps the process trees.
+5. Execute:
+   powershell -File neoforge-26.2\src\networkTest\verify-receipts.ps1 `
+       -AcceptanceRoot <absolute neoforge-26.2\build\network-acceptance>
+   Retain peer logs and both receipt files. A missing file, FAIL, timeout, protocol
+   disconnect, duplicate/reused receipt, or missing final PASS is NOT acceptance.
+
+Measured path:
+* Dedicated server registers an auto-sync test database and seeds it before login.
+  The client cannot observe its "phase=login" marker through any test transport;
+  receipt stage 0 requires the production login full snapshot and actual player
+  UUID/balance=10 in client caches. Server verifies the same authoritative identity.
+* Server changes the actual production PlayerData balance to 654321 via putData.
+  Stage 1 is acknowledged only after observing that balance on the actual client.
+* Client poisons ONLY its probe cache with a client-only sentinel. Server uses
+  vanilla execute-in/tp to move the actual player to the Nether. Stage 2 requires
+  real new ClientLevel, new player/probe database object identities, same balance,
+  production resync marker, and absence of the poisoned old cache entry.
+* Server sends ONE production DataBaseFullS2C with 24 independently deterministic
+  60,000-byte ASCII rows. It measures the exact encoded payload >1MiB. The source
+  is a detached, non-broadcasting snapshot using the real server registries, NOT a
+  fake world/transport. No large entries are incrementally sent. Stage 3 requires
+  all 24 exact strings in the real client cache, old marker removal, and a matching
+  digest acknowledged over a real C2S NeoForge payload.
+* Server records four verified receipts then disconnects the client. A LOWEST
+  LoggingOut listener checks production cache clearing using the SAME prior real
+  level, avoiding the false positive of level-change-induced clearing. The client
+  writes its final PASS only after both previous databases are replaced and empty.
+
+Limitations: fresh player balance=10 is intentional; a reused save must fail.
+This is a dev acceptance probe, not an adversarial security protocol. Receipt
+integrity assumes this unmodified local client. Graphical client availability,
+normal asset readiness, and negotiated large-packet splitter availability are
+runtime prerequisites, not mocked or inferred successes.
+
+The successful run used process-scoped -Dmax.bg.threads=1 because an intermittent
+companion-registry startup failure was observed under default parallelism.
+This is diagnostic evidence, not proof of default startup stability; no global
+Java/configuration setting or production save/EULA was changed.
+
+Separate visual acceptance (NOT established by the automated receipts):
+Use a separate disposable development world/session, not this auto-disconnecting
+database probe. Record Minecraft/NeoForge/mod versions and evidence for each case.
+
+* HUD: verify visible location, home village, coins, owned house name and leveled
+  plot labels; move across claim boundaries and confirm updates. Toggle vanilla
+  hide-GUI and change GUI scale to check visibility, clipping and layout.
+* Borders: inspect adjacent owned, village and wilderness chunks at ground level
+  and from above; cross boundaries, change dimension, then disconnect/reconnect.
+  Check stale geometry disappears and overlays do not bleed into menus.
+* Tooltips: hover a vanilla crop, HarvestCraft crop/seed and unrelated item;
+  verify the farm-plot/biome guidance appears only on intended items.
+* Weather: in a rainy disposable world, note the weather-volume slider, open and
+  close Pause repeatedly, and check audible muting/restoration and slider value.
+  Repeat with initial weather volume zero and through a Pause sub-screen.
+* Cookware: craft a real HarvestCraft recipe with new, partly used and nearly
+  exhausted tools; inspect durability bars, ingredient use and returned tool.
+  Compare a kitchen plot with an ordinary eligible crafting location.
+* JEI present: request a known output recipe through the mod's client recipe
+  action, inspect actual matching recipe display, and check unknown-item feedback.
+  Closing/reopening JEI must not leave the mod using a stale runtime.
+* JourneyMap present: receive a production waypoint, inspect name/color/dimension
+  and native edit/remove behavior; show/clear scan waypoints and claimed-chunk
+  polygons, change dimension and reconnect, checking for stale/duplicate overlays.
+* Optional mods absent: launch without both JEI and JourneyMap (including bundled
+  API jars), exercise affected actions and verify explicit unavailable feedback
+  instead of a linkage error. An isolated-classloader test covers only its stated
+  handler boundary, not the complete graphical startup or rendering.
+
+Each visual case remains pending until observed in the actual game. Fixture
+assertions, clean compilation, startup responsiveness and network receipts do
+not substitute for rendering, input or audible acceptance.
