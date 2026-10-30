@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:stonecutting",
+  "neoforge:conditions": [{"type": "neoforge:never"}],
+  "ingredient": "minecraft:stone",
+  "result": {"id": "minecraft:stone_brick_slab", "count": 2}
+}

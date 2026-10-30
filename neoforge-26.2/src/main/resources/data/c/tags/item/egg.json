@@ -1,0 +1,7 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "alexsmobs:emu_egg", "required": false },
+    { "id": "naturalist:duck_egg", "required": false }
+  ]
+}

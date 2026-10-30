@@ -1,0 +1,20 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.falazar.farmupcraft.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "IceAndFireStoneStatueMixin"
+  ],
+  "mixins": [
+    "BeePollinationMixin",
+    "ButterflyPollinationMixin",
+    "HarvestCraftProducePlantingMixin",
+    "CookwareItemStackMixin",
+    "EnchantmentMenuMixin",
+    "VillagerSleepMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

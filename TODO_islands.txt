@@ -1,0 +1,181 @@
+PROJECT: Islands and Lakes Scanner
+====================================
+Minecraft Forge 1.20.1 mod feature to scan the local environment via a
+manual command, identifying and recording coordinates for islands and lakes
+within a configurable radius.
+
+================================================================================
+OPEN QUESTIONS / DESIGN UNKNOWNS
+================================================================================
+
+Q1: How do we detect islands connected to the mainland by 4 or fewer blocks?
+    RESOLVED — Coastal Erosion ("C" marking):
+    Mark any land within horizontal distance 2 of water as Coastal (C).
+    Flood-fill only non-C interior land. If no non-C land escapes the water
+    boundary, it's an island. Bridges ≤ 4 blocks wide are fully eroded away.
+    Bridges ≥ 5 blocks wide = peninsula → intentionally skipped by design.
+    Small all-coastal islands (entire landmass is C) detected as special case.
+
+Q2: How do we detect lakes connected to the ocean by 4 or fewer blocks?
+    RESOLVED — Shallow Erosion ("S" marking) + Biome Classification:
+
+    Water body classification — runs AFTER S-erosion + flood-fill (see Q3):
+      RIVER  — any block in the completed flood-fill body is in a river biome
+               (IS_RIVER tag) → entire body = RIVER. Catches bank water in
+               land biomes because they are connected to the IS_RIVER channel.
+               Rivers are skipped entirely; not lakes, not oceans.
+      OCEAN  — water body is NOT in a river biome AND block count exceeds
+               a size threshold (e.g., > 1000 blocks). Skipped as ocean.
+      LAKE   — water body is NOT river biome AND block count <= threshold.
+               Apply S-erosion to check for narrow channels (see below).
+
+    S-erosion for lake validation:
+    Mark any water within horizontal distance 2 of land as Shallow (S).
+    Flood-fill only non-S, non-river deep water. If no non-S water escapes
+    the land boundary, it's confirmed as a LAKE.
+    Channels ≤ 4 blocks wide are fully eroded away.
+    Channels ≥ 5 blocks wide = connected water → skip.
+    River-biome water is treated as a hard boundary during S-erosion
+    (river water blocks are never included in lake flood-fill).
+    TODO - decide ocean size threshold (suggested: > 1000 blocks).
+
+Q3: River shallow water blocks are in land biomes, not river biomes — how to detect them?
+    RESOLVED — S-Erosion before flood-fill, then classify completed bodies:
+
+    Problem: river banks have water blocks whose biome is the adjacent land biome
+    (plains, forest, etc.), not IS_RIVER. Checking biome per-block misses these.
+    A chunk variable (isRiver flag per chunk) was considered but is too coarse —
+    a single chunk can contain both a lake and a river bank.
+    Tainting during flood-fill was also considered but adds complexity.
+
+    Solution — S-erosion BEFORE flood-fill, then whole-body classification:
+      1. S-erosion pass: mark all water within ±2 of land as Shallow (S).
+         This pre-cuts any narrow connections (≤4 wide) between water bodies.
+      2. Flood-fill all non-S water. Each resulting body is already isolated —
+         narrow lake-to-river connections were severed in step 1.
+      3. Classify each completed body:
+           IS_RIVER  — any block in body has river biome (IS_RIVER tag)
+                       → entire body = RIVER, skip.
+           OCEAN     — no river blocks + block count > size threshold → skip.
+           LAKE      — no river blocks + block count ≤ threshold → confirmed.
+    A lake narrowly connected to a river (≤4 blocks wide) is severed by
+    S-erosion before the fill, so it never sees IS_RIVER blocks and is
+    correctly classified as a lake independently. No taint logic needed.
+    River bank water in land biomes is still connected (flood-fill) to the
+    main IS_RIVER channel → correctly taints the whole river body.
+
+
+
+Phase 1 — Sparse Grid Sampling ("Skip 5")
+    - Sample every 5th block on a grid locked to coords divisible by 5.
+    - Reduces initial search space by 96% (25,600 vs 640,000 for 800x800).
+    - Surface-level only: top non-air block at each XZ coordinate.
+    - TODO: confirm Y-range to scan (sea level ± N blocks?).
+
+Phase 2 — Visited Bitmask & Collision Prevention
+    - A Visited Set tracks every coordinate already assigned to a feature.
+    - Before flood-filling from a seed, check the bitmask; skip if visited.
+    - Prevents re-scanning the same feature from a different seed point.
+
+Phase 3 — Bitmask Cache Persistence (scan_cache.json)
+    - Visited Set serialized as a JSON array of {x, z} objects.
+    - Loaded at the start of each scan to enable incremental expansion.
+    - On radius increase, only the new outer ring is processed.
+    - TODO: define file location (world save folder? mod config folder?).
+    - TODO: decide cache invalidation strategy (e.g., if world seed changes).
+
+Phase 4 — Coastal/Shallow Erosion Pass (Island & Lake Classification)
+
+    ISLAND DETECTION — "C" Coastal Marking:
+    - For every land block, if it is within horizontal distance 2 of any water
+      block, mark it as Coastal (C).
+    - Flood-fill using only non-C (interior) land blocks.
+    - If a connected interior region exists → it's a candidate landmass.
+    - Re-expand by including surrounding C blocks → full landmass extent.
+    - If the full landmass is entirely enclosed by water (or C) with no
+      non-C land escaping → confirmed ISLAND.
+    - Special case: if the entire landmass is C (no interior blocks survive),
+      treat all-C clusters that have no non-C land neighbor as SMALL ISLANDS.
+    - 5-block-wide connections survive erosion → classified as PENINSULA (skip).
+      This is intentional and acceptable by design.
+
+    LAKE DETECTION — "S" Shallow Marking (inverse of island):
+    - First classify all water bodies by biome:
+        RIVER  — any water block in a river biome (IS_RIVER tag) → skip entirely.
+        OCEAN  — water body not in river biome, block count > threshold → skip.
+        LAKE   — water body not in river biome, block count <= threshold → validate.
+    - River-biome water acts as a hard boundary; never included in lake flood-fill.
+    - For LAKE candidates: mark any water within horizontal distance 2 of land
+      as Shallow (S).
+    - Flood-fill using only non-S, non-river water blocks.
+    - If no non-S water escapes the land boundary → confirmed LAKE.
+    - 5-block-wide water channels connecting to non-river open water survive
+      erosion → classified as connected water (not a lake, skip).
+
+Phase 5 — Recursive Flood Fill & Validation
+    - From a seed, expand to all contiguous matching neighbors (4-directional).
+    - Uses the erosion-passed block sets from Phase 4.
+    - TODO: handle map edges — features cut off by scan radius boundary are
+      marked as PARTIAL and excluded from findings.json.
+
+================================================================================
+OUTPUT FILES
+================================================================================
+
+scan_cache.json  — internal bitmask, all visited XZ coords
+    { "visited": [ {"x": 100, "z": 200}, ... ] }
+
+findings.json    — human-readable results per feature
+    {
+      "type": "island" | "lake",
+      "center": {"x": N, "z": N},
+      "bounding_box": {"min_x": N, "min_z": N, "max_x": N, "max_z": N},
+      "block_count": N,
+      "partial": false
+    }
+
+================================================================================
+PERFORMANCE TARGETS (50x50 chunk / 800x800 block area)
+================================================================================
+    Sparse scan phase:    ~100-300ms
+    Full flood fill:      ~1-3s total
+    Disk I/O (JSON):      ~500ms-1s
+    Run asynchronously — must not stall the main server tick.
+    TODO: add a progress feedback message to the player (e.g., every 10% done).
+
+================================================================================
+TODO LIST
+================================================================================
+
+DESIGN:
+    DONE - Island bridge detection: coastal erosion "C" mark (±2 from water), ≤4 eroded.
+    DONE - Lake channel detection: shallow erosion "S" mark (±2 from land), ≤4 eroded.
+    DONE - River biome water (IS_RIVER tag) skipped entirely, not lakes or oceans.
+    DONE - Ocean = non-river water body exceeding size threshold (skip, not a lake).
+    DONE - Peninsula rule: ≥5-wide connections survive erosion → skip, not an island.
+    DONE - No "large water" threshold needed — S-erosion handles it automatically.
+    DONE - Diagonals do not count (4-directional only).
+    TODO - decide ocean size threshold (suggested: > 1000 blocks).
+    TODO - Define cache file location (world save folder recommended).
+    TODO - Define cache invalidation strategy.
+    TODO - Handle PARTIAL features cut off by scan radius boundary.
+    TODO - Decide minimum feature size (e.g., ignore islands < 10 blocks).
+
+IMPLEMENTATION:
+    TODO - Create /scan islands <radius> command entry point.
+    TODO - Implement Phase 1: sparse grid sampler with grid-aligned seeds.
+    TODO - Implement Phase 2: visited bitmask (HashSet<Long> of packed XZ).
+    TODO - Implement Phase 3: scan_cache.json load/save.
+    TODO - Implement Phase 4: recursive flood fill from surface seed.
+    TODO - Implement island validation (water boundary check + bridge count).
+    TODO - Implement lake validation (water boundary + channel count).
+    TODO - Implement async execution (ServerLevel.getServer().execute() or thread).
+    TODO - Write findings.json with center, bounding box, block count, partial flag.
+    TODO - Send player a summary message when scan completes.
+
+TESTING:
+    TODO - Test on flat world with hand-crafted islands/lakes of known size.
+    TODO - Test incremental scan (inner area cached, expand radius).
+    TODO - Test narrow land bridge detection (1, 2, 3, 4 block bridges).
+    TODO - Test narrow channel detection for lakes.
+    TODO - Test async: confirm no TPS lag during scan.

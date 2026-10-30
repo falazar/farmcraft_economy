@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket",
+    "minecraft:water_bucket"
+  ],
+  "result": {
+    "id": "pamhc2foodcore:freshwateritem",
+    "count": 72,
+    "components": {"minecraft:max_stack_size": 72}
+  }
+}

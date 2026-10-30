@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:stonecutting",
+  "conditions": [{ "type": "forge:false" }],
+  "ingredient": { "item": "minecraft:stone" },
+  "result": "minecraft:stone_brick_stairs",
+  "count": 1
+}

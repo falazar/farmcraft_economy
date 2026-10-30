@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": ["aa ", " b ", "  b"],
+  "key": {
+    "a": "#c:ingots/copper",
+    "b": "#c:rods/wooden"
+  },
+  "result": {"id": "pamhc2foodcore:skilletitem"}
+}

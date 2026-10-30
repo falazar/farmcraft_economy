@@ -1,0 +1,126 @@
+OPTIONAL MOD ABSENCE — REAL DEDICATED SERVER + GRAPHICAL CLIENT
+
+These scripts are development-only. They add no Gradle wiring or runtime classes.
+Parent owns runtime, compilation, normal assets, authorization, and configs.
+No Java or Gradle was executed while implementing these scripts.
+
+Parent prerequisites:
+1. Compile current main/common/networkTest outputs AND any other source sets
+   named in fml.modFolders (currently gameTest/persistenceTest/visualTest) with
+   the existing pinned NeoForge 26.2 workflow. Every exported classpath/mod-folder
+   path must exist: parent must also create empty build\resources\<sourceSet>
+   directories (and build\common\resources\main) for legitimate processResources
+   NO-SOURCE outputs. Missing
+   compiled class directories must be compiled, never replaced by empty ones.
+   Export both schemaVersion=2, exportedOnly=true
+   NetworkAcceptance{Server,Client}.json into build\acceptance-launches AFTER
+   compilation. The exports must represent this checkout, normal companion mods,
+   Java executable, net.neoforged.devlaunch.Main, explicit fml.modFolders, and the
+   referenced current build\moddev\*Run{Vm,Program}Args.txt files.
+   Existing export .args are deliberately NOT trusted or reused: the JSON and
+   referenced ModDev Vm/ProgramArgs files are the inputs. All Java sources in
+   explicit mod output folders must have current matching .class files; the
+   common jar must not predate common sources/resources. A stale-source/class
+   timestamp, absent path, foreign mod root or unsupported argument shape fails
+   closed. Only the matching networkAcceptance{Server,Client}Run{Vm,Program}Args
+   files under this checkout's build\moddev are expanded. Do not copy previous-
+   launch .args or patch cached mod jars.
+   ExportedAt and JSON file timestamps must both postdate current sources.
+   Repeated references to the identical pinned VM argfile (as emitted by the
+   exporter) are collapsed once; repeated program argfiles are rejected.
+2. From the repository root:
+     $root = & .\neoforge-26.2\src\optionalRuntimeTest\prepare-launches.ps1
+   Default port is 25580; -Port can select another unused loopback port.
+   Result is a NEW build\optional-runtime-<GUID>\build\network-acceptance root.
+   The suffix is intentional: existing NetworkAcceptance.directory() requires
+   build\network-acceptance. Both hook root properties and client QuickPlay are
+   rewritten together; neither prior network evidence nor run dirs are touched.
+   The full generated path is
+   neoforge-26.2\build\optional-runtime-<GUID>\build\network-acceptance.
+   prepare-launches creates that root, empty server/client directories, both
+   .args and prepared.json. It does NOT generate configs, EULA files, saves,
+   receipts, execution.json, or logs. run-prepared generates execution.json;
+   the real peers generate logs/saves/receipts, and verify-runtime writes both
+   discovered-mod inventory text files.
+3. Parent prepares ONLY this root's disposable files. Exact PowerShell block
+   after $root = & ...\prepare-launches.ps1 -Port 25580:
+
+   $plan = Get-Content -LiteralPath (Join-Path $root 'prepared.json') -Raw | ConvertFrom-Json
+   if ($plan.root -ne $root -or $plan.port -ne 25580 -or
+       (Test-Path -LiteralPath (Join-Path $root 'execution.json'))) {
+       throw 'Require the newly prepared, unattempted port-25580 root'
+   }
+   $utf8 = New-Object Text.UTF8Encoding($false)
+   $null = New-Item -ItemType Directory -Path (Join-Path $root 'client\config')
+   $properties = @'
+server-ip=127.0.0.1
+server-port=25580
+online-mode=false
+level-name=optional-runtime-world
+level-type=minecraft:flat
+generator-settings={"biome":"minecraft:plains","layers":[{"block":"minecraft:bedrock","height":1},{"block":"minecraft:dirt","height":2},{"block":"minecraft:grass_block","height":1}],"lakes":false,"features":false,"structure_overrides":[]}
+generate-structures=false
+spawn-protection=0
+gamemode=creative
+view-distance=2
+simulation-distance=2
+allow-nether=true
+'@
+   [IO.File]::WriteAllText((Join-Path $root 'server\server.properties'), $properties + "`r`n", $utf8)
+   [IO.File]::WriteAllText((Join-Path $root 'client\config\neoforge-client.toml'), "showLoadWarnings = false`r`n", $utf8)
+   [IO.File]::WriteAllText((Join-Path $root 'client\options.txt'), "onboardAccessibility:false`r`n", $utf8)
+
+   The here-string terminator above must remain at column 1 when pasted.
+   For another -Port, change both the precondition and server-port together.
+   There is NO eula=true precondition, and NO EULA preparation step: these
+   strictly checked net.neoforged.devlaunch.Main runs use NeoForge's existing
+   development-launch EULA-file-check bypass. Do not create/edit EULA files.
+   These helpers do not change EULA behavior for packaged/non-dev servers;
+   preparation rejects other entry points. They NEVER read, create, copy, accept
+   or edit EULA files. Do not point them at production saves/configs. Loading
+   prompts are disabled ONLY in this root's client, not any global/live client.
+   No desktop/display/global Java changes.
+4. With no competing client/server run:
+     & .\neoforge-26.2\src\optionalRuntimeTest\run-prepared.ps1 -AcceptanceRoot $root
+   This is the step that actually starts Java. A real interactive Windows client
+   desktop and working renderer/assets are required. Server binds loopback and
+   reaches normal ready log before the real client launches via QuickPlay.
+   The script waits at most 350s for connected acceptance, sends server "stop",
+   requests normal client window closure, waits up to 60s total for clean exits,
+   and reaps only owned PIDs on failure (up to 20s additional grace). Forced
+   termination, missing window, nonzero exits, timeout, early disconnect or missing
+   evidence fails acceptance. Each root is atomically claimed and single-use,
+   even after failure. Export JSON, referenced ModDev input hashes and both
+   prepared .args are rechecked before launch; do not rebuild/re-export between
+   preparation and execution. Root paths and descendants must not be links or
+   junctions. Duplicate critical server.properties keys fail preflight.
+   Existing network helpers also enforce their own 240s observation deadlines.
+5. To recheck retained results (not rerun):
+     & .\neoforge-26.2\src\optionalRuntimeTest\verify-runtime.ps1 -AcceptanceRoot $root
+
+Absence checks:
+* Remove entire pinned JEI and JourneyMap top-level mod artifacts from classpath.
+  Their bundled API/dependency jars disappear with them. Separately resolved
+  info.journeymap* artifacts and independently named JEI/JourneyMap API jars are
+  removed too. No edits to cached jars. Retained jars (including nested jars) and
+  classpath AND fml.modFolders output directories must contain no optional API
+  package definitions (including multi-release/nested jar entries).
+* Keep FarmUpCraft main/common, networkTest and existing helper outputs plus all
+  nonoptional classpath entries. Check required companion artifacts are retained.
+* BOTH latest.log files must contain exactly one complete actual FML
+  ModDiscoverer "Mod List" table. Assert FarmUpCraft, Minecraft, NeoForge, Biomes
+  O' Plenty, TerraBlender, GlitchCore and all four HarvestCraft IDs are present;
+  assert jei, journeymap and journeymap_api are absent. An isolated handler test
+  or filename-only absence check cannot satisfy this runtime check.
+* Run existing strict dual network receipt verifier on this new root: real login,
+  production full/entry payloads, dimension cache replacement, >1MiB production
+  full snapshot, matched four client/server receipts, logout cache clearing.
+* Require clean bounded dual-process completion and unchanged prepared args.
+
+Evidence: prepared.json (removed/retained paths, export metadata SHA256 and
+referenced ModDev argument file SHA256),
+server.args/client.args, peer logs and receipts, execution.json (owned PIDs,
+elapsed time and exit status), and server/client-discovered-mods.txt.
+The verifier is evidence checking, not an adversarial attestation protocol.
+Preparation/static script validation is NOT a runtime PASS. Graphical/UI behavior
+other than successful real client bootstrap and connected payloads remains manual.

@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "#c:tool_roller",
+    "pamhc2crops:canolaitem",
+    "pamhc2crops:canolaitem"
+  ],
+  "result": {
+    "id": "pamhc2foodcore:cookingoilitem",
+    "count": 8
+  }
+}

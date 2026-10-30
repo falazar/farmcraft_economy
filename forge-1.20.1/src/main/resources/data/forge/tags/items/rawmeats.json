@@ -1,0 +1,5 @@
+{
+  "replace": false,
+  "values": ["aquaculture:fish_fillet_raw", "alexsmobs:raw_catfish",
+    { "id": "naturalist:duck", "required": false }]
+}

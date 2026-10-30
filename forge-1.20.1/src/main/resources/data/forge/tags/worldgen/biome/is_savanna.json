@@ -1,0 +1,8 @@
+{
+  "replace": false,
+  "values": [
+    { "id": "biomesoplenty:scrubland", "required": false },
+    { "id": "biomesoplenty:lush_savanna", "required": false },
+    { "id": "biomesoplenty:dryland", "required": false }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:stonecutting",
+  "neoforge:conditions": [{"type": "neoforge:never"}],
+  "ingredient": "minecraft:deepslate_bricks",
+  "result": {"id": "minecraft:deepslate_brick_stairs", "count": 1}
+}

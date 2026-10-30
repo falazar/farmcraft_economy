@@ -1,0 +1,6 @@
+{
+  "type": "minecraft:stonecutting",
+  "neoforge:conditions": [{"type": "neoforge:never"}],
+  "ingredient": "minecraft:stone",
+  "result": {"id": "minecraft:chiseled_stone_bricks", "count": 1}
+}
