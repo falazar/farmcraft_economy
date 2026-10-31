@@ -370,7 +370,18 @@ public class ChunkManager {
     }
 
     static double joinedMobSuppressionChance(Identifier id, int y, int light, String plot) {
+        return joinedMobSuppressionChance(id, y, light, plot, false);
+    }
+
+    static double joinedMobSuppressionChance(Identifier id, int y, int light, String plot, boolean bredOffspring) {
+        return joinedMobSuppressionChance(id, y, light, plot, bredOffspring, null);
+    }
+
+    static double joinedMobSuppressionChance(Identifier id, int y, int light, String plot, boolean bredOffspring,
+                                             net.minecraft.world.entity.EntitySpawnReason reason) {
+        if (net.minecraft.world.entity.EntitySpawnReason.isSpawner(reason)) return 0;
         if (id == null || "minecraft".equals(id.getNamespace()) || y < 45 || plot.isEmpty()) return 0;
+        if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(), bredOffspring)) return 0;
         if (light == 0 && !LYCANITES_HIGH_BLOCK.contains(id.toString())) return 0;
         if (!plot.equalsIgnoreCase("village")) return 1;
         if (!LYCANITES_MODID.equals(id.getNamespace())) return 0;
@@ -383,10 +394,19 @@ public class ChunkManager {
         try {
             if (event.getLevel().isClientSide()) return;
             Mob entity = event.getEntity();
+            if (net.minecraft.world.entity.EntitySpawnReason.isSpawner(event.getSpawnType())) {
+                // Custom-NBT spawners can skip finalizeSpawn, leaving Mob.getSpawnType() unset.
+                entity.getPersistentData().putBoolean(
+                        com.falazar.farmupcraft.util.PlotSpawnExemptions.SPAWNER_ORIGIN, true);
+                return;
+            }
             BlockPos pos = entity.blockPosition();
             if (pos.getY() < 45) return;
             Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
             if (id == null || "minecraft".equals(id.getNamespace())) return;
+            if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(),
+                    entity.getPersistentData().getBooleanOr(
+                            com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, false))) return;
             if (LYCANITES_MODID.equals(id.getNamespace())) {
                 double rate = LYCANITES_HIGH_BLOCK.contains(id.toString()) ? 0.10 : LYCANITES_SPAWN_RATE;
                 if (LYCANITES_RAND.nextDouble() >= rate) {
@@ -431,6 +451,17 @@ public class ChunkManager {
         }
     }
 
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.LOWEST)
+    public static void onBabyEntitySpawn(net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent event) {
+        var child = event.getChild();
+        if (event.isCanceled() || child == null || child.level().isClientSide()) return;
+        var id = BuiltInRegistries.ENTITY_TYPE.getKey(child.getType());
+        if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(), true)) {
+            child.getPersistentData().putBoolean(
+                    com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, true);
+        }
+    }
+
     @SubscribeEvent
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
         if (event.getLevel().isClientSide()) return;
@@ -451,10 +482,14 @@ public class ChunkManager {
         }
         if (!(entity instanceof Mob) || entity.blockPosition().getY() < 45
                 || id == null || "minecraft".equals(id.getNamespace())) return;
+        if (entity.getPersistentData().getBooleanOr(
+                com.falazar.farmupcraft.util.PlotSpawnExemptions.SPAWNER_ORIGIN, false)) return;
         BlockPos pos = entity.blockPosition();
         int light = event.getLevel().getBrightness(LightLayer.BLOCK, pos);
         String plot = getPlotType(pos, event.getLevel());
-        double chance = joinedMobSuppressionChance(id, pos.getY(), light, plot);
+        double chance = joinedMobSuppressionChance(id, pos.getY(), light, plot,
+                entity.getPersistentData().getBooleanOr(
+                        com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, false), ((Mob) entity).getSpawnType());
         if (chance == 1 || chance > 0 && LYCANITES_RAND.nextDouble() < chance) {
             event.setCanceled(true);
             if (plot.equalsIgnoreCase("village") && !LYCANITES_HIGH_BLOCK.contains(id.toString())) {

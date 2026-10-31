@@ -103,6 +103,18 @@ not a permanent FarmUpCraft feature. Remove the mixin, its client registration,
 upstream Ice and Fire update fixes ID assignment. Before removal, verify the
 updated mod renders the previously crashing statue without this workaround.
 
+### Temporary Ice and Fire dragon-prey compatibility (NeoForge 26.2)
+
+An optional mixin works around a second crash in
+`iceandfire-2.2-mc26.2-unofficial-beta.1`: after the prey-shaking animation
+passes tick 55, `updatePreyInMouth` casts the client world to `ServerLevel`
+to apply bite damage. Only that completion branch is skipped on the client,
+before the cast. Earlier mouth positioning/animation and server-side damage,
+healing, hunger and passenger release remain unchanged. No entities are removed.
+Forge 1.20.1 is unchanged, and the patch is inactive without the targeted mod.
+Remove `IceAndFireDragonPreyMixin`, its registration and the
+`dragon_prey_bite` game test after verifying an upstream client-side fix.
+
 ### HarvestCraft skillet recipe
 
 Both targets override `pamhc2foodcore:tool_skillet` to avoid the spear recipe
@@ -264,6 +276,13 @@ checks, protection events, survival checks, and consumption in both targets.
 
 ## Development targets
 
+NeoForge 26.2 adds compatibility recipes for SoL Onion 1.5.5's lunch bag and food book to
+replace its invalid `food` crafting category with `misc`. Ingredients and
+outputs are unchanged; recipes load only when SoL Onion is installed.
+Separate FarmUpCraft recipe IDs preserve the early mod loading needed for
+Onion startup defaults. Upstream invalid recipes may still log category errors,
+but the compatibility recipes provide the same crafts.
+
 Bee and Naturalist butterfly crop fertilization shares a persisted per-chunk
 budget in each dimension: up to five successful one-stage boosts in any 6,000 world ticks
 (five minutes at 20 TPS). Butterflies add one stage instead of their usual
@@ -281,9 +300,32 @@ animal cap, village species/feed selection, and once-per-real-day breeding
 limit. Ducks also qualify for pasture animal drop bonuses. Creative-mode
 breeding remains unrestricted.
 
+The plot spawn filter exempts Naturalist ducks (including egg hatchlings) and
+offspring produced by non-canceled breeding events. Breeding provenance is
+saved on the offspring so reloading does not remove that exemption. Lycanites
+are never exempt, even if bred; all their existing spawn/light/drop rules are
+unchanged. Other non-breeding modded spawns keep their existing restrictions.
+These exceptions do not bypass pasture/feed/daily breeding checks or other
+mods' spawn cancellations.
+Thrown chicken and Naturalist duck eggs can hatch only when the hatchling's
+position is inside a pasture plot. Wilderness, ordinary village territory and
+other plot types do not allow egg hatching. Eggs still break normally and keep
+their native hatch chances inside pastures. This does not change breeding,
+natural animal spawns or Lycanites rules.
+Spawner-origin mobs bypass FarmUpCraft's custom spawn suppression in both
+the finalize and world-join checks, inside and outside villages. This includes
+Lycanites from spawners and NeoForge trial spawners; natural Lycanites spawns
+keep their existing restrictions. Vanilla spawner light, difficulty, space,
+player-distance and nearby-entity checks still apply.
+
 Rejected planting immediately resends the clicked/placement blocks and the
 player inventory, correcting client-predicted ghost crops and missing items.
 Biome planting rules apply to both hands.
+Planting checks use the supporting farmland block's biome Y, including
+level-3 chunk-wide crop checks. `/plot info`, `/plot info <biome>` and
+`/show plotcrops` sample at the block supporting the player, accounting for
+farmland's fractional height. Stand on the farmland being checked; commands
+do not infer the height of a different field while standing elsewhere.
 
 Ground plant-eaters seek growing crops within eight blocks and destroy one
 without drops at most every 1,200 world ticks (60 seconds at 20 TPS). This

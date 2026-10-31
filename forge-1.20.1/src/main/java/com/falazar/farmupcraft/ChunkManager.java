@@ -636,6 +636,12 @@ public class ChunkManager {
         try {
             if (event.getLevel().isClientSide())
                 return;
+            if (event.getSpawnType() == net.minecraft.world.entity.MobSpawnType.SPAWNER) {
+                // Custom-NBT spawners can skip finalizeSpawn, leaving Mob.getSpawnType() unset.
+                event.getEntity().getPersistentData().putBoolean(
+                        com.falazar.farmupcraft.util.PlotSpawnExemptions.SPAWNER_ORIGIN, true);
+                return;
+            }
 
             net.minecraft.world.entity.LivingEntity entity = event.getEntity();
             BlockPos pos = entity.blockPosition();
@@ -649,6 +655,10 @@ public class ChunkManager {
                     .getKey(entity.getType());
             if (entityId == null || "minecraft".equals(entityId.getNamespace()))
                 return;
+
+            if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(entityId.toString(),
+                    entity.getPersistentData().getBoolean(
+                            com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING))) return;
 
             // ---- LYCANITES GLOBAL 50 % SPAWN RATE ----
             // Cancel half of all Lycanites spawns regardless of location or hostility.
@@ -753,6 +763,17 @@ public class ChunkManager {
      * If a MONSTER-category modded mob joins the world inside a claimed plot chunk
      * it is immediately cancelled.
      */
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST)
+    public static void onBabyEntitySpawn(net.minecraftforge.event.entity.living.BabyEntitySpawnEvent event) {
+        var child = event.getChild();
+        if (event.isCanceled() || child == null || child.level().isClientSide()) return;
+        var id = net.minecraftforge.registries.ForgeRegistries.ENTITY_TYPES.getKey(child.getType());
+        if (id != null && com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(), true)) {
+            child.getPersistentData().putBoolean(
+                    com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, true);
+        }
+    }
+
     @SubscribeEvent
     public static void onEntityJoinLevel(net.minecraftforge.event.entity.EntityJoinLevelEvent event) {
         if (event.getLevel().isClientSide())
@@ -805,6 +826,9 @@ public class ChunkManager {
 
         if (!(event.getEntity() instanceof net.minecraft.world.entity.Mob mob))
             return;
+        if (mob.getSpawnType() == net.minecraft.world.entity.MobSpawnType.SPAWNER
+                || mob.getPersistentData().getBoolean(
+                        com.falazar.farmupcraft.util.PlotSpawnExemptions.SPAWNER_ORIGIN)) return;
 
         BlockPos pos = mob.blockPosition();
         if (pos.getY() < 45)
@@ -814,6 +838,10 @@ public class ChunkManager {
                 .getKey(mob.getType());
         if (entityId == null || "minecraft".equals(entityId.getNamespace()))
             return;
+
+        if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(entityId.toString(),
+                mob.getPersistentData().getBoolean(
+                        com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING))) return;
 
         // Block mobs that are MONSTER category OR implement the Monster/Enemy interface
         // (Lycanites mobs like spriggan use CREATURE category but are still hostile).

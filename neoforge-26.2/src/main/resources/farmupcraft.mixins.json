@@ -7,6 +7,8 @@
     "IceAndFireStoneStatueMixin"
   ],
   "mixins": [
+    "IceAndFireDragonPreyMixin",
+    "EggPastureMixin",
     "BeePollinationMixin",
     "ButterflyPollinationMixin",
     "HarvestCraftProducePlantingMixin",

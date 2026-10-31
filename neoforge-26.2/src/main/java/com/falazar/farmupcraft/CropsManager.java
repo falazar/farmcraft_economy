@@ -78,6 +78,7 @@ public final class CropsManager {
         boolean farmlandBelow = event.getFace() != null
                 && level.getBlockState(pos.relative(event.getFace()).below()).is(FUCTags.FARMLAND);
         if (!state.is(FUCTags.FARMLAND) && !farmlandBelow) return;
+        if (!state.is(FUCTags.FARMLAND)) pos = pos.relative(event.getFace()).below();
         if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS)
                 && !stack.is(FUCTags.MODDED_SEEDS)) return;
         if (!ModEvents.getWorldData(level).isUseBiomeCropRules()) return;
@@ -193,7 +194,7 @@ public final class CropsManager {
         Set<Holder<Biome>> biomes = new LinkedHashSet<>();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
-                biomes.add(level.getBiome(new BlockPos(chunk.x() * 16 + x, pos.getY() - 1, chunk.z() * 16 + z)));
+                biomes.add(level.getBiome(new BlockPos(chunk.x() * 16 + x, pos.getY(), chunk.z() * 16 + z)));
             }
         }
         return biomes;

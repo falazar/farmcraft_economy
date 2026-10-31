@@ -116,7 +116,7 @@ public class ShowBiomesCommand {
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 var biome = source.getLevel().getBiome(new BlockPos(
-                        chunk.x * 16 + x, player.blockPosition().getY() - 1, chunk.z * 16 + z));
+                        chunk.x * 16 + x, player.getOnPos().getY(), chunk.z * 16 + z));
                 biome.unwrapKey().ifPresent(key -> biomes.put(key.location().toString(), biome));
             }
         }

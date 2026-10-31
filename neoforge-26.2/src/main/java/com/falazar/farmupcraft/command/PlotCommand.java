@@ -192,7 +192,7 @@ public class PlotCommand {
             ChunkPos chunkPos = ChunkPos.containing(playerSource.blockPosition());
             // Get all biomes for all blocks in this chunk.
             ServerLevel serverLevel = context.getSource().getLevel();
-            Map<String, Integer> biomes = getChunkBiomes(playerSource.blockPosition(), serverLevel);
+            Map<String, Integer> biomes = getChunkBiomes(playerSource.getOnPos(), serverLevel);
             DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
             ChunkData chunkData = dataBase.getData(chunkPos.pack());
 
@@ -408,9 +408,9 @@ public class PlotCommand {
             }
             ServerLevel serverLevel = source.getLevel();
             ChunkPos chunkPos = ChunkPos.containing(playerSource.blockPosition());
-            // Use farmland level: one block below player's feet (block under the plant).
+            // Farmland is shorter than a full block; blockPosition().below() can be too low.
             int playerY = playerSource.blockPosition().getY();
-            int biomeY = playerY - 1;
+            int biomeY = playerSource.getOnPos().getY();
             LOGGER.info("DEBUGGER showPlotBiomeMap using biomeY=" + biomeY + " (playerY=" + playerY + ")");
             String search = biomeName.toLowerCase(Locale.ROOT);
 
@@ -454,7 +454,7 @@ public class PlotCommand {
     // Given current block position, get all biomes in the chunk at this y level
     // with counts.
     public static Map<String, Integer> getChunkBiomes(BlockPos blockPos, ServerLevel serverLevel) {
-        int biomeY = blockPos.getY() - 1;
+        int biomeY = blockPos.getY();
         LOGGER.info("DEBUGGER getChunkBiomes using biomeY=" + biomeY + " (playerY=" + blockPos.getY() + ")");
 
         // Do a full 16x16 loop to get actual per-column counts (not just distinct set).

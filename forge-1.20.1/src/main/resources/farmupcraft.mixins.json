@@ -5,6 +5,8 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "farmupcraft.refmap.json",
   "mixins": [
+    "EggPastureMixin",
+    "DuckEggPastureMixin",
     "BeePollinationMixin",
     "ButterflyPollinationMixin",
     "HarvestCraftProducePlantingMixin",

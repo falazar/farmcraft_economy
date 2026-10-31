@@ -129,6 +129,7 @@ public class CropsManager {
         if (!clickedState.is(FUCTags.FARMLAND) && !isFarmBelow) {
             return;
         }
+        if (!clickedState.is(FUCTags.FARMLAND)) clickedPos = clickedPos.relative(event.getFace()).below();
 
         // STEP 4: Test if holding a vanilla or harvestcraft item, if not leave.
         if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS) && !stack.is(FUCTags.MODDED_SEEDS)) {
@@ -141,7 +142,7 @@ public class CropsManager {
         // setupBiomeCrops(event); // TEMP TESTER AREA.
 
         // STEP 5: Get current biome the block is in.
-        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
+        Holder<Biome> biome = event.getLevel().getBiome(clickedPos);
 
         // The biome has rules defined for what can happen in it or not!
         if (!ModEvents.getWorldData().isUseBiomeCropRules())
@@ -500,12 +501,12 @@ public class CropsManager {
     /**
      * Returns all distinct biome Holders present in the chunk at the given
      * position,
-     * sampled across every block column at Y-1 (farmland level).
+     * sampled across every block column at the supplied farmland Y.
      * Matches the logic used by PlotCommand.getChunkBiomes.
      */
     public static Set<Holder<Biome>> getDistinctChunkBiomes(BlockPos pos, ServerLevel level) {
         ChunkPos chunkPos = new ChunkPos(pos);
-        int biomeY = pos.getY() - 1;
+        int biomeY = pos.getY();
         Set<Holder<Biome>> found = new LinkedHashSet<>();
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {

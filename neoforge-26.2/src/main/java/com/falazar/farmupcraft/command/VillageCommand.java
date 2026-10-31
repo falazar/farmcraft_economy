@@ -1963,7 +1963,7 @@ public class VillageCommand {
 
                 // Get all biomes in this chunk at surface level with counts.
                 // TODO this is showing lush caves, our y value is still off somehow....
-                PlotCommand.getChunkBiomes(blockPos, level)
+                PlotCommand.getChunkBiomes(blockPos.below(), level)
                         .forEach((biomeName, count) -> response
                                 .append(Component.literal(biomeName + " (" + count + "), ")));
                 // TODO add line break..
