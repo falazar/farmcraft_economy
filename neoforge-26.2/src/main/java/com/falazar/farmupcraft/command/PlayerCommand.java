@@ -64,15 +64,16 @@ public class PlayerCommand {
                         }));
         builder.then(giveVillageCoinsBuilder);
 
-        // /player givecoins <playerName> <amount> (admin)
+        // /player givecoins <playerName> <amount> transfers the sender's coins.
         LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
-            .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
             .then(Commands.argument("playerName", StringArgumentType.word())
-                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
+                .suggests((context, suggestions) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
+                        context.getSource().getServer().getPlayerNames(), suggestions))
+                .then(Commands.argument("amount", IntegerArgumentType.integer(1))
                     .executes(context -> {
                         String playerName = StringArgumentType.getString(context, "playerName");
                         int amount = IntegerArgumentType.getInteger(context, "amount");
-                        return givePlayerCoinsByName(context.getSource(), playerName, amount);
+                        return transferPlayerCoins(context.getSource(), playerName, amount);
                     })));
         builder.then(giveCoinsBuilder);
 
@@ -107,6 +108,14 @@ public class PlayerCommand {
         // Admin-only sub-commands grouped under "/player admin ..."
         LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
                 .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                .then(Commands.literal("grantcoins")
+                        .then(Commands.argument("playerName", StringArgumentType.word())
+                                .suggests((context, suggestions) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
+                                        context.getSource().getServer().getPlayerNames(), suggestions))
+                                .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
+                                        .executes(context -> givePlayerCoinsByName(context.getSource(),
+                                                StringArgumentType.getString(context, "playerName"),
+                                                IntegerArgumentType.getInteger(context, "amount"))))))
                 // joinvillage <village>
                 .then(Commands.literal("joinvillage")
                         .then(Commands.argument("village", StringArgumentType.string())
@@ -278,7 +287,57 @@ public class PlayerCommand {
         return 0;
     }
 
-    /** /player givecoins <playerName> <amount> — admin command, works for online or offline players. */
+    public static int transferPlayerCoins(CommandSourceStack source, String targetName, int amount) {
+        if (!(source.getEntity() instanceof Player sender)) {
+            source.sendFailure(Component.literal("Only a player can use this command."));
+            return 0;
+        }
+        var level = source.getLevel();
+        var db = ModEvents.getPlayerDatabase(level);
+        ServerPlayer online = source.getServer().getPlayerList().getPlayerByName(targetName);
+        UUID target = online == null ? null : online.getUUID();
+        if (target == null) {
+            for (UUID id : db.getKeys()) {
+                PlayerData data = db.getData(id);
+                if (data != null && data.getNameForPlayer(level, id).equalsIgnoreCase(targetName)) {
+                    target = id;
+                    break;
+                }
+            }
+        }
+        PlayerData from = db.getData(sender.getUUID());
+        PlayerData to = target == null ? null : db.getData(target);
+        if (from == null || to == null) {
+            source.sendFailure(Component.literal("Sender or recipient player data not found."));
+            return 0;
+        }
+        try {
+            transferBalances(from, to, amount);
+        } catch (IllegalArgumentException | ArithmeticException ex) {
+            source.sendFailure(Component.literal(ex.getMessage()));
+            return 0;
+        }
+        savePlayer(level, sender.getUUID(), from);
+        savePlayer(level, target, to);
+        source.sendSuccess(() -> Component.literal("Sent " + amount + " coins to " + targetName
+                + ". Your balance: " + from.getCoins()), false);
+        if (online != null) online.sendSystemMessage(Component.literal("Received " + amount + " coins from "
+                + sender.getName().getString() + ". Your balance: " + to.getCoins()));
+        return 1;
+    }
+
+    public static void transferBalances(PlayerData from, PlayerData to, int amount) {
+        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive.");
+        if (from == to || from.getPlayerUUID().equals(to.getPlayerUUID())) {
+            throw new IllegalArgumentException("You cannot send coins to yourself.");
+        }
+        int remaining = adjustedBalance(from.getCoins(), -amount);
+        int received = adjustedBalance(to.getCoins(), amount);
+        from.setCoins(remaining);
+        to.setCoins(received);
+    }
+
+    /** /player admin grantcoins <playerName> <amount> adjusts an online or offline player's wallet. */
     public static int givePlayerCoinsByName(CommandSourceStack source, String targetName, int amount) {
         try {
             ServerLevel serverLevel = source.getLevel();

@@ -152,6 +152,10 @@ public class VillageCommand {
 
         // Define the "structures" sub-command to show structures in the village
         LiteralArgumentBuilder<CommandSourceStack> villageStructuresBuilder = Commands.literal("structures")
+                .then(Commands.literal("waypoint")
+                        .then(Commands.argument("structureId", com.mojang.brigadier.arguments.LongArgumentType.longArg())
+                                .executes(context -> waypointVillageStructure(context.getSource(),
+                                        com.mojang.brigadier.arguments.LongArgumentType.getLong(context, "structureId")))))
                 .executes(context -> {
                     return showVillageStructures(context.getSource(), 20, "all");
                 })
@@ -2197,8 +2201,9 @@ public class VillageCommand {
 
                 MutableComponent message = Component.literal(
                         (displayed + 1) + ". " + structureData.getName() +
-                                ": " + structureData.getCenterPos().toShortString() +
-                                " d=" + distance);
+                                ": ")
+                        .append(structureWaypointCoordinates(structureId, structureData.getCenterPos()))
+                        .append(Component.literal(" d=" + distance));
 
                 // Color the entire line light blue if player is in the same chunk
                 if (isPlayerInSameChunk) {
@@ -2297,7 +2302,8 @@ public class VillageCommand {
             source.sendSystemMessage(Component.literal("Type:   " + s.getType()).withStyle(ChatFormatting.WHITE));
             source.sendSystemMessage(Component.literal("ID:     " + structureId).withStyle(ChatFormatting.WHITE));
             source.sendSystemMessage(
-                    Component.literal("Center: " + s.getCenterPos().toShortString() + "  (d=" + distance + ")")
+                    Component.literal("Center: ").append(structureWaypointCoordinates(structureId, s.getCenterPos()))
+                            .append(Component.literal("  (d=" + distance + ")"))
                             .withStyle(ChatFormatting.WHITE));
             source.sendSystemMessage(Component.literal("Claimed:" + s.isOnClaimedPlot() + "  Visited:" + s.wasVisited())
                     .withStyle(ChatFormatting.WHITE));
@@ -2457,6 +2463,40 @@ public class VillageCommand {
                         .withStyle(ChatFormatting.YELLOW));
             }
         }
+    }
+
+    public static MutableComponent structureWaypointCoordinates(long structureId, BlockPos pos) {
+        return Component.literal(pos.toShortString()).withStyle(style -> style
+                .withUnderlined(true)
+                .withClickEvent(new ClickEvent.RunCommand("/village structures waypoint " + structureId))
+                .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                        Component.literal("Click to add a JourneyMap waypoint"))));
+    }
+
+    public static int waypointVillageStructure(CommandSourceStack source, long structureId) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+        PlayerData data = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        if (data == null || data.getHomeVillageUUID() == null) {
+            source.sendFailure(Component.literal("You are not part of a village."));
+            return 0;
+        }
+        VillageData village = ModEvents.getVillageDatabase().getData(data.getHomeVillageUUID());
+        if (village == null) {
+            source.sendFailure(Component.literal("No village data found."));
+            return 0;
+        }
+        for (var entry : getVillageStructuresList(village, source.getLevel())) {
+            if (entry.getKey() == structureId) {
+                var structure = entry.getValue();
+                var pos = structure.getCenterPos();
+                return FarmCraftCommand.addMapWaypoint(source, pos.getX(), pos.getY(), pos.getZ(), structure.getName());
+            }
+        }
+        source.sendFailure(Component.literal("That structure is no longer available in your village."));
+        return 0;
     }
 
     // Helper method to get structures in the village

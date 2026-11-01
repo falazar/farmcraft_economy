@@ -696,13 +696,35 @@ public class CropsManager {
             // See if it is on, then turn it off.
             // It is player special effect regeneration
             MobEffectInstance effect = player.getEffect(MobEffects.REGENERATION);
-            if (effect != null) {
-                player.removeEffect(MobEffects.REGENERATION);
-                player.sendSystemMessage(Component.literal("Your regeneration has faded."));
-            }
+            if (effect != null) fadeRegeneration(player);
 
         }
 
+    }
+
+    private static final ThreadLocal<Player> FADING_REGENERATION = new ThreadLocal<>();
+
+    public static boolean fadeRegeneration(Player player) {
+        if (!player.hasEffect(MobEffects.REGENERATION)) return false;
+        Player previous = FADING_REGENERATION.get();
+        FADING_REGENERATION.set(player);
+        boolean removed;
+        try {
+            removed = player.removeEffect(MobEffects.REGENERATION);
+        } finally {
+            if (previous == null) FADING_REGENERATION.remove();
+            else FADING_REGENERATION.set(previous);
+        }
+        if (removed) player.sendSystemMessage(Component.literal("Your regeneration has faded."));
+        return removed;
+    }
+
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.LOWEST, receiveCanceled = true)
+    public static void allowRegenerationFading(net.minecraftforge.event.entity.living.MobEffectEvent.Remove event) {
+        // Only our random fade bypasses protection; milk and other removals keep normal rules.
+        if (FADING_REGENERATION.get() == event.getEntity() && event.getEffect() == MobEffects.REGENERATION) {
+            event.setCanceled(false);
+        }
     }
 
     // TODO cooking stuffs testing next.

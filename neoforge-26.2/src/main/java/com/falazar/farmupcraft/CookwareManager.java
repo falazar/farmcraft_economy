@@ -24,6 +24,8 @@ public class CookwareManager {
     public static final int COOKWARE_MAX_USES = 500;
     public static final int COOKWARE_KITCHEN_USES = 10000;
     private static final String NBT_USES = "farmupcraft_cookware_uses";
+    private static final String NBT_MAX_USES = "farmupcraft_cookware_max_uses";
+    private static final String NBT_ESTIMATED = "farmupcraft_cookware_capacity_estimated";
     private static final Set<String> COOKWARE_IDS = Set.of(
             "cuttingboarditem", "grinderitem", "juiceritem", "mixingbowlitem", "potitem",
             "rolleritem", "saucepanitem", "skilletitem", "bakewareitem");
@@ -52,7 +54,7 @@ public class CookwareManager {
                         + " broke from overuse!").withStyle(ChatFormatting.RED));
                 LOGGER.info("Cookware broke: {} had 0 uses left.", getCookwareName(cookware));
             } else {
-                if (remaining <= (inKitchen ? 500 : 50)) {
+                if (remaining <= getWarningThreshold(cookware)) {
                     player.sendOverlayMessage(Component.literal("Warning: your " + getCookwareName(cookware)
                             + " only has " + remaining + " uses left!").withStyle(ChatFormatting.YELLOW));
                 }
@@ -80,7 +82,14 @@ public class CookwareManager {
             throw new IllegalStateException("Exhausted cookware cannot be used again");
         }
         int remaining = uses - 1;
-        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> tag.putInt(NBT_USES, remaining));
+        int capacity = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag().contains(NBT_USES)
+                ? getMaxUsesForDisplay(stack) : inKitchen ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
+        boolean estimated = isCapacityEstimated(stack);
+        CustomData.update(DataComponents.CUSTOM_DATA, stack, tag -> {
+            tag.putInt(NBT_USES, remaining);
+            tag.putInt(NBT_MAX_USES, capacity);
+            if (estimated) tag.putBoolean(NBT_ESTIMATED, true);
+        });
         return remaining;
     }
 
@@ -93,7 +102,43 @@ public class CookwareManager {
     }
 
     public static int getMaxUsesForDisplay(ItemStack stack) {
+        var tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        if (tag.contains(NBT_MAX_USES)) {
+            int capacity = tag.getInt(NBT_MAX_USES)
+                    .orElseThrow(() -> new IllegalArgumentException("Cookware capacity must be an integer"));
+            if ((capacity != COOKWARE_MAX_USES && capacity != COOKWARE_KITCHEN_USES)
+                    || getRemainingUses(stack) > capacity) {
+                throw new IllegalArgumentException("Invalid cookware capacity");
+            }
+            return capacity;
+        }
         return getRemainingUses(stack) > COOKWARE_MAX_USES ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
+    }
+
+    public static int getWarningThreshold(ItemStack stack) {
+        return getMaxUsesForDisplay(stack) == COOKWARE_KITCHEN_USES ? 500 : 50;
+    }
+
+    public static boolean isCapacityEstimated(ItemStack stack) {
+        var tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        return tag.getBooleanOr(NBT_ESTIMATED, false)
+                || (tag.contains(NBT_USES) && !tag.contains(NBT_MAX_USES)
+                && getRemainingUses(stack) <= COOKWARE_MAX_USES);
+    }
+
+    @SubscribeEvent
+    public static void onItemTooltip(net.neoforged.neoforge.event.entity.player.ItemTooltipEvent event) {
+        ItemStack stack = event.getItemStack();
+        if (!isCookware(stack)) return;
+        var tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag();
+        if (!tag.contains(NBT_USES)) {
+            event.getToolTip().add(Component.literal("Unused: 500 uses, or 10,000 if first used in a kitchen")
+                    .withStyle(ChatFormatting.GRAY));
+        } else {
+            event.getToolTip().add(Component.literal("Uses remaining: " + getRemainingUses(stack) + " / "
+                    + getMaxUsesForDisplay(stack) + (isCapacityEstimated(stack) ? " (legacy capacity estimated)" : ""))
+                    .withStyle(ChatFormatting.GRAY));
+        }
     }
 
     private static int storedUses(ItemStack stack, int initialUses) {

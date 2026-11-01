@@ -32,6 +32,18 @@ legacy-world migration warning are documented in the development notes below.
 
 ## Commands
 
+HarvestCraft cookware tooltips show remaining uses and original capacity.
+Capacity is fixed on first use: 500 normally, or 10,000 in a kitchen; moving
+plots does not upgrade tools or change warning thresholds (50/500 respectively).
+Old tools retain their uses and infer missing capacity on their next use.
+Legacy tools at 500 or fewer uses have ambiguous origins, retain the previous
+500-capacity estimate, and are labeled as estimated rather than silently refilled.
+
+Enchanting-table coin prices in both targets: the bottom option costs village
+level x 100; top and middle cost one-third and two-thirds of that, rounded to
+the nearest 50 coins. Players without a village use level-1 prices (50/50/100).
+XP, lapis, creative exemption, and village-debt restrictions are unchanged.
+
 Commands are run in-game with the slash prefix. The following index covers the
 main command roots and their commonly used actions; argument names, permission
 requirements, and available branches can vary by target. Use Minecraft's
@@ -42,7 +54,7 @@ and testing branches are permission-gated where appropriate.
 | --- | --- |
 | `/farmupcraft help` | Player-facing command guide without administrative commands; `/farmcraft help` is also supported. |
 | `/farmcraft` | `map`, `waypoint`, `chunk`, `here`, `village`, `frecipe`, settings, scheduler, and admin utilities. |
-| `/player` | `info`, `show`, `border`, `color`, village join/leave, and player/village coin administration. |
+| `/player` | `info`, `show`, `border`, `color`, village join/leave, player payments, and player/village coin administration. |
 | `/market` | `info`, `show`, `buy`, `sell`; operator actions include market configuration, price changes, and daily refresh. |
 | `/village` | `info`, `list`, `buy`, `rename`, `levelup`; member invitations, upkeep, farms, animals, structures, chores, and map display. |
 | `/plot` | `info`, `buy`, `delete`, `reclaim`, `list`, `upgrade`; manage owners, types, and visitors. |
@@ -58,6 +70,18 @@ and testing branches are permission-gated where appropriate.
 | `/farmupcraft-legacy` | NeoForge legacy SavedData preflight. `inspect` only checks a copied legacy data directory; `apply` is deliberately blocked and does not import data. |
 
 ### Player help and login welcome
+
+`/player givecoins <name> <amount>` transfers a positive amount from your wallet
+to another online or previously recorded offline player. Insufficient funds,
+self-payments, and recipient balance overflow are rejected without changing
+either wallet. Operators use `/player admin grantcoins <name> <amount>` to adjust
+another wallet without paying from their own; `/player admin givecoins <amount>`
+still adjusts their own wallet.
+Online player names autocomplete in both `givecoins` and admin `grantcoins`.
+
+Admin commands require operator-level permissions. Minecraft's Open to LAN
+**Allow Commands** option grants those permissions to all LAN players, so leave
+it off to keep visitors from seeing or using admin commands.
 
 On login, players see "Welcome to FarmUpCraft!" and a pointer to
 `/farmupcraft help` during their first five calendar dates, counted using the
@@ -132,12 +156,43 @@ The original config is backed up under `config/farmupcraft/`; the
 This applies to all worlds in that instance, including dedicated servers.
 Onion remains optional; installing it later triggers the setup on the next launch.
 
+NeoForge normalizes Onion's total-saturation scoring to the Forge 1.20.1
+saturation-modifier formula. Keep `complexityStandardSaturation` at **6** in
+modern Onion (equivalent to **0.6** in legacy Onion); do not copy 0.6 into the
+modern config. Nutrition, effect modifiers, explicit food-diversity overrides,
+disabled-diversity mode, history decay, and reward thresholds are unchanged.
+This optional mixin only affects Onion scoring, not food hunger/saturation.
+Existing food history is preserved; recalculation can lower the score and
+remove rewards that are no longer earned. Forge scoring is unchanged.
+
+NeoForge also corrects Onion 1.5.5 lunch-container menus to access the actual
+bag/box inventory slot rather than the menu ID. Lunch bags and both lunch boxes
+can open regardless of how many menus have been opened, including from the
+offhand, without accessing another item's slot.
+
 Each existing or new world also receives random tick speed **1** and sleeping
 percentage **50** once on server startup. A marker at
 `<world>/data/farmupcraft-startup-rules-v1.done` preserves later gamerule changes.
 Do not delete these markers unless you want to reapply the defaults.
 
+FarmUpCraft still randomly attempts to remove regeneration, less often at higher
+experience levels. "Your regeneration has faded." appears only when removal
+succeeds. These random fades override effect-removal protection, including
+Onion's earned food regeneration; ordinary removals such as milk keep their
+normal protection rules. Onion can grant regeneration again when it recalculates
+food rewards.
+
+NeoForge disables the vanilla uncolored bundle crafting recipe. Existing bundles
+and colored-bundle recipes are unchanged. Forge 1.20.1 has no vanilla bundle recipe.
+
 ### Structure visits and claims
+
+Coordinates in `/village structures` lists and structure details are underlined
+and clickable: click them to add a personal JourneyMap waypoint at the structure
+center, named after the structure. No operator permission is needed. The click
+uses the stable structure ID and rechecks village membership and structure
+availability, so moving or reordering the list cannot select another structure.
+This adds a waypoint; it does not teleport the player or open the map.
 
 Both targets require a structure to be visited before it can be marked claimed.
 Buying a village claims territory, not its structures: only the village-center
@@ -310,13 +365,27 @@ mods' spawn cancellations.
 Thrown chicken and Naturalist duck eggs can hatch only when the hatchling's
 position is inside a pasture plot. Wilderness, ordinary village territory and
 other plot types do not allow egg hatching. Eggs still break normally and keep
-their native hatch chances inside pastures. This does not change breeding,
+their native hatch chances inside pastures, but each hatchling must fit within
+the existing 30-animal cap (same chunk and five-block-high counting band as
+breeding). At 29 animals, even a four-chick egg can add only one; at 30 or more,
+none hatch. This does not change breeding,
 natural animal spawns or Lycanites rules.
+When a chicken or duck egg hits a full pasture, its player thrower receives one
+red warning with the current animal count, even if the egg's hatch roll fails.
+Dispenser-thrown eggs have no player to notify.
+Chicken and Naturalist duck egg laying is allowed in pasture plots and
+wilderness only, not other village plots. Blocked laying attempts reset the
+normal egg timer without dropping an egg; dropped player items are unaffected.
+This does not change the separate thrown-egg hatching restrictions.
 Spawner-origin mobs bypass FarmUpCraft's custom spawn suppression in both
 the finalize and world-join checks, inside and outside villages. This includes
 Lycanites from spawners and NeoForge trial spawners; natural Lycanites spawns
-keep their existing restrictions. Vanilla spawner light, difficulty, space,
-player-distance and nearby-entity checks still apply.
+keep their existing restrictions. NeoForge regular cage spawners ignore the
+standard monster darkness requirement, so zombie and skeleton spawners work in
+lit rooms. Natural spawns still require darkness; trial-spawner behavior and
+explicit custom spawner light rules are unchanged. Difficulty, space,
+player-distance and nearby-entity checks still apply. Forge retains its vanilla
+spawner lighting behavior.
 
 Rejected planting immediately resends the clicked/placement blocks and the
 player inventory, correcting client-predicted ghost crops and missing items.

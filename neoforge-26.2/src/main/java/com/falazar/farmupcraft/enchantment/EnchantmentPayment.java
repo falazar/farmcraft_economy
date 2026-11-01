@@ -47,7 +47,8 @@ public final class EnchantmentPayment implements AutoCloseable {
         playerData = ModEvents.getPlayerDatabase(player.level()).getData(player.getUUID());
         VillageData village = playerData != null && playerData.getHomeVillageUUID() != null
                 ? ModEvents.getVillageDatabase(player.level()).getData(playerData.getHomeVillageUUID()) : null;
-        long totalCost = buttonId * 100L + (village == null ? 0L : village.getLevel() * 100L);
+        long totalCost = com.falazar.farmupcraft.util.EnchantmentPricing.cost(
+                village == null ? 0 : village.getLevel(), buttonId);
         if (village != null && village.getCoins() < 0) {
             deny("Your village is in debt (" + village.getCoins()
                     + " coins). Pay off the debt before enchanting.");

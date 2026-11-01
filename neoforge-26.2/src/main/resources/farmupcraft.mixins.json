@@ -7,6 +7,10 @@
     "IceAndFireStoneStatueMixin"
   ],
   "mixins": [
+    "EggLayingMixin",
+    "OnionFoodContainerMixin",
+    "OnionFoodScoringMixin",
+    "SpawnerLightRequirementsMixin",
     "IceAndFireDragonPreyMixin",
     "EggPastureMixin",
     "BeePollinationMixin",

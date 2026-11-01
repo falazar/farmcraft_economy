@@ -40,22 +40,14 @@ public class EnchantmentMenuMixin {
         if (costs[pId] <= 0)
             return;
 
-        // Base cost: slot 0=0, 1=100, 2=200.
-        int baseCost = pId * 100;
-
-        // Add 100 per village level.
-
-        int villageBonus = 0;
         PlayerData playerData = ModEvents.getPlayerDatabase().getData(pPlayer.getUUID());
         VillageData village = null;
         if (playerData != null && playerData.getHomeVillageUUID() != null) {
             village = ModEvents.getVillageDatabase().getData(playerData.getHomeVillageUUID());
-            if (village != null) {
-                villageBonus = village.getLevel() * 100;
-            }
         }
 
-        int totalCost = baseCost + villageBonus;
+        int totalCost = com.falazar.farmupcraft.util.EnchantmentPricing.cost(
+                village == null ? 0 : village.getLevel(), pId);
         String formattedCost = NumberFormat.getInstance().format(totalCost);
 
         // Block enchanting if village is in debt

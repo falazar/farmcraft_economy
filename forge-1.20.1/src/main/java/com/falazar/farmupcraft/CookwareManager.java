@@ -40,6 +40,8 @@ public class CookwareManager {
     public static final int COOKWARE_MAX_USES = 500;
     public static final int COOKWARE_KITCHEN_USES = 10000;
     private static final String NBT_USES = "farmupcraft_cookware_uses";
+    private static final String NBT_MAX_USES = "farmupcraft_cookware_max_uses";
+    private static final String NBT_ESTIMATED = "farmupcraft_cookware_capacity_estimated";
 
     // All cookware item IDs from pamhc2foodcore.
     private static final String CUTTING_BOARD = "pamhc2foodcore:cuttingboarditem";
@@ -95,9 +97,14 @@ public class CookwareManager {
                 uses = inKitchen ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
 
             int newUses = uses - 1;
+            int capacity = cookware.hasTag() && cookware.getOrCreateTag().contains(NBT_USES)
+                    ? getMaxUsesForDisplay(cookware) : inKitchen ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
+            boolean estimated = isCapacityEstimated(cookware);
+            cookware.getOrCreateTag().putInt(NBT_MAX_USES, capacity);
+            if (estimated) cookware.getOrCreateTag().putBoolean(NBT_ESTIMATED, true);
             if (newUses > 0) {
                 cookware.getOrCreateTag().putInt(NBT_USES, newUses);
-                int warnThreshold = inKitchen ? 500 : 50;
+                int warnThreshold = capacity == COOKWARE_KITCHEN_USES ? 500 : 50;
                 if (newUses <= warnThreshold) {
                     player.displayClientMessage(
                             Component.literal("Warning: your " + getCookwareName(cookware)
@@ -175,7 +182,35 @@ public class CookwareManager {
      * by whether the stored value exceeds the normal max.
      */
     public static int getMaxUsesForDisplay(ItemStack stack) {
+        if (stack.hasTag() && stack.getOrCreateTag().contains(NBT_MAX_USES)) {
+            int capacity = stack.getOrCreateTag().getInt(NBT_MAX_USES);
+            if ((capacity != COOKWARE_MAX_USES && capacity != COOKWARE_KITCHEN_USES)
+                    || getRemainingUses(stack) > capacity) {
+                throw new IllegalArgumentException("Invalid cookware capacity");
+            }
+            return capacity;
+        }
         int uses = getRemainingUses(stack);
         return uses > COOKWARE_MAX_USES ? COOKWARE_KITCHEN_USES : COOKWARE_MAX_USES;
+    }
+
+    public static boolean isCapacityEstimated(ItemStack stack) {
+        return stack.hasTag() && (stack.getOrCreateTag().getBoolean(NBT_ESTIMATED)
+                || (stack.getOrCreateTag().contains(NBT_USES) && !stack.getOrCreateTag().contains(NBT_MAX_USES)
+                && getRemainingUses(stack) <= COOKWARE_MAX_USES));
+    }
+
+    @SubscribeEvent
+    public static void onItemTooltip(net.minecraftforge.event.entity.player.ItemTooltipEvent event) {
+        ItemStack stack = event.getItemStack();
+        if (!isCookware(stack)) return;
+        if (!stack.hasTag() || !stack.getOrCreateTag().contains(NBT_USES)) {
+            event.getToolTip().add(Component.literal("Unused: 500 uses, or 10,000 if first used in a kitchen")
+                    .withStyle(ChatFormatting.GRAY));
+        } else {
+            event.getToolTip().add(Component.literal("Uses remaining: " + getRemainingUses(stack) + " / "
+                    + getMaxUsesForDisplay(stack) + (isCapacityEstimated(stack) ? " (legacy capacity estimated)" : ""))
+                    .withStyle(ChatFormatting.GRAY));
+        }
     }
 }

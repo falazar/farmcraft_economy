@@ -1,0 +1,6 @@
+{
+  "neoforge:conditions": [{"type": "neoforge:never"}],
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": ["minecraft:string", "minecraft:leather"],
+  "result": {"id": "minecraft:bundle", "count": 1}
+}

@@ -223,6 +223,34 @@ public class AnimalsManager {
         return level.getEntitiesOfClass(Animal.class, pastureCountingBox(pos, level.getMinY(), level.getMaxY())).size();
     }
 
+    public static boolean addEggHatchling(Level level, net.minecraft.world.entity.Entity hatchling) {
+        return "pasture".equals(ChunkManager.getPlotType(hatchling.blockPosition(), level))
+                && countAnimalsInChunk(level, hatchling.blockPosition()) < MAX_ANIMALS_PER_PASTURE
+                && level.addFreshEntity(hatchling);
+    }
+
+    public static int eggLayingTime(Animal animal, int remaining) {
+        if (!animal.level().isClientSide() && remaining <= 1
+                && !canShearInPlot(ChunkManager.getPlotType(animal.blockPosition(), animal.level()))) {
+            // aiStep decrements once after this check; keep the normal laying interval.
+            return animal.getRandom().nextInt(6000) + 6001;
+        }
+        return remaining;
+    }
+
+    public static void warnFullPastureEgg(net.minecraft.world.entity.projectile.Projectile egg) {
+        Level level = egg.level();
+        if (level.isClientSide() || !(egg.getOwner() instanceof Player player)
+                || !"pasture".equals(ChunkManager.getPlotType(egg.blockPosition(), level))) {
+            return;
+        }
+        int count = countAnimalsInChunk(level, egg.blockPosition());
+        if (count >= MAX_ANIMALS_PER_PASTURE) {
+            player.sendSystemMessage(Component.literal("This pasture is full! (" + count + "/"
+                    + MAX_ANIMALS_PER_PASTURE + " animals) Eggs cannot hatch here.").withStyle(ChatFormatting.RED));
+        }
+    }
+
     static AABB pastureCountingBox(BlockPos pos, int minY, int maxY) {
         ChunkPos chunk = ChunkPos.containing(pos);
         return new AABB(chunk.getMinBlockX(), Math.max(minY, pos.getY() - 2), chunk.getMinBlockZ(),

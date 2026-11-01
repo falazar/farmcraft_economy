@@ -44,17 +44,20 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CropBlock;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.block.CropGrowEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
+import net.neoforged.neoforge.event.entity.living.MobEffectEvent;
 
 import java.util.*;
 
 @EventBusSubscriber(modid = FarmUpCraftNeoForge.MOD_ID)
 public final class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
+    private static final ThreadLocal<Player> FADING_REGENERATION = new ThreadLocal<>();
 
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
@@ -253,9 +256,32 @@ public final class CropsManager {
         var random = level.getRandom();
         if (random.nextInt(500) == 1) player.getFoodData().addExhaustion(0.5F);
         int regenInterval = regenerationCheckInterval(player.experienceLevel);
-        if (random.nextInt(regenInterval) == 1 && player.hasEffect(MobEffects.REGENERATION)) {
-            player.removeEffect(MobEffects.REGENERATION);
+        if (random.nextInt(regenInterval) == 1) fadeRegeneration(player);
+    }
+
+    public static boolean fadeRegeneration(Player player) {
+        if (!player.hasEffect(MobEffects.REGENERATION)) return false;
+        Player previous = FADING_REGENERATION.get();
+        FADING_REGENERATION.set(player);
+        boolean removed;
+        try {
+            removed = player.removeEffect(MobEffects.REGENERATION);
+        } finally {
+            if (previous == null) FADING_REGENERATION.remove();
+            else FADING_REGENERATION.set(previous);
+        }
+        if (removed) {
             player.sendSystemMessage(Component.literal("Your regeneration has faded."));
+        }
+        return removed;
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
+    public static void allowRegenerationFading(MobEffectEvent.Remove event) {
+        // Only our random fade bypasses protection; milk and other removals keep normal rules.
+        if (FADING_REGENERATION.get() == event.getEntity()
+                && event.getEffect().equals(MobEffects.REGENERATION)) {
+            event.setCanceled(false);
         }
     }
 

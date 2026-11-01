@@ -35,16 +35,18 @@ class PlayerCommandTest {
         CommandSourceStack moderator = MarketCommandTest.source(server, LevelBasedPermissionSet.MODERATOR, feedback);
         CommandSourceStack admin = MarketCommandTest.source(server, LevelBasedPermissionSet.GAMEMASTER, feedback);
         var root = dispatcher.getRoot().getChild("player");
-        for (String branch : List.of("admin", "givecoins")) {
+        for (String branch : List.of("admin")) {
             assertFalse(root.getChild(branch).canUse(ordinary));
             assertFalse(root.getChild(branch).canUse(moderator));
             assertTrue(root.getChild(branch).canUse(admin));
         }
         assertTrue(root.getChild("info").canUse(ordinary));
+        assertTrue(root.getChild("givecoins").canUse(ordinary));
         assertFalse(root.getChild("info").getChild("playerName").canUse(ordinary));
         assertTrue(root.getChild("info").getChild("playerName").canUse(admin));
         for (String command : List.of("player info", "player info Alex", "player leavevillage",
-                "player givevillagecoins 0", "player takevillagecoins 10", "player givecoins Alex -10000",
+                "player givevillagecoins 0", "player takevillagecoins 10", "player givecoins Alex 10",
+                "player admin grantcoins Alex 100",
                 "player border show", "player border color teal", "player admin joinvillage \"Test Village\"",
                 "player admin givecoins -10000")) {
             var parsed = dispatcher.parse(command, admin);
@@ -54,6 +56,7 @@ class PlayerCommandTest {
         }
         assertFalse(dispatcher.parse("player givevillagecoins -1", ordinary).getExceptions().isEmpty());
         assertFalse(dispatcher.parse("player takevillagecoins -1", ordinary).getExceptions().isEmpty());
+        assertFalse(dispatcher.parse("player givecoins Alex 0", ordinary).getExceptions().isEmpty());
         assertFalse(dispatcher.parse("player admin givecoins -10001", admin).getExceptions().isEmpty());
     }
 

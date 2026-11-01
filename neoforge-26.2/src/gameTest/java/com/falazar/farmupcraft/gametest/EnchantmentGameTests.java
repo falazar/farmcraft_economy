@@ -32,7 +32,7 @@ public final class EnchantmentGameTests {
     public static void registerFunctions(RegisterEvent event) {
         event.register(Registries.TEST_FUNCTION, functions -> {
             functions.register(id("enchantment_payment"), helper -> payment(helper, 137, false));
-            functions.register(id("enchantment_insufficient_coins"), helper -> payment(helper, 99, false));
+            functions.register(id("enchantment_insufficient_coins"), helper -> payment(helper, 49, false));
             functions.register(id("enchantment_creative"), helper -> payment(helper, 0, true));
             functions.register(id("enchantment_invalid_requests"), EnchantmentGameTests::invalidRequests);
             functions.register(id("enchantment_village_surcharge"), helper -> villagePayment(helper, false));
@@ -63,11 +63,11 @@ public final class EnchantmentGameTests {
             menu.getSlot(1).set(new ItemStack(Items.LAPIS_LAZULI, 3));
             menu.costs[1] = 30;
             boolean result = menu.clickMenuButton(player, 1);
-            boolean expected = creative || coins >= 100;
+            boolean expected = creative || coins >= 50;
             helper.assertValueEqual(result, expected, "enchantment result");
             helper.assertValueEqual(menu.getSlot(0).getItem().isEnchanted(), expected, "actual applied enchantments");
             helper.assertValueEqual(database.getData(player.getUUID()).getCoins(),
-                    expected && !creative ? coins - 100 : coins, "exactly one coin payment");
+                    expected && !creative ? coins - 50 : coins, "exactly one coin payment");
             helper.assertValueEqual(menu.getSlot(1).getItem().getCount(),
                     expected && !creative ? 1 : 3, "lapis consumption");
             helper.assertValueEqual(player.experienceLevel, expected ? 28 : 30, "vanilla XP consumption");
@@ -117,8 +117,8 @@ public final class EnchantmentGameTests {
             menu.costs[1] = 30;
             helper.assertValueEqual(menu.clickMenuButton(player, 1), !debt, "village payment result");
             helper.assertValueEqual(menu.getSlot(0).getItem().isEnchanted(), !debt, "village enchantment applied");
-            helper.assertValueEqual(players.getData(player.getUUID()).getCoins(), debt ? 437 : 137,
-                    "slot fee plus village-level surcharge");
+            helper.assertValueEqual(players.getData(player.getUUID()).getCoins(), debt ? 437 : 287,
+                    "rounded middle-option price at village level two");
             helper.assertValueEqual(menu.getSlot(1).getItem().getCount(), debt ? 3 : 1, "village request lapis");
             helper.assertValueEqual(player.experienceLevel, debt ? 30 : 28, "village request XP");
             helper.assertValueEqual(villages.getData(villageId).getCoins(), debt ? -1 : 100,
@@ -139,7 +139,7 @@ public final class EnchantmentGameTests {
             try (payment) {
                 helper.assertTrue(payment.reserve(), "The real player's balance must cover the reserve");
                 helper.assertTrue(payment.reserve(), "A repeated reservation must be idempotent");
-                helper.assertValueEqual(database.getData(player.getUUID()).getCoins(), 37, "one reserve only");
+                helper.assertValueEqual(database.getData(player.getUUID()).getCoins(), 87, "one reserve only");
             }
             payment.close();
             helper.assertValueEqual(database.getData(player.getUUID()).getCoins(), 137, "one uncommitted refund only");
