@@ -1,0 +1,27 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:slabs",
+    "#minecraft:stairs",
+    "#minecraft:planks",
+    "minecraft:dirt_path",
+    "minecraft:gravel",
+    "minecraft:cobblestone",
+    "minecraft:mossy_cobblestone",
+    "minecraft:stone_bricks",
+    "minecraft:mossy_stone_bricks",
+    "minecraft:cracked_stone_bricks",
+    "minecraft:chiseled_stone_bricks",
+    "minecraft:polished_andesite",
+    "minecraft:polished_diorite",
+    "minecraft:polished_granite",
+    "minecraft:smooth_stone",
+    "minecraft:cobbled_deepslate",
+    "minecraft:deepslate_bricks",
+    "minecraft:deepslate_tiles",
+    "minecraft:polished_deepslate",
+    "minecraft:bricks",
+    "minecraft:polished_blackstone_bricks",
+    "minecraft:polished_blackstone"
+  ]
+}

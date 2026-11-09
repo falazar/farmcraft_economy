@@ -1,0 +1,196 @@
+VILLAGER HOME SIGN DIAGNOSTICS
+LATEST READ-ONLY UPDATE: 2026-11-07
+The earlier capture below is historical, not the current village state.
+
+Current local scan: 14 saved villagers within X440..610, Z-350..-240.
+12 have a physical oak wall sign at their saved sign coordinate.
+One has a missing sign; one has a permanent entrance-search failure.
+This is a running-world, last-saved, non-atomic observation, not live memory.
+
+Marcelo:
+  Current HOME and recorded bed: 535,76,-286.
+  No sign; permanently skipped for "No reachable doorway with a walkable
+  outside approach near the assigned bed".
+  Latest log failure: 11:36:46; villager was at 507,70,-276 (NOT the bed).
+  This is the same upstairs bed Freddy held in the previous capture.
+  Nearby actual doors are vanilla spruce:
+    upper landing door 535,76,-288;
+    lower door 532,72,-289.
+  Birch stairs descend east along Z=-289:
+    top support 535,75,-289; bottom steps 536,75,-289,
+    537,74,-289, 538,73,-289, 539,72,-289.
+  Quartz stairs, brick slabs and ordinary block walls are also nearby.
+  BOP redwood trapdoors exist nearby, but there is no evidence that a modded
+  door/step caused this particular failure. The historical failure does not
+  establish the precise collision state at the time of its search.
+
+Alesha:
+  HOME/recorded bed: 528,71,-307.
+  Recorded sign: 532,72,-299; saved block is AIR.
+  Successful per-bed flag is retained. Existing behavior deliberately respects
+  removed signs; no automatic replacement at that bed.
+  Who/what removed the sign is not established by the saved record.
+
+Freddy:
+  Now HOME/recorded bed 580,70,-303; physical sign 579,71,-294.
+  He is no longer the permanently skipped resident from the previous capture.
+
+Physical generated signs:
+  Raymundo 502,71,-272; Claude 486,70,-272; Lillie 554,72,-299;
+  Heidi 579,75,-297; Freddy 579,71,-294; Eric 538,71,-294;
+  Mitch 558,72,-285; Gwenn 566,71,-276; Beth 584,74,-299;
+  Lekisha 569,72,-299; Harlan 592,69,-297; Laree 572,72,-299.
+
+Approved source update:
+  Keep permanent failure and player-removal behavior; no automatic retry.
+  Scheduled checks now report physical sign status and run diagnostic-only
+  searches for skipped beds. Logs identify the bed, chosen doorway, route,
+  limits, rejection counts and adjacent block states instead of only the
+  villager's position. Vertical search expanded from +/-4 to +/-12 for
+  multi-floor stair routes; bed-adjacent initial nodes now accept one step
+  up/down, just like subsequent route nodes. Horizontal/work/unloaded-chunk
+  bounds are retained; collision rules were not weakened.
+  This update cannot retroactively reconstruct the original failed search.
+
+Validation/deployment:
+  All three NeoForge household-sign GameTests passed, including a real birch
+  staircase from a bed six blocks above the exterior door, permanent skipped
+  records remaining skipped, and existing removal/player-edit protections.
+  Forge compiled; both release JAR builds passed.
+  Disposable GameTest shutdown still logged an unrelated Windows attachment
+  atomic-save AccessDenied error and Ollama socket closure; no clean-persistence
+  claim is made from that shutdown.
+  Shared NeoForge JAR backed up and SHA-256 verified:
+    9A4A0D3406CDE6A43F2CE7ED76F41F1C03965B8B19DF2057FE34713FBAE914C0
+  Instance copy deferred because Minecraft PID6664 was running.
+  New diagnostics begin only after the updated instance JAR is installed and
+  the saved two-hour checks are due; no live-world edits or game restart occurred.
+
+========================================================================
+HISTORICAL CAPTURE FOLLOWS
+========================================================================
+Captured: 2026-11-06, approximately 18:05 local time
+World: Rimfog2
+Dimension: minecraft:overworld
+
+Sources (read-only; no world changes):
+  D:\MinecraftInstances\NeoForge-26.2\logs\latest.log
+  D:\MinecraftInstances\NeoForge-26.2\saves\Rimfog2\level.dat
+  D:\MinecraftInstances\NeoForge-26.2\saves\Rimfog2\dimensions\minecraft\overworld\entities\r.0.-1.mca
+  D:\MinecraftInstances\NeoForge-26.2\saves\Rimfog2\dimensions\minecraft\overworld\entities\r.1.-1.mca
+
+IMPORTANT INTERPRETATION
+  The original failure log prints the VILLAGER position, NOT the bed.
+  Bed/sign coordinates below come from decoded saved BlockPos records.
+  Minecraft is running: these are last-saved records, not live memory.
+  Files can be saved at different times; this is not an atomic world snapshot.
+  A saved sign coordinate is a reference, not proof the physical sign still exists.
+  Historical failed-bed coordinates were not logged, so cannot be reconstructed
+  with certainty from a later successful or changed-bed record.
+
+KEY FINDING
+  Freddy still has a skipped record and no saved sign reference.
+  Russell and Marcelo now have successful saved sign references and no skipped
+  reason. Their earlier failures do NOT prove they are still missing signs.
+  Marcelo's current HOME memory differs from the bed stored in his sign record.
+  Russell currently has no HOME memory, despite retaining an old sign record.
+
+========================================================================
+FREDDY
+========================================================================
+Profession: minecraft:mason, level 3
+Historical failure:
+  [12:10:06] Household sign skipped permanently for this bed for Freddy at
+  BlockPos{x=532, y=71, z=-296}:
+  No reachable doorway with a walkable outside approach near the assigned bed
+  Failure-time villager location: 532, 71, -296
+  Failure-time bed: NOT RECORDED in the log
+
+Last-saved entity position: 528.474, 71.000, -297.182
+Current saved HOME memory: 535, 76, -286
+Saved sign-attempt bed:    535, 76, -286
+Saved sign location:      NONE
+Saved placed flag:        true (also used to mean failed attempt completed)
+Saved skipped reason:
+  No reachable doorway with a walkable outside approach near the assigned bed
+Saved next-check game tick: 12042041
+Saved job site: 528, 71, -299
+Saved meeting point: 574, 73, -292
+
+Reasoning:
+  The bed is five blocks higher than Freddy's saved feet position.
+  Search limits in current source are +/-24 horizontal and +/-4 vertical
+  relative to the bed, with at most 4096 visited nodes.
+  Inspect stairs/landings and the exterior door's elevation relative to Y=76.
+  A necessary route descending below the search band is a possible cause,
+  NOT a confirmed diagnosis. No block-layout/path analysis has been done.
+
+========================================================================
+RUSSELL
+========================================================================
+Profession: minecraft:librarian, level 3
+Historical failure:
+  [12:10:15] Household sign skipped permanently for this bed for Russell at
+  BlockPos{x=524, y=72, z=-290}:
+  No reachable doorway with a walkable outside approach near the assigned bed
+  Failure-time villager location: 524, 72, -290
+  Failure-time bed: NOT RECORDED in the log
+
+Last-saved entity position: 463.548, 64.000, -307.934
+Current saved HOME memory: NONE
+Saved sign-attempt bed:    500, 70, -274
+Saved sign location:      502, 71, -272
+Saved placed flag:        true
+Saved skipped reason:     NONE
+Saved next-check game tick: 12042332
+Saved job site: NONE
+Saved meeting point: NONE
+
+Reasoning:
+  Inspect the saved sign location before treating Russell as still skipped.
+  His sign metadata is retained even though his HOME memory is now absent.
+  The present record cannot establish which bed caused the 12:10 failure.
+
+========================================================================
+MARCELO
+========================================================================
+Profession: minecraft:armorer, level 1
+Historical failure:
+  [14:10:21] Household sign skipped permanently for this bed for Marcelo at
+  BlockPos{x=506, y=71, z=-274}:
+  No reachable doorway with a walkable outside approach near the assigned bed
+  Failure-time villager location: 506, 71, -274
+  Failure-time bed: NOT RECORDED in the log
+
+Last-saved entity position: 506.445, 70.000, -276.745
+Current saved HOME memory: 510, 72, -292
+Saved sign-attempt bed:    498, 70, -303
+Saved sign location:      507, 72, -290
+Saved placed flag:        true
+Saved skipped reason:     NONE
+Saved next-check game tick: 12042090
+Saved job site: 506, 70, -276
+Saved meeting point: 574, 73, -292
+
+Reasoning:
+  His HOME memory and stored sign bed differ by much more than a bed's head/foot.
+  A bed reassignment awaiting the next full check is one possible explanation.
+  Inspect sign 507, 72, -290 and both bed locations before changing anything.
+  The present record cannot establish which bed caused the 14:10 failure.
+
+========================================================================
+CURRENT SOURCE RULES TO CONSIDER
+========================================================================
+  Full check interval: 144000 world ticks (two hours at 20 TPS).
+  Full checks require the villager to be loaded/ticking.
+  Failed entrance/space search marks that bed done and does not retry.
+  Changing the assigned bed permits another placement attempt.
+  Door search: radius 24 horizontal, 4 vertical, maximum 4096 visited nodes.
+  Outside approach search: radius 8 horizontal, 2 vertical, maximum 256 nodes.
+  Must use a walkable route and a suitable exterior doorway.
+  Bed and sign must belong to the same bought village.
+  Shared signs hold two residents, with overflow signs if space permits.
+
+No code, world data, entities, beds, signs, or running processes were changed
+to produce this report. Source rules describe the current workspace; the
+running client's installed JAR has not been newly verified against that source.

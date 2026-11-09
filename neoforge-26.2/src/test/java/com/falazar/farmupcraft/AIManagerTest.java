@@ -73,18 +73,15 @@ class AIManagerTest {
     }
 
     @Test
-    void singleAndBatchThreatPromptsRetainExactOriginalInstructions() {
-        assertEquals("You are writing a short, menacing note left by a sinister villain inside a Tower "
-                + "in a medieval fantasy world. Write exactly 1 to 3 sentences. The note should threaten the adventurer "
-                + "who found it, rant about how this place belongs to the villain, and hint at dark consequences for "
-                + "trespassers. Use archaic or dramatic language. Return ONLY the note text, no titles, no quotes, no labels.",
-                AIManager.buildChestThreatNotePrompt("Tower"));
-        assertEquals("You are writing 5 short, menacing notes each left by a sinister villain inside a Tower "
-                + "in a medieval fantasy world. Each note should be 1 to 3 sentences. Notes should threaten the "
-                + "adventurer who found them, rant about how the place belongs to the villain, and hint at dark "
-                + "consequences for trespassers. Use archaic or dramatic language. Return ONLY the 5 note texts, "
-                + "each separated by exactly '---NEXT---'. No titles, no quotes, no labels, no numbering — just the "
-                + "note texts separated by the delimiter.", AIManager.buildChestThreatNotesBatchPrompt("Tower", 5));
+    void singleAndBatchNotesUseVariedAtmosphericInstructionsAndRetainDelimiter() {
+        String single = AIManager.buildChestThreatNotePrompt("Tower");
+        assertTrue(single.contains("found note for Tower"));
+        assertTrue(single.contains("1 to 3 sentences, at most 600 characters"));
+        assertTrue(single.contains("do not always use a villain"));
+        String batch = AIManager.buildChestThreatNotesBatchPrompt("Tower", 5);
+        assertTrue(batch.contains("Produce 5 DISTINCT notes"));
+        assertTrue(batch.contains("exactly ---NEXT---"));
+        assertTrue(batch.contains("journals, letters, riddles, reports"));
     }
 
     @Test

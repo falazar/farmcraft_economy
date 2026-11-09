@@ -85,6 +85,15 @@ public class TagBasedRandomCropRule implements CropRules{
 
     @Override
     public List<Item> getCropItems(ServerLevel level, int id) {
+        return getCropItems(level, id, null);
+    }
+
+    @Override
+    public List<Item> getCropItems(ServerLevel level, String biomeId) {
+        return getCropItems(level, 0, biomeId);
+    }
+
+    private List<Item> getCropItems(ServerLevel level, int id, String biomeId) {
         if(items.isEmpty()) {
             level.registryAccess().registry(Registries.ITEM).ifPresent(reg -> {
                 Iterable<Holder<Item>> holders = reg.getTagOrEmpty(getCropTag());
@@ -110,7 +119,10 @@ public class TagBasedRandomCropRule implements CropRules{
 
         // Return a sublist of the shuffled crops based on the computed limit
 
-       List<Item> randomList = shuffledCrops.subList(0, limit);
+       List<Item> randomList = biomeId == null ? shuffledCrops.subList(0, limit)
+               : com.falazar.farmupcraft.util.StableBiomeCrops.select(items,
+                       item -> BuiltInRegistries.ITEM.getKey(item).toString(),
+                       level.getSeed(), biomeId, randomCropCount);
         //randomList.add(ItemRegistration.onionseeditem.get());
 
         //pamh2crops do some stupid fuckery where they have a seed and a normal item that can both be placed so we put

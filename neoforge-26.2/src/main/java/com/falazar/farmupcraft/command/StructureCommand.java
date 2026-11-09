@@ -7,6 +7,7 @@ import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.database.DataBase;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.StructureIdentity;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.LongArgumentType;
@@ -381,10 +382,9 @@ public class StructureCommand {
         // DEBUG: show totals in chat to the triggering player (Bosspanda only).
         if (playerSource instanceof net.minecraft.server.level.ServerPlayer sp
                 && com.falazar.farmupcraft.ChunkManager.isDebugPlayer(sp)) {
-            int existing = structureInfos.size() - newStructuresSaved[0];
             sp.sendSystemMessage(net.minecraft.network.chat.Component.literal(
-                    "[DEBUG] Scan: " + structureInfos.size() + " total ("
-                            + newStructuresSaved[0] + " new, " + existing + " existing)")
+                    "[DEBUG] Scan: " + structureInfos.size() + " matching results, "
+                            + newStructuresSaved[0] + " new records saved")
                     .withStyle(ChatFormatting.GRAY));
         }
 
@@ -441,12 +441,9 @@ public class StructureCommand {
             Map.Entry<Structure, LongSet> structureEntry, Player playerSource) {
         BlockPos structureCenterPos = structureCenterPosition(structureStart.getBoundingBox(), type);
 
-        if (!matchesHeightFilter(structureCenterPos, filter)) {
-            return;
-        }
-
         storeStructureStart(structureStart, type, id, structureInfos, gameStructureDatabase,
-                newStructuresSaved, structureEntry, playerSource, structureCenterPos);
+                newStructuresSaved, structureEntry, playerSource, structureCenterPos,
+                matchesHeightFilter(structureCenterPos, filter));
     }
 
     static BlockPos structureCenterPosition(BoundingBox bounds, String type) {
@@ -493,9 +490,16 @@ public class StructureCommand {
             String type, Long id, List<StructureInfo> structureInfos,
             DataBase<Long, GameStructureData> gameStructureDatabase,
             int[] newStructuresSaved, Map.Entry<Structure, LongSet> structureEntry,
-            Player playerSource, BlockPos structureCenterPos) {
+            Player playerSource, BlockPos structureCenterPos, boolean includeInResults) {
+        long startChunk = id;
+        id = new StructureIdentity(type, startChunk).resolveId(key -> {
+            GameStructureData stored = gameStructureDatabase.getData(key);
+            return stored == null ? null : new StructureIdentity(stored.getType(), stored.getStartChunk());
+        });
         // Store each structure with its unique ID
-        structureInfos.add(new StructureInfo(structureCenterPos, type, id));
+        if (includeInResults) {
+            structureInfos.add(new StructureInfo(structureCenterPos, type, id));
+        }
 
         // Compute the exact set of chunks covered by each structure piece.
         Set<Long> pieceChunks = collectStructurePieceChunks(structureStart);
@@ -505,7 +509,7 @@ public class StructureCommand {
             boolean isOnClaimedPlot = false;
 
             GameStructureData structureData = new GameStructureData(
-                    id, // Use the Long ID directly
+                    id,
                     getCommonNameForStructure(type), // Use common name for display
                     structureCenterPos, // Center position
                     type, // Original type string
@@ -516,6 +520,12 @@ public class StructureCommand {
                     new BlockPos(structureStart.getBoundingBox().maxX(), structureStart.getBoundingBox().maxY(),
                             structureStart.getBoundingBox().maxZ()),
                     new ArrayList<>(pieceChunks));
+            structureData.setStartChunk(startChunk);
+            if (playerSource != null && !playerSource.isCreative()
+                    && structureStart.getBoundingBox().isInside(playerSource.blockPosition())) {
+                structureData.markAsVisited();
+                refreshStructureClaim(structureData, ModEvents.getChunkDataDatabase(playerSource.level()));
+            }
             gameStructureDatabase.putData(id, structureData);
             gameStructureDatabase.setDirty();
             newStructuresSaved[0]++;
@@ -540,6 +550,11 @@ public class StructureCommand {
             GameStructureData existingData = gameStructureDatabase.getData(id);
             if (existingData != null) {
                 boolean changed = false;
+                if (!existingData.wasVisited() && playerSource != null && !playerSource.isCreative()
+                        && structureStart.getBoundingBox().isInside(playerSource.blockPosition())) {
+                    existingData.markAsVisited();
+                    changed = true;
+                }
 
                 // Backfill bounding box if not stored yet.
                 if (!existingData.hasBoundingBox()) {
@@ -715,7 +730,7 @@ public class StructureCommand {
                         break;
                     case "village":
                         // Skip underground structures (below Y=60) unless they have been visited
-                        if (structureData.getCenterPos().getY() < 60 && !structureData.wasVisited()) {
+                        if (structureData.isUnderground() && !structureData.wasVisited()) {
                             continue;
                         }
 

@@ -162,7 +162,7 @@ public final class GameplayGameTests {
         var server = helper.getLevel().getServer();
         var dispatcher = server.getCommands().getDispatcher();
         for (String command : List.of("show", "managers", "database", "player", "plot", "village",
-                "market", "farmcraft", "tester", "npc", "structures", "zone", "ai", "scan",
+                "market", "farmcraft", "tester", "npc", "structures", "zone", "ai", "scan", "bot",
                 "farmupcraft-legacy")) {
             helper.assertTrue(dispatcher.getRoot().getChild(command) != null, "Missing /" + command);
         }

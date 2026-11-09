@@ -628,7 +628,25 @@ public class StructureManager {
             return false;
         }
 
-        BlockPos chestPos = chestPositions.get(new java.util.Random().nextInt(chestPositions.size()));
+        var center = s.getCenterPos();
+        var candidates = chestPositions.stream().filter(p -> world.isLoaded(p)
+                && world.getBlockEntity(p) instanceof net.minecraft.world.Container)
+                .map(p -> new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(p.getX(), p.getY(), p.getZ())).toList();
+        var chosen = com.falazar.farmupcraft.util.NoteChestPlacement.choose(candidates,
+                new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(center.getX(), center.getY(), center.getZ()), TRAP_RNG);
+        if (chosen == null) {
+            LOGGER.warn("setupSpecialChest: no loaded usable chest for {}", s.getName());
+            return false;
+        }
+        BlockPos selectedPos = new BlockPos(chosen.x(), chosen.y(), chosen.z());
+        if (selectedPos.distSqr(center) > 64) {
+            BlockPos central = placeChestAtStructureCenter(s, world, 64);
+            if (central != null) {
+                selectedPos = central;
+                s.setTotalChestCount(s.getTotalChestCount() + 1);
+            }
+        }
+        final BlockPos chestPos = selectedPos;
         net.minecraft.world.level.block.entity.BlockEntity be = world.getBlockEntity(chestPos);
         if (!(be instanceof net.minecraft.world.Container)) {
             LOGGER.warn("setupSpecialChest: block entity at {} is not a Container", chestPos);
@@ -681,7 +699,12 @@ public class StructureManager {
                                 net.minecraft.network.chat.Component.literal(noteBodySync))));
                 tagSync.put("pages", pagesSync);
                 tagSync.putInt("generation", 0);
-                containerSync.setItem(0, bookSync);
+                int slotSync = com.falazar.farmupcraft.gems.GemWorld.threatNoteSlot(beSync, containerSync);
+                if (slotSync < 0) {
+                    LOGGER.warn("New special chest filled before cached note arrived; preserving player contents");
+                    return;
+                }
+                containerSync.setItem(slotSync, bookSync);
                 beSync.setChanged();
                 world.blockEntityChanged(chestPos);
                 LOGGER.info("setupSpecialChest: cached book written in chest at {}", chestPos);
@@ -768,8 +791,10 @@ public class StructureManager {
                                         "The shadows here keep records better than scribes. They already archived your face." }
                         };
                         int pick = new java.util.Random().nextInt(threats.length);
-                        noteTitle = threats[pick][0];
-                        noteBody = threats[pick][1];
+                        String[] fallback = TRAP_RNG.nextBoolean()
+                                ? com.falazar.farmupcraft.util.StructureNoteFlavor.fallback(TRAP_RNG) : threats[pick];
+                        noteTitle = fallback[0];
+                        noteBody = fallback[1];
                     } else {
                         noteTitle = "A Strange Note";
                         noteBody = aiTextTrimmed;
@@ -813,7 +838,12 @@ public class StructureManager {
                                         net.minecraft.network.chat.Component.literal(noteBody))));
                         tag2.put("pages", pages2);
                         tag2.putInt("generation", 0);
-                        containerLate.setItem(0, book2);
+                        int slotLate = com.falazar.farmupcraft.gems.GemWorld.threatNoteSlot(beLate, containerLate);
+                        if (slotLate < 0) {
+                            LOGGER.warn("New special chest filled before threat note arrived; preserving player contents");
+                            return;
+                        }
+                        containerLate.setItem(slotLate, book2);
                         beLate.setChanged();
                         world.blockEntityChanged(chestPos);
                         LOGGER.info("setupSpecialChest: book written in chest at {}", chestPos);
@@ -825,35 +855,59 @@ public class StructureManager {
     /**
      * Finds solid ground near the structure center and places a chest.
      */
-    private static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world) {
-        BlockPos center = sd.getCenterPos();
-        int searchTop = sd.hasBoundingBox() ? sd.getMaxPos().getY() + 2 : center.getY() + 10;
-        int searchBot = sd.hasBoundingBox() ? sd.getMinPos().getY() : Math.max(center.getY() - 20, 0);
+    static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world) {
+        return placeChestAtStructureCenter(sd, world, Long.MAX_VALUE);
+    }
 
-        for (int dx = -5; dx <= 5; dx++) {
-            for (int dz = -5; dz <= 5; dz++) {
+    private static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world, long maxDistanceSquared) {
+        BlockPos center = sd.getCenterPos();
+        int searchTop = Math.min(world.getMaxBuildHeight() - 2, sd.hasBoundingBox() ? sd.getMaxPos().getY() : center.getY() + 10);
+        int searchBot = Math.max(world.getMinBuildHeight() + 1, sd.hasBoundingBox() ? sd.getMinPos().getY() : center.getY() - 20);
+        var candidates = new ArrayList<com.falazar.farmupcraft.util.NoteChestPlacement.Spot>();
+
+        for (int dx = -16; dx <= 16; dx++) {
+            for (int dz = -16; dz <= 16; dz++) {
                 int cx = center.getX() + dx;
                 int cz = center.getZ() + dz;
+                if (sd.hasBoundingBox() && (cx < sd.getMinPos().getX() || cx > sd.getMaxPos().getX()
+                        || cz < sd.getMinPos().getZ() || cz > sd.getMaxPos().getZ())) continue;
                 for (int y = searchTop; y >= searchBot; y--) {
                     BlockPos candidate = new BlockPos(cx, y, cz);
-                    if (!world.isLoaded(candidate))
+                    if (candidate.distSqr(center) > maxDistanceSquared || !world.isLoaded(candidate))
                         continue;
                     BlockPos below = candidate.below();
                     net.minecraft.world.level.block.state.BlockState belowState = world.getBlockState(below);
                     net.minecraft.world.level.block.state.BlockState atState = world.getBlockState(candidate);
                     net.minecraft.world.level.block.state.BlockState aboveState = world
                             .getBlockState(candidate.above());
-                    if (belowState.isSolidRender(world, below)
-                            && (atState.isAir() || atState.canBeReplaced())
-                            && (aboveState.isAir() || aboveState.canBeReplaced())) {
-                        world.setBlock(candidate, Blocks.CHEST.defaultBlockState(),
-                                net.minecraft.world.level.block.Block.UPDATE_ALL);
-                        return candidate.immutable();
+                    if (belowState.isSolidRender(world, below) && atState.isAir() && aboveState.isAir()) {
+                        boolean accessible = false, adjacentChest = false;
+                        for (var direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                            var access = candidate.relative(direction);
+                            if (!world.isLoaded(access)) continue;
+                            adjacentChest |= world.getBlockState(access).is(Blocks.CHEST);
+                            if (world.getBlockState(access).isAir()
+                                    && world.getBlockState(access.above()).isAir()
+                                    && world.getBlockState(access.below()).isSolidRender(world, access.below())) {
+                                accessible = true;
+                            }
+                        }
+                        if (accessible && !adjacentChest)
+                            candidates.add(new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(cx, y, cz));
                     }
                 }
             }
         }
-        return null;
+        var chosen = com.falazar.farmupcraft.util.NoteChestPlacement.choose(candidates,
+                new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(center.getX(), center.getY(), center.getZ()), TRAP_RNG);
+        if (chosen == null) return null;
+        var pos = new BlockPos(chosen.x(), chosen.y(), chosen.z());
+        if (!world.setBlock(pos, Blocks.CHEST.defaultBlockState(), net.minecraft.world.level.block.Block.UPDATE_ALL)) {
+            LOGGER.warn("Could not place central note chest at {}", pos);
+            return null;
+        }
+        com.falazar.farmupcraft.gems.GemWorld.newRuinChest(world, pos, sd.getId());
+        return pos;
     }
 
     /**

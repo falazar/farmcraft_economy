@@ -82,7 +82,9 @@ public final class WorldScheduler {
         if (activeServer != server) {
             start(server);
         }
+        VillageRouteSurveys.tick(server);
         if (schedule.advanceReminder()) {
+            VillageCommand.refreshVillageCensuses(server);
             checkHardMode(server);
             NpcCommand.tickRetryQueue(server);
             NpcCommand.autoReplenishNotesIfNeeded(server);
@@ -130,12 +132,14 @@ public final class WorldScheduler {
     }
 
     private static void checkHardMode(MinecraftServer server) {
-        var players = server.getPlayerList().getPlayers();
+        var players = server.getPlayerList().getPlayers().stream()
+                .filter(player -> com.falazar.farmupcraft.util.DifficultyNoticePlayers.includes(player.getName().getString()))
+                .toList();
         if (players.size() < 2 || server.overworld().getDifficulty() != Difficulty.HARD) {
             return;
         }
         for (var player : players) {
-            if (shouldRemindNormalMode(players.size(), server.overworld().getDifficulty(),
+            if (!player.isCreative() && shouldRemindNormalMode(players.size(), server.overworld().getDifficulty(),
                     player.createCommandSourceStack().permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))) {
                 player.sendSystemMessage(Component.literal(
                         "Reminder: HARD mode is on with multiple players online. Consider /difficulty normal to make it easier for the kids.")
@@ -161,6 +165,7 @@ public final class WorldScheduler {
     @SubscribeEvent(priority = EventPriority.HIGH)
     public static void serverStopping(ServerStoppingEvent event) {
         MinecraftServer server = event.getServer();
+        VillageRouteSurveys.stop(server);
         // Export before normal-priority database cleanup; final level saves must not recreate closed caches.
         if (server.overworld() != null) {
             exportDatabases(server.overworld());

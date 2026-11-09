@@ -2,10 +2,12 @@ package com.falazar.farmupcraft.data;
 
 import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
+import com.falazar.farmupcraft.util.FUCTags;
 import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.Identifier;
+import net.minecraft.tags.BiomeTags;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
@@ -42,28 +44,31 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener<
         BiomeRulesManager manager = BiomeRulesManager.get(level);
         var biomes = level.registryAccess().lookupOrThrow(Registries.BIOME);
 
-        if (!manager.hasRules()) {
-            for (BiomeRulesData data : biomeRules.values()) {
-                for (var biome : biomes.getTagOrEmpty(data.getBiome())) {
-                    boolean filtered = data.getBiomeFilter().map(biome::is).orElse(false);
-                    if (!manager.containsBiome(biome) && !filtered) {
-                        manager.setBiomeRules(biome, new BiomeRulesInstance(data));
-                    }
+        int added = 0;
+        for (var entry : biomeRules.entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            BiomeRulesData data = entry.getValue();
+            for (var biome : biomes.listElements().toList()) {
+                boolean matches = biome.is(data.getBiome());
+                if (data.getBiome().equals(FUCTags.BIOMES_O_PLENTY_OVERWORLD_TAG)) {
+                    matches = biome.unwrapKey().orElseThrow().identifier().getNamespace().equals("biomesoplenty")
+                            && biome.is(BiomeTags.IS_OVERWORLD)
+                            && !biome.is(BiomeTags.IS_NETHER) && !biome.is(BiomeTags.IS_END);
+                }
+                boolean filtered = data.getBiomeFilter().map(biome::is).orElse(false);
+                if (matches && !manager.containsBiome(biome) && !filtered) {
+                    manager.setBiomeRules(biome, new BiomeRulesInstance(data));
+                    added++;
                 }
             }
-            LOGGER.info("Created a total of {} biomes with rules", manager.getBiomeKeys().size());
         }
+        if (added > 0) LOGGER.info("Added crop rules for {} new biomes; existing selections preserved", added);
 
-        if (!manager.hasItems()) {
-            for (var biome : manager.getBiomeKeys()) {
-                var instance = manager.getBiomeRules(biome);
-                for (var item : instance.getCropsWithRandomId(level, biomes.getId(biome.value()))) {
-                    manager.setItemBiomeList(item, biome);
-                }
-            }
-            // Lazy crop selection mutates the saved rule instances, including for empty item lists.
-            if (manager.hasRules()) manager.setDirty();
+        for (var biome : manager.getBiomeKeys()) {
+            var instance = manager.getBiomeRules(biome);
+            if (instance.shouldSave()) instance.getCropsForBiome(level,
+                    biome.unwrapKey().orElseThrow().identifier().toString());
         }
+        manager.rebuildItemIndex();
     }
 
     @Override

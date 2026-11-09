@@ -38,6 +38,7 @@ public class WorldScheduler {
 
     private static int tickCounter = 0;
     private static int fiveMinCounter = 0;
+    private static MinecraftServer routesStoppingServer;
 
     /** Returns ticks remaining until the next hourly run. */
     public static int getTicksUntilNextRun() {
@@ -48,6 +49,8 @@ public class WorldScheduler {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END)
             return;
+        MinecraftServer routeServer = ServerLifecycleHooks.getCurrentServer();
+        if (routeServer != null && routeServer != routesStoppingServer) VillageRouteSurveys.tick(routeServer);
 
         // 5-minute hard mode reminder.
         fiveMinCounter++;
@@ -57,6 +60,7 @@ public class WorldScheduler {
             // Retry one pending NPC profile generation per 5-minute window.
             MinecraftServer retryServer = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
             if (retryServer != null) {
+                VillageCommand.refreshVillageCensuses(retryServer);
                 com.falazar.farmupcraft.command.NpcCommand.tickRetryQueue(retryServer);
                 com.falazar.farmupcraft.command.NpcCommand.autoReplenishNotesIfNeeded(retryServer);
             }
@@ -69,6 +73,17 @@ public class WorldScheduler {
 
         LOGGER.info("WorldScheduler: hourly tick fired.");
         runHourlyChecks();
+    }
+
+    @SubscribeEvent
+    public static void stopRouteSurveys(net.minecraftforge.event.server.ServerStoppingEvent event) {
+        routesStoppingServer = event.getServer();
+        VillageRouteSurveys.stop(event.getServer());
+    }
+
+    @SubscribeEvent
+    public static void clearRouteSurveyServer(net.minecraftforge.event.server.ServerStoppedEvent event) {
+        if (routesStoppingServer == event.getServer()) routesStoppingServer = null;
     }
 
     public static void runHourlyChecks() {
@@ -121,7 +136,9 @@ public class WorldScheduler {
         if (server == null)
             return;
 
-        List<ServerPlayer> players = server.getPlayerList().getPlayers();
+        List<ServerPlayer> players = server.getPlayerList().getPlayers().stream()
+                .filter(player -> com.falazar.farmupcraft.util.DifficultyNoticePlayers.includes(player.getName().getString()))
+                .toList();
         if (players.size() < 2)
             return; // Only fire when multiple players are online.
 
@@ -130,7 +147,7 @@ public class WorldScheduler {
             return;
 
         for (ServerPlayer player : players) {
-            if (player.createCommandSourceStack().hasPermission(2)) {
+            if (!player.isCreative() && player.createCommandSourceStack().hasPermission(2)) {
                 player.displayClientMessage(Component.literal(
                         "Reminder: HARD mode is on with multiple players online. Consider /difficulty normal to make it easier for the kids.")
                         .withStyle(ChatFormatting.YELLOW), false);

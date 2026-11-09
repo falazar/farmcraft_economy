@@ -75,6 +75,10 @@ public class ChunkManager {
     private static final long DEATH_WINDOW_MS = 3_000L;
     private static final ConcurrentLinkedDeque<RecentDeath> LYCANITES_DEATH_POS = new ConcurrentLinkedDeque<>();
     private static final Map<UUID, Long> VILLAGE_CENTER_SHOWN_AT = new HashMap<>();
+    private static final com.falazar.farmupcraft.util.StructureDiscoveryCooldown STRUCTURE_DISCOVERY_COOLDOWN =
+            new com.falazar.farmupcraft.util.StructureDiscoveryCooldown();
+    private static final com.falazar.farmupcraft.util.PastureEntryCooldown PASTURE_ENTRY_COOLDOWN =
+            new com.falazar.farmupcraft.util.PastureEntryCooldown();
     private static final long VILLAGE_CENTER_COOLDOWN_MS = 60 * 60 * 1000L;
     private static final Map<UUID, Long> WILDERNESS_SCAN_LAST_AT = new HashMap<>();
     private static final long WILDERNESS_SCAN_COOLDOWN_MS = 30_000L;
@@ -96,6 +100,8 @@ public class ChunkManager {
     /** Called at server stop so cooldowns and drop interception cannot outlive a world. */
     public static void clearTransientState() {
         VILLAGE_CENTER_SHOWN_AT.clear();
+        STRUCTURE_DISCOVERY_COOLDOWN.clear();
+        PASTURE_ENTRY_COOLDOWN.clear();
         WILDERNESS_SCAN_LAST_AT.clear();
         LYCANITES_DEATH_POS.clear();
     }
@@ -117,6 +123,7 @@ public class ChunkManager {
             if (!(event.getEntity() instanceof ServerPlayer player)) return;
             SectionPos oldPos = event.getOldPos();
             SectionPos newPos = event.getNewPos();
+            if (!newPos.chunk().equals(oldPos.chunk())) notifyPastureEntry(player, newPos.chunk());
             String previous = findVillageByChunkPos(oldPos.chunk(), player.level());
             String current = findVillageByChunkPos(newPos.chunk(), player.level());
             checkForStructuresInSection(player, newPos);
@@ -145,6 +152,20 @@ public class ChunkManager {
         } catch (Throwable ex) {
             LOGGER.error("Error in onPlayerEnterChunk: " + ex.getMessage(), ex);
         }
+    }
+
+    private static void notifyPastureEntry(ServerPlayer player, ChunkPos chunk) {
+        var level = player.level();
+        var data = ModEvents.getChunkDataDatabase(level).getData(chunk.pack());
+        if (data == null || !data.isActivePasture(player.blockPosition().getY())) return;
+        if (!PASTURE_ENTRY_COOLDOWN.shouldShow(player.getUUID(), level.dimension().identifier().toString(),
+                chunk.pack(), System.nanoTime() / 1_000_000L)) return;
+        var pos = new BlockPos(chunk.getMinBlockX(), data.getBoughtY(), chunk.getMinBlockZ());
+        int count = AnimalsManager.countAnimalsInChunk(level, pos);
+        boolean full = count >= AnimalsManager.MAX_ANIMALS_PER_PASTURE;
+        player.sendSystemMessage(Component.literal("Pasture: " + count + "/"
+                + AnimalsManager.MAX_ANIMALS_PER_PASTURE + " animals" + (full ? " - FULL (at maximum)." : "."))
+                .withStyle(full ? ChatFormatting.RED : ChatFormatting.GREEN));
     }
 
     private static void checkForStructuresInSection(Player player, SectionPos sectionPos) {
@@ -176,10 +197,14 @@ public class ChunkManager {
             var structures = ModEvents.getGameStructureDatabase(level);
             for (Long id : structures.getKeys()) {
                 GameStructureData data = structures.getData(id);
-                if (data == null || !SectionPos.of(data.getCenterPos()).equals(sectionPos)) continue;
-                player.sendSystemMessage(Component.literal("You discovered: " + data.getName()
+                if (data == null || !data.intersectsSection(sectionPos)) continue;
+                if (STRUCTURE_DISCOVERY_COOLDOWN.shouldShow(player.getUUID(),
+                        level.dimension().identifier().toString(), id,
+                        entered != null && entered.getVillageId() != null, System.nanoTime() / 1_000_000L)) {
+                    player.sendSystemMessage(Component.literal("You discovered: " + data.getName()
                         + (data.isOnClaimedPlot() ? " (claimed)" : "")
                         + (data.wasVisited() ? " (visited)" : " (new!)")));
+                }
                 if (!data.wasVisited() && !player.isCreative()) {
                     data.setWasVisited(true);
                     StructureCommand.refreshStructureClaim(data, ModEvents.getChunkDataDatabase(level));
@@ -217,8 +242,25 @@ public class ChunkManager {
         return false;
     }
 
-    static int protectionMinY(ChunkData data) {
+    public static int protectionMinY(ChunkData data) {
         return data.getBoughtY() > 0 ? data.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+    }
+
+    public static boolean isMarketSign(Level level, BlockPos pos) {
+        if (!(level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.SignBlockEntity sign)) {
+            return false;
+        }
+        for (boolean front : new boolean[]{true, false}) {
+            var signText = sign.getText(front);
+            var lines = new java.util.ArrayList<String>(4);
+            for (int i = 0; i < 4; i++) {
+                lines.add(signText.getMessage(i, false).getString());
+            }
+            if (com.falazar.farmupcraft.util.MarketSignRules.isMarketSignSide(lines)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @SubscribeEvent
@@ -226,6 +268,16 @@ public class ChunkManager {
         if (event.getLevel().isClientSide()) return;
         Player player = event.getEntity();
         BlockPos pos = event.getPos();
+        if (event.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND
+                && !player.isShiftKeyDown()
+                && player instanceof ServerPlayer serverPlayer
+                && isMarketSign(event.getLevel(), pos)) {
+            event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            com.falazar.farmupcraft.command.MarketCommand.showMarketScreen(
+                    serverPlayer.createCommandSourceStack(), "general", 10);
+            return;
+        }
         var database = ModEvents.getChunkDataDatabase(event.getLevel());
         ChunkPos chunk = ChunkPos.containing(pos);
         ChunkData data = database.getData(chunk.pack());

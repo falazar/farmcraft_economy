@@ -200,11 +200,18 @@ class BiomeRulesPersistenceTest {
     void malformedAndUnknownRegistryEntriesReportErrorsInsteadOfSilentDefaults(MinecraftServer server) {
         var ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE);
         JsonObject legacy = NbtOps.INSTANCE.convertTo(JsonOps.INSTANCE, legacyPayload()).getAsJsonObject();
-        for (String invalid : List.of("minecraft:not_a_real_biome", "INVALID ID")) {
+        for (String invalid : List.of("INVALID ID")) {
             JsonObject broken = legacy.deepCopy();
             broken.getAsJsonArray("biome_rules").get(0).getAsJsonObject().addProperty("biome", invalid);
             assertTrue(BiomeRulesManager.CODEC.parse(ops, broken).error().isPresent(), invalid);
         }
+        JsonObject removedBiome = legacy.deepCopy();
+        removedBiome.getAsJsonArray("biome_rules").get(0).getAsJsonObject()
+                .addProperty("biome", "missing:removed_biome");
+        BiomeRulesManager retained = BiomeRulesManager.CODEC.parse(ops, removedBiome).getOrThrow();
+        assertFalse(retained.hasRules());
+        assertEquals("missing:removed_biome", BiomeRulesManager.CODEC.encodeStart(ops, retained).getOrThrow()
+                .getAsJsonObject().getAsJsonArray("biome_rules").get(0).getAsJsonObject().get("biome").getAsString());
         JsonObject unknownItem = legacy.deepCopy();
         unknownItem.getAsJsonArray("item_to_biome_list").get(0).getAsJsonObject()
                 .addProperty("item", "farmupcraft:not_a_real_item");

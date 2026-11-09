@@ -29,6 +29,7 @@ class TreeManagerTest {
     void restrictedSaplingsUseExactBiomeIdentifiersIncludingLoadedBopBiomes(MinecraftServer server) {
         Map<String, String> restrictions = Map.of(
                 "dark_oak", "minecraft:dark_forest",
+                "pale_oak", "minecraft:pale_garden",
                 "redwood", "biomesoplenty:redwood_forest",
                 "magic", "biomesoplenty:mystic_grove",
                 "cherry", "minecraft:cherry_grove",
@@ -95,6 +96,24 @@ class TreeManagerTest {
         Identifier fruitSapling = Identifier.parse("pamhc2trees:apple_sapling");
         assertTrue(BuiltInRegistries.ITEM.containsKey(fruitSapling));
         assertTrue(BuiltInRegistries.ITEM.getValue(fruitSapling).getDescriptionId().contains("pamhc2trees"));
+    }
+
+    @Test
+    void mangrovePropagulesAndOrdinarySaplingsUseThePlantingGate(MinecraftServer server) {
+        ItemStack propagule = new ItemStack(Items.MANGROVE_PROPAGULE);
+        assertFalse(propagule.getItem().getDescriptionId().contains("sapling"));
+        assertTrue(TreeManager.isSaplingItem(propagule));
+        assertTrue(TreeManager.isSaplingItem(new ItemStack(Items.OAK_SAPLING)));
+        assertTrue(TreeManager.isSaplingItem(new ItemStack(Items.PALE_OAK_SAPLING)));
+        assertFalse(TreeManager.isSaplingItem(new ItemStack(Items.APPLE)));
+        assertTrue(TreeManager.isSaplingBiomeAllowed("mangrove_propagule",
+                Identifier.parse("minecraft:plains")));
+        boolean fruitSapling = propagule.getItem().getDescriptionId().contains("pamhc2trees");
+        assertFalse(fruitSapling);
+        assertEquals(10, TreeManager.plantingSuccessRate(false, fruitSapling, 0));
+        assertEquals(65, TreeManager.plantingSuccessRate(true, fruitSapling, 0));
+        assertEquals(20, TreeManager.plantingSuccessRate(false, fruitSapling, 20));
+        assertEquals(75, TreeManager.plantingSuccessRate(true, fruitSapling, 20));
     }
 
     @Test

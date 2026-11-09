@@ -161,6 +161,11 @@ public class ChunkData {
         return boughtY;
     }
 
+    public boolean isActivePasture(int blockY) {
+        return "pasture".equalsIgnoreCase(type)
+                && com.falazar.farmupcraft.util.PastureRange.contains(boughtY, blockY);
+    }
+
     public void setBoughtY(int boughtY) {
         this.boughtY = boughtY;
     }

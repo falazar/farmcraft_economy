@@ -8,6 +8,12 @@ layout.buildDirectory = rootProject.layout.buildDirectory.dir('common')
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
+tasks.named('processResources', ProcessResources).configure {
+    from(rootProject.projectDir.parentFile) {
+        include 'gem_biome_config.json'
+    }
+}
+
 repositories {
     mavenCentral()
 }

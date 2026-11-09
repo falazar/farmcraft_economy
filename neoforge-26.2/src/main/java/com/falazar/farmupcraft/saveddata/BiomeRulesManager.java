@@ -41,19 +41,19 @@ public class BiomeRulesManager extends SavedData {
     public static final String DATA_NAME = FarmUpCraftNeoForge.MOD_ID + "_biome_rules_manager";
 
     private static final Codec<Holder<Biome>> BIOME_CODEC = RegistryFixedCodec.create(Registries.BIOME);
-    private static final Codec<Holder<Biome>> BIOME_ENTRY_CODEC = BIOME_CODEC.fieldOf("biome").codec();
+    private static final Codec<Identifier> BIOME_ENTRY_CODEC = Identifier.CODEC.fieldOf("biome").codec();
     private static final Codec<BiomeRulesInstance> RULES_CODEC =
             BiomeRulesInstance.CODEC.fieldOf("rules_instance").codec();
 
-    private record BiomeEntry(Holder<Biome> biome, BiomeRulesInstance rules) {
+    private record BiomeEntry(Identifier biome, BiomeRulesInstance rules) {
         private static final Codec<BiomeEntry> CODEC = RecordCodecBuilder.create(instance ->
                 instance.group(
-                        BIOME_CODEC.fieldOf("biome").forGetter(BiomeEntry::biome),
+                        Identifier.CODEC.fieldOf("biome").forGetter(BiomeEntry::biome),
                         RULES_CODEC.fieldOf("rules").forGetter(BiomeEntry::rules)
                 ).apply(instance, BiomeEntry::new));
     }
 
-    private record ItemEntry(Item item, List<Holder<Biome>> biomes) {
+    private record ItemEntry(Item item, List<Identifier> biomes) {
         private static final Codec<ItemEntry> CODEC = RecordCodecBuilder.create(instance ->
                 instance.group(
                         BuiltInRegistries.ITEM.byNameCodec().fieldOf("item").forGetter(ItemEntry::item),
@@ -61,21 +61,26 @@ public class BiomeRulesManager extends SavedData {
                 ).apply(instance, ItemEntry::new));
     }
 
-    private static final Codec<BiomeRulesManager> PAYLOAD_CODEC = RecordCodecBuilder.create(instance ->
+    private record Payload(List<BiomeEntry> biomes, List<ItemEntry> items) {}
+
+    private static final Codec<Payload> PAYLOAD_CODEC = RecordCodecBuilder.create(instance ->
             instance.group(
-                    BiomeEntry.CODEC.listOf().fieldOf("biome_rules").forGetter(BiomeRulesManager::biomeEntries),
-                    ItemEntry.CODEC.listOf().fieldOf("item_to_biome_list").forGetter(BiomeRulesManager::itemEntries)
-            ).apply(instance, BiomeRulesManager::new));
+                    BiomeEntry.CODEC.listOf().fieldOf("biome_rules").forGetter(Payload::biomes),
+                    ItemEntry.CODEC.listOf().fieldOf("item_to_biome_list").forGetter(Payload::items)
+            ).apply(instance, Payload::new));
 
     public static final Codec<BiomeRulesManager> CODEC = new Codec<>() {
         @Override
         public <T> DataResult<Pair<BiomeRulesManager, T>> decode(DynamicOps<T> ops, T input) {
-            return PAYLOAD_CODEC.decode(ops, input).mapError(BiomeRulesManager::logCodecError);
+            return PAYLOAD_CODEC.decode(ops, input)
+                    .map(pair -> Pair.of(new BiomeRulesManager(pair.getFirst(), ops), pair.getSecond()))
+                    .mapError(BiomeRulesManager::logCodecError);
         }
 
         @Override
         public <T> DataResult<T> encode(BiomeRulesManager input, DynamicOps<T> ops, T prefix) {
-            return PAYLOAD_CODEC.encode(input, ops, prefix).mapError(BiomeRulesManager::logCodecError);
+            return PAYLOAD_CODEC.encode(new Payload(input.biomeEntries(), input.itemEntries()), ops, prefix)
+                    .mapError(BiomeRulesManager::logCodecError);
         }
     };
 
@@ -93,12 +98,34 @@ public class BiomeRulesManager extends SavedData {
             Collections.synchronizedMap(new WeakHashMap<>());
     private final Map<Holder<Biome>, BiomeRulesInstance> biomeRules = new ConcurrentHashMap<>();
     private final Map<Item, List<Holder<Biome>>> itemToBiomeList = new ConcurrentHashMap<>();
+    private final Map<Identifier, BiomeRulesInstance> unavailableBiomeRules = new ConcurrentHashMap<>();
 
     public BiomeRulesManager() {}
 
-    private BiomeRulesManager(List<BiomeEntry> biomes, List<ItemEntry> items) {
-        biomes.forEach(entry -> putBiomeRules(entry.biome(), entry.rules()));
-        items.forEach(entry -> itemToBiomeList.put(entry.item(), new ArrayList<>(entry.biomes())));
+    private <T> BiomeRulesManager(Payload payload, DynamicOps<T> ops) {
+        for (BiomeEntry entry : payload.biomes()) {
+            var resolved = BIOME_CODEC.parse(ops, ops.createString(entry.biome().toString()));
+            if (resolved.result().isPresent()) {
+                putBiomeRules(resolved.result().orElseThrow(), entry.rules());
+            } else {
+                LOGGER.warn("Biome {} is unavailable; retaining its saved crop selections for a future restore: {}",
+                        entry.biome(), resolved.error().orElseThrow().message());
+                unavailableBiomeRules.put(entry.biome(), entry.rules());
+            }
+        }
+        for (ItemEntry entry : payload.items()) {
+            List<Holder<Biome>> biomes = new ArrayList<>();
+            for (Identifier id : entry.biomes()) {
+                var resolved = BIOME_CODEC.parse(ops, ops.createString(id.toString()));
+                if (resolved.result().isPresent()) {
+                    biomes.add(resolved.result().orElseThrow());
+                } else {
+                    LOGGER.warn("Excluding unavailable biome {} from crop lookup for {}", id,
+                            BuiltInRegistries.ITEM.getKey(entry.item()));
+                }
+            }
+            itemToBiomeList.put(entry.item(), biomes);
+        }
     }
 
     public static BiomeRulesManager get(Level level) {
@@ -110,14 +137,17 @@ public class BiomeRulesManager extends SavedData {
     }
 
     private List<BiomeEntry> biomeEntries() {
-        return biomeRules.entrySet().stream()
+        List<BiomeEntry> entries = new ArrayList<>(biomeRules.entrySet().stream()
                 .filter(entry -> entry.getValue().shouldSave())
-                .map(entry -> new BiomeEntry(entry.getKey(), entry.getValue())).toList();
+                .map(entry -> new BiomeEntry(entry.getKey().unwrapKey().orElseThrow().identifier(), entry.getValue())).toList());
+        unavailableBiomeRules.forEach((id, rules) -> entries.add(new BiomeEntry(id, rules)));
+        return entries;
     }
 
     private List<ItemEntry> itemEntries() {
         return itemToBiomeList.entrySet().stream()
-                .map(entry -> new ItemEntry(entry.getKey(), entry.getValue())).toList();
+                .map(entry -> new ItemEntry(entry.getKey(), entry.getValue().stream()
+                        .map(biome -> biome.unwrapKey().orElseThrow().identifier()).toList())).toList();
     }
 
     public boolean hasRules() {
@@ -127,6 +157,7 @@ public class BiomeRulesManager extends SavedData {
     public void clear() {
         biomeRules.clear();
         itemToBiomeList.clear();
+        unavailableBiomeRules.clear();
         setDirty();
     }
 
@@ -137,7 +168,7 @@ public class BiomeRulesManager extends SavedData {
     }
 
     public boolean containsBiome(Holder<Biome> biome) {
-        return biomeRules.containsKey(biome);
+        return biomeRules.containsKey(biome) && biomeRules.get(biome).shouldSave();
     }
 
     public BiomeRulesInstance getBiomeRules(Holder<Biome> biome) {
@@ -156,8 +187,26 @@ public class BiomeRulesManager extends SavedData {
     }
 
     public void setBiomeRules(Holder<Biome> biome, BiomeRulesInstance rules) {
-        putBiomeRules(biome, rules);
+        var restored = unavailableBiomeRules.remove(biome.unwrapKey().orElseThrow().identifier());
+        putBiomeRules(biome, restored == null ? rules : restored);
         setDirty();
+    }
+
+    public void rebuildItemIndex() {
+        Map<Item, List<Holder<Biome>>> rebuilt = new java.util.HashMap<>();
+        biomeRules.forEach((biome, rules) -> {
+            if (rules.shouldSave()) {
+                for (Item item : rules.getCrops(null)) {
+                    var biomes = rebuilt.computeIfAbsent(item, ignored -> new ArrayList<>());
+                    if (!biomes.contains(biome)) biomes.add(biome);
+                }
+            }
+        });
+        if (!itemToBiomeList.equals(rebuilt)) {
+            itemToBiomeList.clear();
+            itemToBiomeList.putAll(rebuilt);
+            setDirty();
+        }
     }
 
     public Collection<BiomeRulesInstance> getBiomeRules() {

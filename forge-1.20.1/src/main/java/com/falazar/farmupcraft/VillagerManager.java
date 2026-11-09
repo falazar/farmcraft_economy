@@ -121,6 +121,7 @@ public class VillagerManager {
             return;
 
         // Daily cache clear
+        VillagerHomeSigns.tick(villager);
         LocalDate today = LocalDate.now();
         if (!today.equals(lastCacheClearDate)) {
             STUCK_CACHE.clear();

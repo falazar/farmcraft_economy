@@ -417,6 +417,7 @@ minecraft:acacia_sapling
 minecraft:acacia_stairs
 minecraft:acacia_trapdoor
 minecraft:acacia_wood
+minecraft:bamboo_planks
 minecraft:birch_door
 minecraft:birch_fence
 minecraft:birch_fence_gate
@@ -427,6 +428,8 @@ minecraft:birch_sapling
 minecraft:birch_stairs
 minecraft:birch_trapdoor
 minecraft:birch_wood
+minecraft:cherry_boat
+minecraft:cherry_chest_boat
 minecraft:cherry_door
 minecraft:cherry_fence
 minecraft:cherry_fence_gate
@@ -458,6 +461,8 @@ minecraft:jungle_sapling
 minecraft:jungle_stairs
 minecraft:jungle_trapdoor
 minecraft:jungle_wood
+minecraft:mangrove_boat
+minecraft:mangrove_chest_boat
 minecraft:mangrove_door
 minecraft:mangrove_fence
 minecraft:mangrove_fence_gate
@@ -480,6 +485,16 @@ minecraft:oak_sapling
 minecraft:oak_stairs
 minecraft:oak_trapdoor
 minecraft:oak_wood
+minecraft:pale_oak_door
+minecraft:pale_oak_fence
+minecraft:pale_oak_fence_gate
+minecraft:pale_oak_leaves
+minecraft:pale_oak_log
+minecraft:pale_oak_planks
+minecraft:pale_oak_sapling
+minecraft:pale_oak_stairs
+minecraft:pale_oak_trapdoor
+minecraft:pale_oak_wood
 minecraft:spruce_door
 minecraft:spruce_fence
 minecraft:spruce_fence_gate
@@ -504,6 +519,8 @@ minecraft:stripped_mangrove_log
 minecraft:stripped_mangrove_wood
 minecraft:stripped_oak_log
 minecraft:stripped_oak_wood
+minecraft:stripped_pale_oak_log
+minecraft:stripped_pale_oak_wood
 minecraft:stripped_spruce_log
 minecraft:stripped_spruce_wood
 valhelsia_structures:acacia_post

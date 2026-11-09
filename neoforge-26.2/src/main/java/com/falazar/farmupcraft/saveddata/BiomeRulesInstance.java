@@ -63,6 +63,14 @@ public class BiomeRulesInstance {
         return randomCrops;
     }
 
+    public List<Item> getCropsForBiome(ServerLevel level, String biomeId) {
+        if (randomCrops.isEmpty()) {
+            randomCrops = new ArrayList<>(rulesData.getCropRules().getCropItems(level, biomeId));
+            onChanged.run();
+        }
+        return randomCrops;
+    }
+
     public boolean biomeHasCrops(ItemStack itemStack) {
         return randomCrops.contains(itemStack.getItem());
     }

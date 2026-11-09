@@ -15,7 +15,7 @@ class CommandEventsTest {
     void allFourteenOriginalCommandRootsRegisterOnTheRealDispatcher(MinecraftServer server) {
         var root = server.getCommands().getDispatcher().getRoot();
         for (String command : List.of("show", "managers", "database", "player", "plot", "village",
-                "market", "farmcraft", "tester", "npc", "structures", "zone", "ai", "scan")) {
+                "market", "farmcraft", "tester", "npc", "structures", "zone", "ai", "scan", "bot")) {
             assertNotNull(root.getChild(command), command);
         }
     }

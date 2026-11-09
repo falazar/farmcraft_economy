@@ -6,7 +6,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.Identifier;
 
 public record AddJMWaypointPacket(int x, int y, int z, String name, String dimId,
-                                  boolean persistent, int color) implements CustomPacketPayload {
+                                  boolean persistent, int color, boolean openMap) implements CustomPacketPayload {
     public static final Type<AddJMWaypointPacket> TYPE =
             new Type<>(Identifier.fromNamespaceAndPath("farmupcraft", "add_jm_waypoint"));
     public static final StreamCodec<FriendlyByteBuf, AddJMWaypointPacket> STREAM_CODEC =
@@ -14,6 +14,10 @@ public record AddJMWaypointPacket(int x, int y, int z, String name, String dimId
 
     public AddJMWaypointPacket(int x, int y, int z, String name, String dimId) {
         this(x, y, z, name, dimId, true, 0xFFD700);
+    }
+
+    public AddJMWaypointPacket(int x, int y, int z, String name, String dimId, boolean persistent, int color) {
+        this(x, y, z, name, dimId, persistent, color, false);
     }
 
     public AddJMWaypointPacket {
@@ -33,7 +37,7 @@ public record AddJMWaypointPacket(int x, int y, int z, String name, String dimId
         this(buffer.readInt(), buffer.readInt(), buffer.readInt(),
                 buffer.readUtf(WaypointPayloadValidation.MAX_NAME_LENGTH),
                 buffer.readUtf(WaypointPayloadValidation.MAX_DIMENSION_LENGTH),
-                buffer.readBoolean(), buffer.readInt());
+                buffer.readBoolean(), buffer.readInt(), buffer.isReadable() && buffer.readBoolean());
     }
 
     public void toBytes(FriendlyByteBuf buffer) {
@@ -44,6 +48,7 @@ public record AddJMWaypointPacket(int x, int y, int z, String name, String dimId
         buffer.writeUtf(dimId, WaypointPayloadValidation.MAX_DIMENSION_LENGTH);
         buffer.writeBoolean(persistent);
         buffer.writeInt(color);
+        buffer.writeBoolean(openMap);
     }
 
     @Override

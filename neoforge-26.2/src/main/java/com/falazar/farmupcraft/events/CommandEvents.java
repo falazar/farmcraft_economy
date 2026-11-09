@@ -30,6 +30,7 @@ public final class CommandEvents {
         ZoneCommand.register(dispatcher);
         AiCommand.register(dispatcher);
         ScanCommand.register(dispatcher);
+        BotCommand.register(dispatcher);
         LegacySavedDataCommand.register(dispatcher);
     }
 }

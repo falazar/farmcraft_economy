@@ -18,10 +18,33 @@ class WaypointPayloadTest {
         var defaults = new AddJMWaypointPacket(-31, 72, 400, "Gold field", "minecraft:overworld");
         assertEquals(defaults, roundTrip(AddJMWaypointPacket.STREAM_CODEC, defaults));
         assertTrue(defaults.persistent());
+        assertFalse(defaults.openMap());
         assertEquals(0xFFD700, defaults.color());
         assertEquals("farmupcraft:add_jm_waypoint", defaults.type().id().toString());
         var custom = new AddJMWaypointPacket(1, -64, 2, "Custom \u2605", "farmupcraft:other", false, 0x123456);
         assertEquals(custom, roundTrip(AddJMWaypointPacket.STREAM_CODEC, custom));
+        var structure = new AddJMWaypointPacket(1, 64, 2, "village mediterranean",
+                "minecraft:overworld", true, 0x00FF00, true);
+        var decoded = roundTrip(AddJMWaypointPacket.STREAM_CODEC, structure);
+        assertEquals(0x00FF00, decoded.color());
+        assertTrue(decoded.persistent());
+        assertTrue(decoded.openMap());
+    }
+
+    @Test
+    void legacyWaypointPayloadDoesNotRequestOpeningTheMap() {
+        var buffer = new FriendlyByteBuf(Unpooled.buffer());
+        try {
+            buffer.writeInt(12).writeInt(64).writeInt(-30);
+            buffer.writeUtf("Legacy");
+            buffer.writeUtf("minecraft:overworld");
+            buffer.writeBoolean(true).writeInt(0xFFD700);
+            var decoded = AddJMWaypointPacket.STREAM_CODEC.decode(buffer);
+            assertFalse(decoded.openMap());
+            assertFalse(buffer.isReadable());
+        } finally {
+            buffer.release();
+        }
     }
 
     @Test

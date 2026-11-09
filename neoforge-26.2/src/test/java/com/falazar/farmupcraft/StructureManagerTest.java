@@ -147,4 +147,5 @@ class StructureManagerTest {
         assertTrue(StructureManager.isFailedNote("valid text", new java.util.concurrent.TimeoutException()));
         assertFalse(StructureManager.isFailedNote("  You trespass upon my realm.  ", null));
     }
+
 }

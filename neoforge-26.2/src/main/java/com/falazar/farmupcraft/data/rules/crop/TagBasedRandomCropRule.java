@@ -52,6 +52,15 @@ public class TagBasedRandomCropRule implements CropRules {
 
     @Override
     public List<Item> getCropItems(ServerLevel level, int id) {
+        return getCropItems(level, id, null);
+    }
+
+    @Override
+    public List<Item> getCropItems(ServerLevel level, String biomeId) {
+        return getCropItems(level, 0, biomeId);
+    }
+
+    private List<Item> getCropItems(ServerLevel level, int id, String biomeId) {
         if (items.isEmpty()) {
             level.registryAccess().lookup(Registries.ITEM).ifPresent(reg -> {
                 for (Holder<Item> itemHolder : reg.getTagOrEmpty(getCropTag())) {
@@ -59,7 +68,11 @@ public class TagBasedRandomCropRule implements CropRules {
                 }
             });
         }
-        List<Item> randomList = selectCrops(items, level.getSeed(), id, randomCropCount);
+        List<Item> randomList = biomeId == null
+                ? selectCrops(items, level.getSeed(), id, randomCropCount)
+                : com.falazar.farmupcraft.util.StableBiomeCrops.select(items,
+                        item -> BuiltInRegistries.ITEM.getKey(item).toString(),
+                        level.getSeed(), biomeId, randomCropCount);
 
         if (ModList.get().isLoaded("pamhc2crops")) {
             List<Item> additionalItems = new ArrayList<>();

@@ -55,7 +55,7 @@ public final class EggLayingGameTests {
                     cleanup.forEach(Entity::discard);
                     cleanup.clear();
                     if (plot.isEmpty()) plots.removeDataBatch(List.of(key));
-                    else plots.putData(key, new ChunkData(plot, -1, UUID.randomUUID()));
+                    else plots.putData(key, new ChunkData(plot, -1, UUID.randomUUID(), null, List.of(), pos.getY()));
                     var bird = (Animal) type.create(level, EntitySpawnReason.TRIGGERED);
                     helper.assertTrue(bird != null, "Create laying bird");
                     cleanup.add(bird);
@@ -74,7 +74,7 @@ public final class EggLayingGameTests {
                             "Allowed and blocked attempts must reset the normal egg interval");
                     if (!allowed) {
                         // Moving a due bird into a pasture must allow laying again.
-                        plots.putData(key, new ChunkData("pasture", -1, UUID.randomUUID()));
+                        plots.putData(key, new ChunkData("pasture", -1, UUID.randomUUID(), null, List.of(), pos.getY()));
                         timer.setInt(bird, 1);
                         bird.aiStep();
                         var movedEggs = level.getEntitiesOfClass(ItemEntity.class, new AABB(pos).inflate(4));

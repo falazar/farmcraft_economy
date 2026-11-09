@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:structure_identity",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 40
+}

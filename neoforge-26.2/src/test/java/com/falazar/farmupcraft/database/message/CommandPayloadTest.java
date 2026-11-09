@@ -21,6 +21,13 @@ class CommandPayloadTest {
         var recipe = new OpenJeiRecipePacket("minecraft:bread");
         assertEquals(recipe, roundTrip(OpenJeiRecipePacket.STREAM_CODEC, recipe));
         assertEquals("farmupcraft:open_jei_recipe", recipe.type().id().toString());
+        var preview = new BuildPreviewPacket("minecraft:overworld",
+                List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(1, 64, 2, 0x808080)),
+                List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(3, 64, 2, 0x808080)),
+                2400L);
+        assertEquals(preview, roundTrip(BuildPreviewPacket.STREAM_CODEC, preview));
+        assertEquals("farmupcraft:build_preview", preview.type().id().toString());
+        assertEquals(BuildPreviewPacket.clear(), roundTrip(BuildPreviewPacket.STREAM_CODEC, BuildPreviewPacket.clear()));
     }
 
     @Test

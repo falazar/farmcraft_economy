@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:village_census_payment",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 40
+}

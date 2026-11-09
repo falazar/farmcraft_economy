@@ -32,6 +32,22 @@ public final class ClientDatabaseEvents {
         event.register(HighlightChunkPacket.TYPE, CommandPayloadHandler::handleHighlight);
         event.register(ShowVillageChunksPacket.TYPE, CommandPayloadHandler::handleVillage);
         event.register(OpenJeiRecipePacket.TYPE, CommandPayloadHandler::handleRecipe);
+        event.register(com.falazar.farmupcraft.database.message.NpcSpeechPacket.TYPE,
+                (packet, context) -> NpcSpeechBubbles.show(packet));
+        event.register(com.falazar.farmupcraft.database.message.MarketSaleReceiptPacket.TYPE,
+                (packet, context) -> MarketScreen.showSaleReceipt(packet.coins()));
+        event.register(com.falazar.farmupcraft.database.message.MarketViewPacket.TYPE,
+                (packet, context) -> MarketScreen.open(packet.view()));
+        event.register(com.falazar.farmupcraft.database.message.VillageViewPacket.TYPE,
+                (packet, context) -> VillageInfoScreen.open(packet.view()));
+        event.register(com.falazar.farmupcraft.database.message.VillageStructuresViewPacket.TYPE,
+                (packet, context) -> VillageStructuresScreen.open(packet.view()));
+        event.register(com.falazar.farmupcraft.database.message.VillageListViewPacket.TYPE,
+                (packet, context) -> VillageListScreen.open(packet.view()));
+        event.register(com.falazar.farmupcraft.database.message.PlotViewPacket.TYPE,
+                (packet, context) -> PlotInfoScreen.open(packet.view()));
+        event.register(com.falazar.farmupcraft.database.message.BuildPreviewPacket.TYPE,
+                (packet, context) -> BuildPreviewRenderer.receive(packet));
     }
 
     @SubscribeEvent
@@ -39,5 +55,6 @@ public final class ClientDatabaseEvents {
         DataBaseManager.clearClientCaches();
         WaypointPayloadHandler.loggedOut();
         CommandPayloadHandler.loggedOut();
+        BuildPreviewRenderer.clear();
     }
 }

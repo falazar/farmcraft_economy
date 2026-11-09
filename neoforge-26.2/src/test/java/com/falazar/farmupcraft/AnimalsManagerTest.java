@@ -169,12 +169,12 @@ class AnimalsManagerTest {
     }
 
     @Test
-    void pastureCountBoxKeepsLegacyVerticalBandAndExclusiveUpperBuildBoundary() {
-        assertEquals(new AABB(-16, 62, -32, 0, 67, -16),
+    void pastureCountBoxUsesSixBlocksEachWayAndExclusiveUpperBuildBoundary() {
+        assertEquals(new AABB(-16, 58, -32, 0, 71, -16),
                 AnimalsManager.pastureCountingBox(new BlockPos(-1, 64, -17), -64, 319));
-        assertEquals(new AABB(0, -64, 0, 16, -61, 16),
+        assertEquals(new AABB(0, -64, 0, 16, -57, 16),
                 AnimalsManager.pastureCountingBox(new BlockPos(0, -64, 0), -64, 319));
-        assertEquals(new AABB(0, 317, 0, 16, 320, 16),
+        assertEquals(new AABB(0, 313, 0, 16, 320, 16),
                 AnimalsManager.pastureCountingBox(new BlockPos(15, 319, 15), -64, 319));
     }
 

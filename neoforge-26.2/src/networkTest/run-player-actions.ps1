@@ -1,7 +1,9 @@
-param([int] $Port = 25581)
+param([int] $Port = 25581, [switch] $SpeechBubbles, [switch] $GemRender, [switch] $SoundRetry)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if ($Port -lt 1024 -or $Port -gt 65535) { throw 'Invalid loopback test port' }
+if ($SpeechBubbles -and $GemRender) { throw 'Choose only one visual probe' }
+if ($SoundRetry -and !$GemRender) { throw 'SoundRetry uses the GemRender client fixture' }
 $project = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $root = Join-Path $project ('build\player-action-run-' + [guid]::NewGuid().ToString('N') + '\build\player-action-acceptance')
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -38,9 +40,12 @@ foreach ($side in @('server', 'client')) {
         $argsText = $argsText.Replace('127.0.0.1:25576', "127.0.0.1:$Port")
     }
     $properties = @(
-        '"-Dfarmupcraft.playerActionAcceptance=true"'
+        $(if ($GemRender) { '"-Dfarmupcraft.gemRenderAcceptance=true"' }
+          elseif ($SpeechBubbles) { '"-Dfarmupcraft.speechBubbleAcceptance=true"' }
+          else { '"-Dfarmupcraft.playerActionAcceptance=true"' })
         ('"-Dfarmupcraft.playerActionAcceptanceRoot=' + $root.Replace('\', '\\') + '"')
         '"-Dmax.bg.threads=1"'
+        $(if ($SoundRetry) { '"-Dfarmupcraft.soundRetryAcceptance=true"' })
     ) -join "`n"
     $argsPath = Join-Path $root "$side.args"
     [IO.File]::WriteAllText($argsPath, $properties + "`n" + $argsText, $utf8)
@@ -105,6 +110,7 @@ try {
         Where-Object OwningProcess -eq $server.process.Id)
     if ($listeners.Count -ne 1) { throw 'Ready server does not own the expected listener' }
     $client = StartPeer 'client'; $owned += $client
+    $stopRequested = $false
     do {
         CheckDeadline
         foreach ($peer in $owned) {
@@ -119,6 +125,11 @@ try {
         if ($server.process.HasExited -and !$client.process.HasExited) {
             throw 'Server exited before the client'
         }
+        if (($SpeechBubbles -or $GemRender) -and $client.process.HasExited -and !$server.process.HasExited -and !$stopRequested) {
+            $server.process.StandardInput.WriteLine('stop')
+            $server.process.StandardInput.Flush()
+            $stopRequested = $true
+        }
         Start-Sleep -Seconds 1
     } until ($server.process.HasExited -and $client.process.HasExited)
     foreach ($side in @('server', 'client')) {
@@ -128,7 +139,16 @@ try {
         }
         Get-Content $receipt
     }
-    Write-Output 'VERIFIED separate peers exit0; authoritative non-op survival movement/break/place'
+    if ($GemRender) {
+        if ($SoundRetry -and !(Select-String (Join-Path $root 'client\player-action-receipt.txt') -Pattern '^PASS sound retry transformed client:' -Quiet)) {
+            throw 'Client missing sound cooldown acceptance receipt'
+        }
+        Write-Output 'VERIFIED separate peers exit0; gem item/block rendering and framebuffer screenshot'
+    } elseif ($SpeechBubbles) {
+        Write-Output 'VERIFIED separate peers exit0; speech packet/render lifecycle and screenshots'
+    } else {
+        Write-Output 'VERIFIED separate peers exit0; authoritative non-op survival movement/break/place'
+    }
 } finally {
     foreach ($peer in $owned) {
         $process = $peer.process

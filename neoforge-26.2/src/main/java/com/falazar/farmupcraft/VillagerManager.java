@@ -136,6 +136,7 @@ public class VillagerManager {
             return;
         }
         clearDailyCaches(LocalDate.now());
+        VillagerHomeSigns.tick(villager);
         NpcData npcData = ModEvents.getNpcDatabase(villager.level()).getData(villager.getUUID());
         if (npcData != null && npcData.isForeverKid() && villager.getAge() > -24000) {
             villager.setAge(-24000);

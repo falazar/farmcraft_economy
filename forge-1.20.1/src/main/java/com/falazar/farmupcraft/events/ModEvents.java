@@ -77,6 +77,24 @@ public class ModEvents {
             .autoSync()
             .build();
 
+    private static final DataBaseAccess<String, com.falazar.farmupcraft.util.RouteSurvey.Saved> ROUTE_SURVEY_DATABASE =
+            new DataBaseBuilder<String, com.falazar.farmupcraft.util.RouteSurvey.Saved>(prefix("route_survey_database"))
+                    .setKeySerializer(new StringDataSerializer())
+                    .setValueSerializer(new CodecDataSerializer<>(VillageRouteSurveys.CODEC)).build();
+
+    public static DataBase<String, com.falazar.farmupcraft.util.RouteSurvey.Saved> getRouteSurveyDatabase(Level level) {
+        return getDatabase(ROUTE_SURVEY_DATABASE, level);
+    }
+
+    private static final DataBaseAccess<String, com.falazar.farmupcraft.util.RouteDiscovery> ROUTE_DISCOVERY_DATABASE =
+            new DataBaseBuilder<String, com.falazar.farmupcraft.util.RouteDiscovery>(prefix("route_discovery_database"))
+                    .setKeySerializer(new StringDataSerializer())
+                    .setValueSerializer(new CodecDataSerializer<>(VillageRoads.CODEC)).build();
+
+    public static DataBase<String, com.falazar.farmupcraft.util.RouteDiscovery> getRouteDiscoveryDatabase(Level level) {
+        return getDatabase(ROUTE_DISCOVERY_DATABASE, level);
+    }
+
     public static WorldData getWorldData() {
         return getWorldDataDatabase().getOrCreate(0, WorldData::new);
     }
@@ -158,6 +176,8 @@ public class ModEvents {
                     DataBaseManager.registerDataBaseAccess(CHUNK_DATA_DATABASE.getDatabaseName(), CHUNK_DATA_DATABASE);
                     DataBaseManager.registerDataBaseAccess(PLAYER_DATABASE.getDatabaseName(), PLAYER_DATABASE);
                     DataBaseManager.registerDataBaseAccess(VILLAGE_DATABASE.getDatabaseName(), VILLAGE_DATABASE);
+                    DataBaseManager.registerDataBaseAccess(ROUTE_SURVEY_DATABASE.getDatabaseName(), ROUTE_SURVEY_DATABASE);
+                    DataBaseManager.registerDataBaseAccess(ROUTE_DISCOVERY_DATABASE.getDatabaseName(), ROUTE_DISCOVERY_DATABASE);
 
                     // NOTE: Comment out to load without this DB which has size issue.
                     DataBaseManager.registerDataBaseAccess(GOODS_DATA_DATABASE.getDatabaseName(), GOODS_DATA_DATABASE);

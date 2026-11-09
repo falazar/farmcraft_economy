@@ -1,7 +1,5 @@
 package com.falazar.farmupcraft;
 
-import com.falazar.farmupcraft.database.message.EDBMessages;
-import com.falazar.farmupcraft.database.message.ScanWaypointsPacket;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.google.gson.*;
 import java.util.Random;
@@ -18,7 +16,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BiomeTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.levelgen.Heightmap;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +23,9 @@ import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.CancellationException;
 import java.util.function.Consumer;
 
 /**
@@ -40,7 +40,9 @@ import java.util.function.Consumer;
  * 3. Land flood-fill → C-erosion: land within ±2 of water is "coastal".
  * Interior BFS checks if any non-coastal land escapes the body → peninsula →
  * skip.
- * 4. Results saved to findings.json; visited coords cached in scan_cache.json.
+ * 4. Results saved beneath the save's farmupcraft/scans/namespace/dimension;
+ * visited coords cached in scan_cache.json. Named discoveries are shared through
+ * center waypoints and surface-entry titles, including after server restarts.
  */
 public class IslandScanManager {
     public static final CustomLogger LOGGER = new CustomLogger(IslandScanManager.class.getSimpleName());
@@ -51,11 +53,53 @@ public class IslandScanManager {
      * Persisted map from grid-seed coord to large-body name (ocean/river/mainland).
      */
     private static Map<Long, String> largeBodyNames = new HashMap<>();
+    private static ExecutorService scanner;
+    private static MinecraftServer scanningServer;
+    private static volatile MinecraftServer stoppingServer;
+
+    static synchronized void submit(MinecraftServer server, Runnable task) {
+        if (!server.isRunning() || stoppingServer == server) return;
+        if (scanner == null) {
+            scanningServer = server;
+            scanner = Executors.newSingleThreadExecutor(r -> {
+                Thread thread = new Thread(r, "island-scanner");
+                thread.setDaemon(true);
+                return thread;
+            });
+        }
+        if (scanningServer != server)
+            throw new IllegalStateException("Scanner belongs to another server");
+        scanner.submit(task);
+    }
+
+    public static synchronized void stop(MinecraftServer server) {
+        stoppingServer = server;
+        if (scanningServer != server || scanner == null) return;
+        scanner.shutdownNow();
+        try {
+            if (!scanner.awaitTermination(5, TimeUnit.SECONDS)) {
+                LOGGER.error("Island scanner did not finish cancellation within 5 seconds.");
+                return;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        }
+        scanner = null;
+        scanningServer = null;
+        largeBodyNames = new HashMap<>();
+        lastSkipBody = null;
+        lastSkipReason = "";
+        scanCount = 0;
+    }
+
+    private static void checkCancelled() {
+        if (Thread.currentThread().isInterrupted()) throw new CancellationException("Server stopping");
+    }
     // --- Tuning constants ---
     private static final int GRID_STEP = 5;
     private static final int EROSION_DIST = 2; // C / S erosion radius (±2 blocks)
     private static final int OCEAN_THRESHOLD = 1000; // water bodies larger than this = ocean
-    private static final int MIN_FEATURE_SIZE = 10; // ignore tiny features
     private static final int MAX_BODY_SIZE = 60_000; // bail early if body is mainland/ocean
 
     // --- XZ packing helpers ---
@@ -71,17 +115,17 @@ public class IslandScanManager {
         return (int) (k & 0xFFFFFFFFL);
     }
 
-    // --- File paths (run/ directory) ---
-    private static Path cacheFile() {
-        return FMLPaths.GAMEDIR.get().resolve("scan_cache.json");
+    // --- File paths (save/dimension directory) ---
+    private static Path cacheFile(ServerLevel level) {
+        return ScanAreaStorage.file(level, "scan_cache.json");
     }
 
-    private static Path findingsFile() {
-        return FMLPaths.GAMEDIR.get().resolve("findings.json");
+    private static Path findingsFile(ServerLevel level) {
+        return ScanAreaStorage.file(level, "findings.json");
     }
 
-    private static Path largeBodiesFile() {
-        return FMLPaths.GAMEDIR.get().resolve("large_body_names.json");
+    private static Path largeBodiesFile(ServerLevel level) {
+        return ScanAreaStorage.file(level, "large_body_names.json");
     }
 
     private static final String[] WP_NAMES = {
@@ -103,24 +147,24 @@ public class IslandScanManager {
     // =========================================================================
 
     /**
-     * Starts the scan asynchronously. Feedback messages are dispatched back to
-     * the server thread so they are safe to send to a player.
+     * Starts the scan on the serial scanner executor. Feedback messages are dispatched
+     * back to the server thread so they are safe to send to a player.
      */
     public static void runScanAsync(ServerLevel level, int centerX, int centerZ, int radius,
             Consumer<Component> feedback, ServerPlayer player) {
         MinecraftServer server = level.getServer();
-        Thread t = new Thread(() -> {
+        submit(server, () -> {
             try {
                 scanCount++;
                 doScan(level, centerX, centerZ, radius, msg -> server.execute(() -> feedback.accept(msg)), player);
+            } catch (CancellationException e) {
+                LOGGER.info("Island scan cancelled during server shutdown.");
             } catch (Throwable e) {
                 LOGGER.error("Island scan failed: " + e.getMessage(), e);
                 server.execute(() -> feedback.accept(
                         Component.literal("Scan error: " + e.getClass().getSimpleName() + " — " + e.getMessage())));
             }
-        }, "island-scanner");
-        t.setDaemon(true);
-        t.start();
+        });
     }
 
     /**
@@ -128,10 +172,15 @@ public class IslandScanManager {
      * if loaded.
      */
     private static boolean forceLoadChunk(ServerLevel level, int chunkX, int chunkZ) {
+        checkCancelled();
         if (level.hasChunk(chunkX, chunkZ))
             return true;
         CompletableFuture<Boolean> future = new CompletableFuture<>();
         level.getServer().execute(() -> {
+            if (stoppingServer == level.getServer() || !level.getServer().isRunning()) {
+                future.complete(false);
+                return;
+            }
             try {
                 level.getChunk(chunkX, chunkZ); // triggers load
                 future.complete(true);
@@ -141,6 +190,9 @@ public class IslandScanManager {
         });
         try {
             return Boolean.TRUE.equals(future.get(5, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new CancellationException("Server stopping");
         } catch (Exception e) {
             return false;
         }
@@ -154,11 +206,11 @@ public class IslandScanManager {
             Consumer<Component> feedback, ServerPlayer player) throws IOException {
         long t0 = System.currentTimeMillis();
         String startTime = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date(t0));
-        largeBodyNames = loadLargeBodyNames();
+        largeBodyNames = loadLargeBodyNames(level);
         feedback.accept(
                 Component.literal("Scan:" + scanCount + " started at " + startTime + " (radius=" + radius + ")"));
 
-        Set<Long> visited = loadCache(); // grid seeds from previous scans
+        Set<Long> visited = loadCache(level); // grid seeds from previous scans
         Set<Long> newVisited = new HashSet<>(); // body blocks, in-memory only for this run
         Set<Long> processedSeeds = new HashSet<>(); // grid seeds processed this run (saved to cache)
         List<JsonObject> findings = new ArrayList<>();
@@ -177,6 +229,7 @@ public class IslandScanManager {
         int totalXSteps = (x1 - x0) / GRID_STEP + 1;
         Set<Long> seenChunks = new HashSet<>();
         for (int x = x0; x <= x1; x += GRID_STEP) {
+            checkCancelled();
             xStepCount++;
             String progressMsg = ":" + scanCount + " " + xStepCount + "/" + totalXSteps
                     + " " + x + " fnd=" + findings.size() + " sds=" + seeds
@@ -238,15 +291,15 @@ public class IslandScanManager {
                     JsonObject result = processWaterSeed(level, x, z, surfY, cx, cz, radius, visited, newVisited);
                     if (result != null) {
                         findings.add(result);
+                        persistFinding(level, result);
                         feedback.accept(formatFeatureMessage(result));
-                        sendScanWaypoints(level, player, result);
                     }
                 } else {
                     JsonObject result = processLandSeed(level, x, z, surfY, cx, cz, radius, visited, newVisited);
                     if (result != null) {
                         findings.add(result);
+                        persistFinding(level, result);
                         feedback.accept(formatFeatureMessage(result));
-                        sendScanWaypoints(level, player, result);
                     }
                 }
             }
@@ -269,9 +322,8 @@ public class IslandScanManager {
         }
 
         visited.addAll(processedSeeds); // only persist grid seeds, not body blocks
-        saveCache(visited);
-        saveLargeBodyNames();
-        appendFindings(findings);
+        saveCache(level, visited);
+        saveLargeBodyNames(level);
         feedback.accept(Component.literal(
                 "Scan:" + scanCount + " Saved findings.json (" + findings.size() + " new) and scan_cache.json ("
                         + visited.size() + " grid seeds)"));
@@ -313,6 +365,7 @@ public class IslandScanManager {
         deepCoords.add(seedKey);
 
         outer: while (!queue.isEmpty()) {
+            checkCancelled();
             int[] cur = queue.poll();
             int x = cur[0], y = cur[1], z = cur[2];
 
@@ -372,7 +425,7 @@ public class IslandScanManager {
             lastSkipBody = new HashSet<>(deepCoords);
             return null; // ocean — skip
         }
-        if (deepCoords.size() < MIN_FEATURE_SIZE) {
+        if (!ScanFeatureRules.largeEnough("lake", deepCoords.size())) {
             LOGGER.info("Water body at ({},{}) skipped: TOO SMALL ({} blocks)", sx, sz, deepCoords.size());
             lastSkipReason = String.format("Too small  %,d blocks", deepCoords.size());
             lastSkipBody = null;
@@ -411,6 +464,7 @@ public class IslandScanManager {
         yMap.put(seedKey, sy);
 
         while (!queue.isEmpty()) {
+            checkCancelled();
             int[] cur = queue.poll();
             int x = cur[0], y = cur[1], z = cur[2];
 
@@ -441,7 +495,7 @@ public class IslandScanManager {
         newVisited.addAll(body);
 
         // Definitely mainland — not an island
-        if (tooBig || body.size() < MIN_FEATURE_SIZE) {
+        if (tooBig || !ScanFeatureRules.largeEnough("island", body.size())) {
             int[] sc = countGridSeeds(body, visited);
             String bname = tooBig ? getOrCreateBodyName(body, body.size()) : null;
             String label = tooBig ? "Mainland '" + bname + "'" : "Too small";
@@ -508,6 +562,7 @@ public class IslandScanManager {
         seen.add(first);
 
         while (!queue.isEmpty()) {
+            checkCancelled();
             long key = queue.poll();
             int x = px(key), z = pz(key);
             for (int d = 0; d < 4; d++) {
@@ -640,12 +695,10 @@ public class IslandScanManager {
         int sizeZ = bb.get("max_z").getAsInt() - bb.get("min_z").getAsInt();
         int chunkX = (int) Math.ceil(sizeX / 16.0);
         int chunkZ = (int) Math.ceil(sizeZ / 16.0);
-        // Generate name once and store on result so sendScanWaypoints uses the same
-        // name
         if (!result.has("name")) {
             result.addProperty("name", randomWpName(blocks));
         }
-        String wpName = result.get("name").getAsString();
+        String wpName = ScanFeatureRules.displayName(result.get("name").getAsString());
         LOGGER.info("Feature '{}' {} at ({},{})  {}x{} chunks  {} blocks", wpName, type, cx, cz, chunkX, chunkZ,
                 blocks);
         Style style = type.equals("lake")
@@ -669,27 +722,27 @@ public class IslandScanManager {
     public static void scanPointAsync(ServerLevel level, int px, int pz, Consumer<Component> feedback,
             ServerPlayer player) {
         MinecraftServer server = level.getServer();
-        scanCount++;
-        Thread t = new Thread(() -> {
+        submit(server, () -> {
             try {
+                scanCount++;
                 doScanPoint(level, px, pz, msg -> server.execute(() -> feedback.accept(msg)), player);
+            } catch (CancellationException e) {
+                LOGGER.info("Point scan cancelled during server shutdown.");
             } catch (Throwable e) {
                 LOGGER.error("scanPoint failed: " + e.getMessage(), e);
                 server.execute(() -> feedback.accept(
                         Component.literal("scanPoint error: " + e.getMessage())));
             }
-        }, "island-scanner-point");
-        t.setDaemon(true);
-        t.start();
+        });
     }
 
     private static void doScanPoint(ServerLevel level, int sx, int sz, Consumer<Component> feedback,
-            ServerPlayer player) {
+            ServerPlayer player) throws IOException {
         // Round to nearest grid point and check cache first
         int gx = Math.round((float) sx / GRID_STEP) * GRID_STEP;
         int gz = Math.round((float) sz / GRID_STEP) * GRID_STEP;
-        Set<Long> visited = loadCache();
-        largeBodyNames = loadLargeBodyNames();
+        Set<Long> visited = loadCache(level);
+        largeBodyNames = loadLargeBodyNames(level);
         long gridKey = pack(gx, gz);
         if (visited.contains(gridKey)) {
             String bname = largeBodyNames.get(gridKey);
@@ -726,53 +779,36 @@ public class IslandScanManager {
 
         if (result == null) {
             feedback.accept(Component.literal("[Scan:" + scanCount + "] " + lastSkipReason));
-            if (lastSkipBody != null && !lastSkipBody.isEmpty()) {
-                sendCornerWaypoints(level, player, lastSkipBody, lastSkipReason);
-            }
         } else {
+            persistFinding(level, result);
             feedback.accept(formatFeatureMessage(result));
-            sendScanWaypoints(level, player, result);
         }
+        visited.add(gridKey);
+        saveCache(level, visited);
+        saveLargeBodyNames(level);
         feedback.accept(Component.literal("Scan:" + scanCount + " === done ==="));
-    }
-
-    private static void sendCornerWaypoints(ServerLevel level, ServerPlayer player, Set<Long> body, String label) {
-        int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
-        int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
-        for (long key : body) {
-            int x = px(key), z = pz(key);
-            if (x < minX)
-                minX = x;
-            if (x > maxX)
-                maxX = x;
-            if (z < minZ)
-                minZ = z;
-            if (z > maxZ)
-                maxZ = z;
-        }
-        int color = (RNG.nextInt(256) << 16) | (RNG.nextInt(256) << 8) | RNG.nextInt(256);
-        String groupName = "Large-" + scanCount;
-        int[][] corners = { { minX, minZ }, { maxX, minZ }, { minX, maxZ }, { maxX, maxZ } };
-        String[] wpLabels = { "NW", "NE", "SW", "SE" };
-        List<ScanWaypointsPacket.Entry> entries = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
-            entries.add(new ScanWaypointsPacket.Entry(
-                    groupName + "-" + wpLabels[i], corners[i][0], 64, corners[i][1], color));
-        }
-        level.getServer().execute(() -> EDBMessages.sendToPlayer(new ScanWaypointsPacket(entries), player));
     }
 
     // =========================================================================
 
     public static String clearCache(ServerLevel level, ServerPlayer player) {
-        String cacheMsg = clearCache();
-        level.getServer().execute(() -> EDBMessages.sendToPlayer(new ScanWaypointsPacket(), player));
-        return cacheMsg + " Scan waypoints cleared.";
+        return clearCache(level);
     }
 
-    public static String clearCache() {
+    public static synchronized String clearCache(ServerLevel level) {
+        if (scanner != null && !scanner.isTerminated() && scanningServer == level.getServer()) {
+            // A queued clear cannot race with a scanner's final cache write.
+            submit(level.getServer(), () -> {
+                deleteCache(level);
+            });
+            return "Dimension cache clear queued after active scans; findings and shared markers are kept.";
+        }
+        return deleteCache(level);
+    }
+
+    private static String deleteCache(ServerLevel level) {
         try {
-            Files.deleteIfExists(cacheFile());
+            Files.deleteIfExists(cacheFile(level));
             LOGGER.info("scan_cache.json deleted. findings.json is NOT cleared.");
             return "Cache cleared (scan_cache.json). findings.json is kept. Next scan will start fresh.";
         } catch (IOException e) {
@@ -781,29 +817,20 @@ public class IslandScanManager {
         }
     }
 
-    private static void sendScanWaypoints(ServerLevel level, ServerPlayer player, JsonObject result) {
-        JsonObject bb = result.getAsJsonObject("bounding_box");
-        int minX = bb.get("min_x").getAsInt(), maxX = bb.get("max_x").getAsInt();
-        int minZ = bb.get("min_z").getAsInt(), maxZ = bb.get("max_z").getAsInt();
-        int color = (RNG.nextInt(256) << 16) | (RNG.nextInt(256) << 8) | RNG.nextInt(256);
-        // Reuse the name already set by formatFeatureMessage, or generate one
-        int blockCount = result.get("block_count").getAsInt();
-        String groupName = result.has("name") ? result.get("name").getAsString() : randomWpName(blockCount);
-        // Minecraft: -X=west +X=east -Z=north +Z=south
-        // minX=west maxX=east minZ=north maxZ=south
-        int[][] corners = { { minX, minZ }, { maxX, minZ }, { minX, maxZ }, { maxX, maxZ } };
-        String[] labels = { "NW", "NE", "SW", "SE" };
-        List<ScanWaypointsPacket.Entry> entries = new ArrayList<>();
-        for (int i = 0; i < 4; i++) {
-            entries.add(new ScanWaypointsPacket.Entry(
-                    groupName + "-" + labels[i], corners[i][0], 64, corners[i][1], color));
-        }
-        level.getServer().execute(() -> EDBMessages.sendToPlayer(new ScanWaypointsPacket(entries), player));
+    private static void persistFinding(ServerLevel level, JsonObject result) throws IOException {
+        checkCancelled();
+        if (!result.has("name")) result.addProperty("name", randomWpName(result.get("block_count").getAsInt()));
+        JsonObject center = result.getAsJsonObject("center");
+        int x = center.get("x").getAsInt(), z = center.get("z").getAsInt();
+        int y = level.hasChunk(x >> 4, z >> 4)
+                ? level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z) : level.getSeaLevel();
+        center.addProperty("y", y);
+        ScanAreaDisplay.publish(level, appendFindings(level, List.of(result)));
     }
 
-    private static Set<Long> loadCache() {
+    private static Set<Long> loadCache(ServerLevel level) throws IOException {
         Set<Long> set = new HashSet<>();
-        Path path = cacheFile();
+        Path path = cacheFile(level);
         if (!Files.exists(path))
             return set;
         try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
@@ -815,12 +842,12 @@ public class IslandScanManager {
             }
             LOGGER.info("Loaded " + set.size() + " cached coords from scan_cache.json");
         } catch (Exception e) {
-            LOGGER.error("Failed to load scan_cache.json: " + e.getMessage());
+            throw new IOException("Invalid scan cache: " + path + "; existing file preserved", e);
         }
         return set;
     }
 
-    private static void saveCache(Set<Long> visited) throws IOException {
+    private static void saveCache(ServerLevel level, Set<Long> visited) throws IOException {
         JsonArray arr = new JsonArray();
         for (long key : visited) {
             JsonObject o = new JsonObject();
@@ -830,27 +857,21 @@ public class IslandScanManager {
         }
         JsonObject root = new JsonObject();
         root.add("visited", arr);
-        Files.writeString(cacheFile(), new GsonBuilder().setPrettyPrinting().create().toJson(root),
-                StandardCharsets.UTF_8);
+        ScanAreaStorage.write(cacheFile(level), root);
     }
 
-    private static void appendFindings(List<JsonObject> newResults) throws IOException {
-        List<JsonObject> all = new ArrayList<>();
+    private static List<JsonObject> appendFindings(ServerLevel level, List<JsonObject> newResults) throws IOException {
         Map<String, JsonObject> seen = new java.util.LinkedHashMap<>();
-        Path path = findingsFile();
-        if (Files.exists(path)) {
-            try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-                JsonArray arr = JsonParser.parseReader(r).getAsJsonArray();
-                for (JsonElement e : arr) {
-                    JsonObject obj = e.getAsJsonObject();
-                    seen.put(findingDedupeKey(obj), obj);
-                }
-            } catch (Exception ignored) {
-            }
+        Path path = findingsFile(level);
+        for (JsonObject obj : ScanAreaStorage.findings(level)) {
+            seen.put(findingDedupeKey(obj), obj);
         }
         for (JsonObject obj : newResults) {
             String key = findingDedupeKey(obj);
             if (seen.containsKey(key)) {
+                if (seen.get(key).has("name")) {
+                    obj.addProperty("name", seen.get(key).get("name").getAsString());
+                }
                 // Merge name into existing entry if it has one
                 if (obj.has("name") && !seen.get(key).has("name")) {
                     seen.get(key).addProperty("name", obj.get("name").getAsString());
@@ -861,8 +882,8 @@ public class IslandScanManager {
         }
         JsonArray arr = new JsonArray();
         seen.values().forEach(arr::add);
-        Files.writeString(path, new GsonBuilder().setPrettyPrinting().create().toJson(arr),
-                StandardCharsets.UTF_8);
+        ScanAreaStorage.write(path, arr);
+        return new ArrayList<>(seen.values());
     }
 
     private static String findingDedupeKey(JsonObject obj) {
@@ -908,9 +929,9 @@ public class IslandScanManager {
         return name;
     }
 
-    private static Map<Long, String> loadLargeBodyNames() {
+    private static Map<Long, String> loadLargeBodyNames(ServerLevel level) throws IOException {
         Map<Long, String> map = new HashMap<>();
-        Path path = largeBodiesFile();
+        Path path = largeBodiesFile(level);
         if (!Files.exists(path))
             return map;
         try (Reader r = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
@@ -925,12 +946,12 @@ public class IslandScanManager {
             }
             LOGGER.info("Loaded {} large body name entries from large_body_names.json", map.size());
         } catch (Exception e) {
-            LOGGER.error("Failed to load large_body_names.json: " + e.getMessage());
+            throw new IOException("Invalid large-body names: " + path + "; existing file preserved", e);
         }
         return map;
     }
 
-    private static void saveLargeBodyNames() {
+    private static void saveLargeBodyNames(ServerLevel level) throws IOException {
         if (largeBodyNames.isEmpty())
             return;
         // Group coords by name
@@ -953,12 +974,7 @@ public class IslandScanManager {
             o.add("seeds", seeds);
             arr.add(o);
         }
-        try {
-            Files.writeString(largeBodiesFile(), new GsonBuilder().setPrettyPrinting().create().toJson(arr),
-                    StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            LOGGER.error("Failed to save large_body_names.json: " + e.getMessage());
-        }
+        ScanAreaStorage.write(largeBodiesFile(level), arr);
     }
 
     /**

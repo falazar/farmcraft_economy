@@ -1,4 +1,5 @@
 {
+  "neoforge:conditions": [{ "type": "neoforge:mod_loaded", "modid": "pamhc2foodcore" }],
   "type": "minecraft:crafting_shapeless",
   "ingredients": [
     "minecraft:water_bucket",

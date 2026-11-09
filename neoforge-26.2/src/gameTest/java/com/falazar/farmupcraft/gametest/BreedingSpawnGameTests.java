@@ -60,7 +60,7 @@ public final class BreedingSpawnGameTests {
                     try {
                     if (plotType.isEmpty()) plots.removeDataBatch(List.of(key));
                     else plots.putData(key, new com.falazar.farmupcraft.data.ChunkData(
-                            plotType, -1, java.util.UUID.randomUUID()));
+                            plotType, -1, java.util.UUID.randomUUID(), null, List.of(), first.blockPosition().getY()));
                     var type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse(id));
                     helper.assertTrue(type != null, "Loaded egg type: " + id);
                     var egg = type.create(level, EntitySpawnReason.TRIGGERED);

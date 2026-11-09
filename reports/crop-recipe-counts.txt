@@ -1,0 +1,179 @@
+﻿HARVESTCRAFT EXACT-CROP RECIPE COUNTS
+Generated: 2026-11-03 11:22:54 -06:00
+Sources:
+  pamhc2crops-NEOFORGE-1.26.2-1.0.0.jar
+  pamhc2trees-NEOFORGE-1.26.2-1.0.0.jar
+  pamhc2foodcore-NEOFORGE-1.26.2-1.0.0.jar
+  pamhc2foodextended-NEOFORGE-1.26.2-1.0.0.jar
+
+Scope: 157 raw crop/tree produce items, including vanilla produce used by HarvestCraft.
+Scanned: 1359 recipe JSON definitions from the four installed HarvestCraft jars.
+Counts are distinct recipe IDs, not ingredient quantities or output quantities
+Includes seed/sapling crafting and separate smelting/smoking/campfire recipes.
+Includes direct raw-item inputs and crop-specific c:crops/* or c:fruits/* tags.
+Excludes broad category tags, interchangeable ingredient arrays, and processed derivatives.
+Crop-specific tags may accept equivalent same-crop items from other mods.
+Tree produce IDs come from mature-harvest loot tables, not potentially stale translations.
+Pam apple trees harvest minecraft:apple; maple trees harvest pamhc2trees:maplesyrupitem.
+These are bundled definitions, not a live recipe-manager snapshot; pack overrides are not applied.
+Sorted by recipe count descending, then crop name and item ID. Zero counts are included.
+
+Recipes  Crop                       Item ID
+----------------------------------------------------------------------------------------------------
+     78  Onion                      pamhc2crops:onionitem
+     72  Spiceleaf                  pamhc2crops:spiceleafitem
+     45  Tomato                     pamhc2crops:tomatoitem
+     42  Garlic                     pamhc2crops:garlicitem
+     38  Carrot (vanilla)           minecraft:carrot
+     38  Rice                       pamhc2crops:riceitem
+     33  Potato (vanilla)           minecraft:potato
+     27  Lemon                      pamhc2trees:lemonitem
+     23  Bellpepper                 pamhc2crops:bellpepperitem
+     23  Chilipepper                pamhc2crops:chilipepperitem
+     19  Ginger                     pamhc2crops:gingeritem
+     18  Scallion                   pamhc2crops:scallionitem
+     15  Cherry                     pamhc2trees:cherryitem
+     14  Apple (vanilla)            minecraft:apple
+     14  Lettuce                    pamhc2crops:lettuceitem
+     14  Lime                       pamhc2trees:limeitem
+     14  Orange                     pamhc2trees:orangeitem
+     14  Sweet Potato               pamhc2crops:sweetpotatoitem
+     13  Bean                       pamhc2crops:beanitem
+     13  Corn                       pamhc2crops:cornitem
+     13  Pineapple                  pamhc2crops:pineappleitem
+     13  Strawberry                 pamhc2crops:strawberryitem
+     12  Coconut                    pamhc2trees:coconutitem
+     11  Cabbage                    pamhc2crops:cabbageitem
+     11  Mustard Seeds              pamhc2crops:mustardseedsitem
+     11  Peanut                     pamhc2crops:peanutitem
+     11  Pecan                      pamhc2trees:pecanitem
+     10  Banana                     pamhc2trees:bananaitem
+     10  Peas                       pamhc2crops:peasitem
+      9  Cucumber                   pamhc2crops:cucumberitem
+      9  Pumpkin (vanilla)          minecraft:pumpkin
+      9  Tealeaf                    pamhc2crops:tealeafitem
+      9  Walnut                     pamhc2trees:walnutitem
+      8  Avocado                    pamhc2trees:avocadoitem
+      8  Broccoli                   pamhc2crops:broccoliitem
+      8  Celery                     pamhc2crops:celeryitem
+      8  Date                       pamhc2trees:dateitem
+      8  Grape                      pamhc2crops:grapeitem
+      8  Mango                      pamhc2trees:mangoitem
+      8  Peach                      pamhc2trees:peachitem
+      8  Soybean                    pamhc2crops:soybeanitem
+      7  Apricot                    pamhc2trees:apricotitem
+      7  Blackberry                 pamhc2crops:blackberryitem
+      7  Cashew                     pamhc2trees:cashewitem
+      7  Cranberry                  pamhc2crops:cranberryitem
+      7  Fig                        pamhc2trees:figitem
+      7  Grapefruit                 pamhc2trees:grapefruititem
+      7  Hazelnut                   pamhc2trees:hazelnutitem
+      7  Jackfruit                  pamhc2trees:jackfruititem
+      7  Leek                       pamhc2crops:leekitem
+      7  Maple Syrup                pamhc2trees:maplesyrupitem
+      7  Pear                       pamhc2trees:pearitem
+      7  Radish                     pamhc2crops:radishitem
+      7  Raspberry                  pamhc2crops:raspberryitem
+      7  Sesame Seeds               pamhc2crops:sesameseedsitem
+      6  Almond                     pamhc2trees:almonditem
+      6  Blueberry                  pamhc2crops:blueberryitem
+      6  Breadfruit                 pamhc2trees:breadfruititem
+      6  Cactusfruit                pamhc2crops:cactusfruititem
+      6  Candleberry                pamhc2crops:candleberryitem
+      6  Cantaloupe                 pamhc2crops:cantaloupeitem
+      6  Coffeebean                 pamhc2crops:coffeebeanitem
+      6  Dragonfruit                pamhc2trees:dragonfruititem
+      6  Durian                     pamhc2trees:durianitem
+      6  Elderberry                 pamhc2crops:elderberryitem
+      6  Glow Berries (vanilla)     minecraft:glow_berries
+      6  Gooseberry                 pamhc2trees:gooseberryitem
+      6  Green Grape                pamhc2crops:greengrapeitem
+      6  Guava                      pamhc2trees:guavaitem
+      6  Huckleberry                pamhc2crops:huckleberryitem
+      6  Juniperberry               pamhc2crops:juniperberryitem
+      6  Kiwi                       pamhc2crops:kiwiitem
+      6  Lychee                     pamhc2trees:lycheeitem
+      6  Mulberry                   pamhc2crops:mulberryitem
+      6  Oats                       pamhc2crops:oatsitem
+      6  Papaya                     pamhc2trees:papayaitem
+      6  Parsnip                    pamhc2crops:parsnipitem
+      6  Passionfruit               pamhc2trees:passionfruititem
+      6  Pawpaw                     pamhc2trees:pawpawitem
+      6  Persimmon                  pamhc2trees:persimmonitem
+      6  Pistachio                  pamhc2trees:pistachioitem
+      6  Plum                       pamhc2trees:plumitem
+      6  Pomegranate                pamhc2trees:pomegranateitem
+      6  Rambutan                   pamhc2trees:rambutanitem
+      6  Rhubarb                    pamhc2crops:rhubarbitem
+      6  Soursop                    pamhc2trees:soursopitem
+      6  Starfruit                  pamhc2trees:starfruititem
+      6  Tamarind                   pamhc2trees:tamarinditem
+      5  Barley                     pamhc2crops:barleyitem
+      5  Chestnut                   pamhc2trees:chestnutitem
+      5  Chorus Fruit (vanilla)     minecraft:chorus_fruit
+      5  Eggplant                   pamhc2crops:eggplantitem
+      5  Melon Slice (vanilla)      minecraft:melon_slice
+      5  Okra                       pamhc2crops:okraitem
+      5  Rutabaga                   pamhc2crops:rutabagaitem
+      5  Sweet Berries (vanilla)    minecraft:sweet_berries
+      5  Waterchestnut              pamhc2crops:waterchestnutitem
+      5  Zucchini                   pamhc2crops:zucchiniitem
+      4  Acorn                      pamhc2trees:acornitem
+      4  Arrowroot                  pamhc2crops:arrowrootitem
+      4  Cassava                    pamhc2crops:cassavaitem
+      4  Jicama                     pamhc2crops:jicamaitem
+      4  Kohlrabi                   pamhc2crops:kohlrabiitem
+      4  Nettles                    pamhc2crops:nettlesitem
+      4  Pinenuts                   pamhc2trees:pinenutitem
+      4  Spinach                    pamhc2crops:spinachitem
+      4  Sunchoke                   pamhc2crops:sunchokeitem
+      4  Taro                       pamhc2crops:taroitem
+      4  Turnip                     pamhc2crops:turnipitem
+      3  Beetroot (vanilla)         minecraft:beetroot
+      3  Cattail                    pamhc2crops:cattailitem
+      3  Kale                       pamhc2crops:kaleitem
+      3  Paper (vanilla)            minecraft:paper
+      3  Vanillabean                pamhc2trees:vanillabeanitem
+      2  Agave                      pamhc2crops:agaveitem
+      2  Aloe                       pamhc2crops:aloeitem
+      2  Asparagus                  pamhc2crops:asparagusitem
+      2  Barrel Cactus              pamhc2crops:barrelcactusitem
+      2  Calabash                   pamhc2crops:calabashitem
+      2  Canola                     pamhc2crops:canolaitem
+      2  Cauliflower                pamhc2crops:caulifloweritem
+      2  Chickpea                   pamhc2crops:chickpeaitem
+      2  Cinnamon                   pamhc2trees:cinnamonitem
+      2  Cocoa Beans (vanilla)      minecraft:cocoa_beans
+      2  Nutmeg                     pamhc2trees:nutmegitem
+      2  Peppercorn                 pamhc2trees:peppercornitem
+      2  Winter Squash              pamhc2crops:wintersquashitem
+      1  Alfalfa                    pamhc2crops:alfalfaitem
+      1  Amaranth                   pamhc2crops:amaranthitem
+      1  Artichoke                  pamhc2crops:artichokeitem
+      1  Bok Choy                   pamhc2crops:bokchoyitem
+      1  Brusselsprout              pamhc2crops:brusselsproutitem
+      1  Candlenut                  pamhc2trees:candlenutitem
+      1  Chia                       pamhc2crops:chiaitem
+      1  Cloudberry                 pamhc2crops:cloudberryitem
+      1  Cotton                     pamhc2crops:cottonitem
+      1  Flax                       pamhc2crops:flaxitem
+      1  Guarana                    pamhc2crops:guaranaitem
+      1  Jute                       pamhc2crops:juteitem
+      1  Kenaf                      pamhc2crops:kenafitem
+      1  Lentil                     pamhc2crops:lentilitem
+      1  Lotus                      pamhc2crops:lotusitem
+      1  Millet                     pamhc2crops:milletitem
+      1  Nopales                    pamhc2crops:nopalesitem
+      1  Olive                      pamhc2trees:oliveitem
+      1  Papyrus                    pamhc2crops:papyrusitem
+      1  Quinoa                     pamhc2crops:quinoaitem
+      1  Rye                        pamhc2crops:ryeitem
+      1  Sisal                      pamhc2crops:sisalitem
+      1  Sorghum                    pamhc2crops:sorghumitem
+      1  String (vanilla)           minecraft:string
+      1  Tomatillo                  pamhc2crops:tomatilloitem
+      1  Truffle                    pamhc2crops:truffleitem
+      1  Wheat (vanilla)            minecraft:wheat
+      1  White Mushroom             pamhc2crops:whitemushroomitem
+      1  Wolfberry                  pamhc2crops:wolfberryitem
+      1  Yucca                      pamhc2crops:yuccaitem

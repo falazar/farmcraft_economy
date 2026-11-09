@@ -9,6 +9,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.gametest.framework.GameTestHelper;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ClickEvent;
@@ -21,6 +22,19 @@ import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.DyeColor;
+import net.minecraft.world.entity.decoration.ItemFrame;
+import net.minecraft.world.entity.decoration.GlowItemFrame;
+import net.minecraft.world.entity.decoration.HangingEntity;
+import net.minecraft.world.entity.decoration.painting.Painting;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
+import net.minecraft.world.level.block.state.properties.AttachFace;
+import net.minecraft.world.level.block.entity.SignBlockEntity;
+import net.minecraft.world.level.block.entity.BannerBlockEntity;
+import net.minecraft.world.level.block.entity.BannerPatternLayers;
+import net.minecraft.world.level.block.entity.BannerPatterns;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.block.Blocks;
@@ -82,7 +96,7 @@ public final class BuildMoveGameTests {
             wallets.putData(player.getUUID(), wallet);
             BlockPos p = fixture.pos;
             Map<BlockPos, BlockState> original = new LinkedHashMap<>();
-            for (BlockPos pos : BlockPos.betweenClosed(p.offset(-1, -1, -11), p.offset(4, 15, 23))) {
+            for (BlockPos pos : BlockPos.betweenClosed(p.offset(-5, -1, -11), p.offset(8, 15, 23))) {
                 level.getChunkAt(pos);
                 original.put(pos.immutable(), level.getBlockState(pos));
             }
@@ -106,8 +120,11 @@ public final class BuildMoveGameTests {
                 player.setPos(p.getX() - 3, p.getY(), p.getZ() + 0.5);
                 level.setBlock(p, Blocks.COBBLESTONE.defaultBlockState(), 2);
                 level.setBlock(p.south(19), Blocks.OAK_PLANKS.defaultBlockState(), 2);
+                int beforePush = wallet.getCoins();
                 helper.assertTrue(move(player, p, p.south(19), true, 1) > 0,
                         "A twenty-block-wide building must be allowed");
+                helper.assertValueEqual(wallet.getCoins(), beforePush - 1,
+                        "Two-block building costs one coin: quarter price rounded up");
                 helper.assertTrue(level.getBlockState(p.east()).is(Blocks.COBBLESTONE)
                                 && level.getBlockState(p.east().south(19)).is(Blocks.OAK_PLANKS),
                         "Both endpoints of a twenty-block-wide building must move");
@@ -212,6 +229,9 @@ public final class BuildMoveGameTests {
                 destinationChest.setItem(0, new ItemStack(Items.EMERALD, 9));
                 helper.assertValueEqual(move(player, p, p.east(), false, 2), 0,
                         "Destination block entities must cancel the whole move");
+                helper.assertTrue(messages.stream().anyMatch(text -> text.contains("Destination Chest would be overwritten at "
+                                + p.north(2).toShortString())),
+                        "Collision error names the block and its coordinates");
                 helper.assertTrue(level.getBlockState(p).is(Blocks.COBBLESTONE),
                         "Rejected collision must not remove the source");
                 helper.assertValueEqual(destinationChest.getItem(0).getCount(), 9,
@@ -226,6 +246,17 @@ public final class BuildMoveGameTests {
                 level.setBlock(p.south(3), Blocks.DIRT.defaultBlockState(), 2);
                 level.setBlock(p.above(), Blocks.CHEST.defaultBlockState(), 2);
                 ((ChestBlockEntity) level.getBlockEntity(p.above())).setItem(0, new ItemStack(Items.DIAMOND, 5));
+                var bedFoot = p.east().south().above();
+                var bedHead = bedFoot.south();
+                var redBed = Blocks.BED.pick(net.minecraft.world.item.DyeColor.RED);
+                level.setBlock(bedFoot, redBed.defaultBlockState()
+                        .setValue(net.minecraft.world.level.block.BedBlock.FACING, Direction.SOUTH)
+                        .setValue(net.minecraft.world.level.block.BedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.FOOT), 18);
+                level.setBlock(bedHead, redBed.defaultBlockState()
+                        .setValue(net.minecraft.world.level.block.BedBlock.FACING, Direction.SOUTH)
+                        .setValue(net.minecraft.world.level.block.BedBlock.PART, net.minecraft.world.level.block.state.properties.BedPart.HEAD), 18);
+                helper.assertTrue(level.getBlockState(bedFoot).is(redBed) && level.getBlockState(bedHead).is(redBed),
+                        "Overlap fixture must contain both bed halves before moving");
                 level.setBlock(p.above(2), Blocks.OAK_LOG.defaultBlockState(), 2);
                 level.setBlock(p.east().above(2), Blocks.OAK_LEAVES.defaultBlockState(), 2);
                 helper.assertTrue(move(player, p, p.east(), true, 1) > 0,
@@ -233,6 +264,14 @@ public final class BuildMoveGameTests {
                 var overlapChest = (ChestBlockEntity) level.getBlockEntity(p.south().above());
                 helper.assertTrue(overlapChest != null && overlapChest.getItem(0).getCount() == 5,
                         "Overlapping moves must preserve chest contents");
+                helper.assertTrue(level.getBlockState(bedFoot).isAir()
+                                && level.getBlockState(bedFoot.south()).is(redBed)
+                                && level.getBlockState(bedHead.south()).is(redBed)
+                                && level.getBlockState(bedFoot.south()).getValue(net.minecraft.world.level.block.BedBlock.PART)
+                                    == net.minecraft.world.level.block.state.properties.BedPart.FOOT
+                                && level.getBlockState(bedHead.south()).getValue(net.minecraft.world.level.block.BedBlock.PART)
+                                    == net.minecraft.world.level.block.state.properties.BedPart.HEAD,
+                        "South push may overwrite the old bed positions when the whole bed moves with the source");
                 helper.assertTrue(level.getBlockState(p.south().above(2)).is(Blocks.OAK_LOG)
                                 && level.getBlockState(p.east().south().above(2)).is(Blocks.OAK_LEAVES),
                         "Moving logs/leaves must not run destructive harvesting rolls");
@@ -264,11 +303,27 @@ public final class BuildMoveGameTests {
                 }
                 level.setBlock(p.east().south(), Blocks.STONE.defaultBlockState(), 2);
                 helper.assertTrue(move(player, p, p.east(), true, 1) > 0,
-                        "Plain stone on the second edge must stop depth before that slice");
-                helper.assertTrue(level.getBlockState(p.south(2)).is(Blocks.COBBLESTONE),
-                        "A second-edge boundary must leave blocks beyond it in place");
-                helper.assertTrue(level.getBlockState(p.east().south()).is(Blocks.OAK_PLANKS),
-                        "Only the front slice must be pushed when the second edge stops immediately");
+                        "The longer first edge must determine depth when the second edge stops early");
+                helper.assertTrue(level.getBlockState(p.south(3)).is(Blocks.COBBLESTONE),
+                        "All three slices on the longer edge must move");
+                helper.assertTrue(level.getBlockState(p.east().south(2)).is(Blocks.STONE),
+                        "The rectangular move includes the shorter edge's stopping block");
+
+                clear.run();
+                level.setBlock(p, Blocks.COBBLESTONE.defaultBlockState(), 2);
+                for (int z = 0; z < 3; z++) {
+                    level.setBlock(p.east().south(z), Blocks.OAK_PLANKS.defaultBlockState(), 2);
+                }
+                for (int z = 2; z < 10; z++) {
+                    level.setBlock(p.south(z), Blocks.COBBLESTONE.defaultBlockState(), 2);
+                }
+                helper.assertTrue(move(player, p, p.east(), true, 1) > 0,
+                        "A stopped edge must not resume beyond its first air gap");
+                helper.assertTrue(level.getBlockState(p.east().south(3)).is(Blocks.OAK_PLANKS)
+                                && level.getBlockState(p.south(3)).is(Blocks.COBBLESTONE),
+                        "The uninterrupted right edge must determine the three-slice move");
+                helper.assertTrue(level.getBlockState(p.south(10)).isAir(),
+                        "Blocks beyond a stopped left edge must not extend selection to ten slices");
 
                 clear.run();
                 player.setPos(p.getX() - 3, p.getY(), p.getZ() + 0.5);
@@ -452,9 +507,8 @@ public final class BuildMoveGameTests {
                 wallet.setCoins(0);
                 helper.assertValueEqual(BuildCommand.preview(player, p, p.east(), false, 2), 1,
                         "Creative players with zero gold must be able to preview");
-                helper.assertTrue(messages.stream().anyMatch(text -> text.contains("Build move cost: 0 gp")
-                                && text.contains("1 non-air blocks") && text.contains("creative mode is free")),
-                        "Creative preview must show zero cost without losing the actual block count");
+                helper.assertTrue(messages.stream().anyMatch(text -> text.equals("Build move cost: 0 gp.")),
+                        "Creative preview shows only the zero cost");
                 helper.assertTrue(BuildCommand.confirm(player) > 0, "Creative move must succeed without funds");
                 helper.assertValueEqual(wallets.getData(player.getUUID()).getCoins(), 0,
                         "Creative move must not deduct gold");
@@ -483,6 +537,14 @@ public final class BuildMoveGameTests {
                 helper.assertTrue(move(player, p, p.east(), false, 2) > 0, "New creative preview must execute free");
                 helper.assertValueEqual(wallet.getCoins(), 100, "Creative move must leave positive balances unchanged");
                 player.setGameMode(GameType.SURVIVAL);
+                wallet.setCoins(100000);
+                for (Direction along : List.of(Direction.EAST, Direction.SOUTH)) {
+                    for (boolean building : new boolean[] {true, false}) {
+                        for (int distance : new int[] {1, 3}) {
+                            attachmentMove(helper, player, p, along, building, distance, clear);
+                        }
+                    }
+                }
             } finally {
                 original.forEach((pos, state) -> {
                     level.removeBlockEntity(pos);
@@ -503,6 +565,184 @@ public final class BuildMoveGameTests {
     private static int move(net.minecraft.server.level.ServerPlayer player, BlockPos first, BlockPos second,
                             boolean building, int distance) {
         return BuildCommand.preview(player, first, second, building, distance) == 0 ? 0 : BuildCommand.confirm(player);
+    }
+
+    private static void attachmentMove(GameTestHelper helper, FakePlayer player, BlockPos base, Direction along,
+                                       boolean building, int distance, Runnable clear) {
+        clear.run();
+        var level = helper.getLevel();
+        Direction front = along == Direction.EAST ? Direction.NORTH : Direction.WEST;
+        BlockPos offset = BlockPos.ZERO.relative(building ? front.getOpposite() : front, distance);
+        BlockPos playerPos = base.relative(front, 3);
+        player.setPos(playerPos.getX() + 0.5, base.getY(), playerPos.getZ() + 0.5);
+        for (int x = 0; x < 4; x++) {
+            for (int y = 0; y < 15; y++) {
+                level.setBlock(base.relative(along, x).above(y), Blocks.COBBLESTONE.defaultBlockState(), 2);
+            }
+        }
+        Map<BlockPos, BlockState> attachments = new LinkedHashMap<>();
+        BlockPos torch = base.relative(front).above();
+        BlockPos banner = base.relative(along).relative(front).above(2);
+        BlockPos sign = base.relative(along, 2).relative(front).above(2);
+        BlockPos button = base.relative(along, 3).relative(front).above();
+        BlockPos roofTorch = base.above(15);
+        BlockPos lantern = base.relative(along, 3).below();
+        BlockPos hangingSign = base.relative(along).below();
+        // A hanging lantern needs an empty block below the wall rather than the fixture floor.
+        level.setBlock(lantern, Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(lantern.offset(offset), Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(hangingSign, Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(hangingSign.offset(offset), Blocks.AIR.defaultBlockState(), 2);
+        attachments.put(torch, Blocks.WALL_TORCH.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, front));
+        attachments.put(banner, Blocks.WALL_BANNER.white().defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, front));
+        attachments.put(sign, Blocks.OAK_WALL_SIGN.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, front));
+        attachments.put(button, Blocks.STONE_BUTTON.defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, front).setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL));
+        attachments.put(roofTorch, Blocks.TORCH.defaultBlockState());
+        attachments.put(lantern, Blocks.LANTERN.defaultBlockState().setValue(BlockStateProperties.HANGING, true));
+        attachments.put(hangingSign, Blocks.OAK_HANGING_SIGN.defaultBlockState());
+        attachments.put(base.relative(along, 2).relative(front).above(6),
+                Blocks.LADDER.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, front));
+        attachments.put(base.relative(along, 3).relative(front).above(6),
+                Blocks.LEVER.defaultBlockState().setValue(BlockStateProperties.HORIZONTAL_FACING, front)
+                        .setValue(BlockStateProperties.ATTACH_FACE, AttachFace.WALL));
+        attachments.forEach((pos, state) -> level.setBlock(pos, state, 2));
+        var signEntity = (SignBlockEntity) level.getBlockEntity(sign);
+        signEntity.setText(signEntity.getFrontText().setMessage(0, Component.literal("Keep this text"))
+                .setColor(DyeColor.BLUE).setHasGlowingText(true), true);
+        signEntity.setText(signEntity.getBackText().setMessage(1, Component.literal("Back side too")), false);
+        signEntity.setWaxed(true);
+        var patterns = new BannerPatternLayers.Builder().add(
+                level.registryAccess().lookupOrThrow(Registries.BANNER_PATTERN).getOrThrow(BannerPatterns.CROSS),
+                DyeColor.RED).build();
+        var bannerItem = new ItemStack(Items.BANNER.white());
+        bannerItem.set(DataComponents.BANNER_PATTERNS, patterns);
+        bannerItem.set(DataComponents.CUSTOM_NAME, Component.literal("Village colors"));
+        ((BannerBlockEntity) level.getBlockEntity(banner)).applyComponentsFromItemStack(bannerItem);
+        var painting = new Painting(level, base.relative(front).above(4), front,
+                level.registryAccess().lookupOrThrow(Registries.PAINTING_VARIANT).getOrThrow(
+                        net.minecraft.resources.ResourceKey.create(Registries.PAINTING_VARIANT,
+                                net.minecraft.resources.Identifier.withDefaultNamespace("kebab"))));
+        var frame = new ItemFrame(level, base.relative(along).relative(front).above(4), front);
+        var glow = new GlowItemFrame(level, base.relative(along, 2).relative(front).above(4), front);
+        frame.setItem(new ItemStack(Items.DIAMOND));
+        frame.setRotation(3);
+        glow.setItem(new ItemStack(Items.EMERALD));
+        glow.setRotation(5);
+        var floorFrame = new ItemFrame(level, base.relative(along).above(15), Direction.UP);
+        BlockPos ceilingAnchor = base.relative(along, 2).below();
+        level.setBlock(ceilingAnchor, Blocks.AIR.defaultBlockState(), 2);
+        level.setBlock(ceilingAnchor.offset(offset), Blocks.AIR.defaultBlockState(), 2);
+        var ceilingFrame = new GlowItemFrame(level, ceilingAnchor, Direction.DOWN);
+        var largePainting = new Painting(level,
+                base.relative(along, along == Direction.EAST ? 2 : 1).relative(front).above(8), front,
+                level.registryAccess().lookupOrThrow(Registries.PAINTING_VARIANT).getOrThrow(
+                        net.minecraft.resources.ResourceKey.create(Registries.PAINTING_VARIANT,
+                                net.minecraft.resources.Identifier.withDefaultNamespace("fighters"))));
+        List<HangingEntity> entities = List.of(painting, frame, glow, floorFrame, ceilingFrame, largePainting);
+        var anchors = entities.stream().map(HangingEntity::getPos).toList();
+        var directions = entities.stream().map(HangingEntity::getDirection).toList();
+        var artwork = painting.getVariant();
+        AABB area = new AABB(Vec3.atLowerCornerOf(base.offset(-5, -2, -5)),
+                Vec3.atLowerCornerOf(base.offset(8, 17, 8)));
+        var existingDrops = level.getEntitiesOfClass(ItemEntity.class, area).stream().map(ItemEntity::getUUID).toList();
+        // A block on the shell which does not depend on the wall must not be cloned or cleared.
+        BlockPos unrelated = base.relative(along, 2).relative(front).above(15);
+        level.setBlock(unrelated, Blocks.GOLD_BLOCK.defaultBlockState(), 2);
+        try {
+            for (HangingEntity entity : entities) {
+                helper.assertTrue(entity.survives(), "Decoration fixture must have valid support");
+                level.addFreshEntity(entity);
+            }
+            int coinsBefore = ModEvents.getPlayerDatabase(level).getData(player.getUUID()).getCoins();
+            helper.assertValueEqual(BuildCommand.preview(player, base, base.relative(along, 2), building, distance), 0,
+                    "Partial backing for a four-block painting must reject the move");
+            helper.assertValueEqual(BuildCommand.preview(player, base, base.relative(along, 3), building, distance), 1,
+                    "Decorated wall must preview");
+            frame.setRotation(4);
+            helper.assertValueEqual(BuildCommand.confirm(player), 0, "Changing frame data must invalidate preview");
+            helper.assertValueEqual(ModEvents.getPlayerDatabase(level).getData(player.getUUID()).getCoins(), coinsBefore,
+                    "Changed decorations must not charge gold");
+            helper.assertTrue(level.getBlockState(base).is(Blocks.COBBLESTONE),
+                    "Failed decoration confirmation must not move blocks");
+            frame.setRotation(3);
+            helper.assertValueEqual(BuildCommand.preview(player, base, base.relative(along, 3), building, distance), 1,
+                    "Restored decorations must preview");
+            var added = new ItemFrame(level, base.relative(along, 3).relative(front).above(4), front);
+            level.addFreshEntity(added);
+            try {
+                helper.assertValueEqual(BuildCommand.confirm(player), 0, "Added decoration must invalidate preview");
+            } finally {
+                added.discard();
+            }
+            var blocker = new ItemFrame(level, frame.getPos().offset(offset), front);
+            level.addFreshEntity(blocker);
+            try {
+                helper.assertValueEqual(BuildCommand.preview(player, base, base.relative(along, 3), building, distance), 0,
+                        "Occupied decoration destination must reject the entire move");
+            } finally {
+                blocker.discard();
+            }
+            helper.assertValueEqual(ModEvents.getPlayerDatabase(level).getData(player.getUUID()).getCoins(), coinsBefore,
+                    "Blocked destinations must not charge gold");
+            helper.assertTrue(move(player, base, base.relative(along, 3), building, distance) > 0,
+                    "Both moves must preserve attachments, including overlap and either wall axis");
+            for (var entry : attachments.entrySet()) {
+                BlockPos destination = entry.getKey().offset(offset);
+                helper.assertValueEqual(level.getBlockState(destination), entry.getValue(),
+                        "Attachment block state and orientation must move intact");
+                helper.assertTrue(entry.getValue().canSurvive(level, destination), "Moved attachment must retain support");
+            }
+            var movedSign = (SignBlockEntity) level.getBlockEntity(sign.offset(offset));
+            helper.assertValueEqual(movedSign.getFrontText().getMessage(0, false).getString(), "Keep this text",
+                    "Front sign text must survive");
+            helper.assertValueEqual(movedSign.getBackText().getMessage(1, false).getString(), "Back side too",
+                    "Back sign text must survive");
+            helper.assertTrue(movedSign.isWaxed() && movedSign.getFrontText().hasGlowingText()
+                    && movedSign.getFrontText().getColor() == DyeColor.BLUE, "Sign wax, glow, and color must survive");
+            var movedBanner = (BannerBlockEntity) level.getBlockEntity(banner.offset(offset));
+            helper.assertValueEqual(movedBanner.collectComponents().get(DataComponents.BANNER_PATTERNS), patterns,
+                    "Banner patterns must survive");
+            helper.assertValueEqual(movedBanner.collectComponents().get(DataComponents.CUSTOM_NAME),
+                    Component.literal("Village colors"), "Banner name must survive");
+            for (int i = 0; i < entities.size(); i++) {
+                HangingEntity entity = entities.get(i);
+                helper.assertValueEqual(entity.getPos(), anchors.get(i).offset(offset), "Decoration anchor must move");
+                helper.assertValueEqual(entity.getDirection(), directions.get(i), "Decoration facing must stay unchanged");
+                for (int tick = 0; tick < 120; tick++) entity.tick();
+                helper.assertTrue(!entity.isRemoved() && entity.survives(), "Decorations must not pop off after moving");
+            }
+            helper.assertValueEqual(painting.getVariant(), artwork, "Painting artwork must survive");
+            helper.assertTrue(frame.getItem().is(Items.DIAMOND) && frame.getRotation() == 3,
+                    "Frame contents and rotation must survive");
+            helper.assertTrue(glow.getItem().is(Items.EMERALD) && glow.getRotation() == 5,
+                    "Glow frame contents and rotation must survive");
+            helper.assertTrue(level.getBlockState(unrelated).is(Blocks.GOLD_BLOCK),
+                    "Unrelated shell blocks must remain in place");
+            helper.assertTrue(level.getEntitiesOfClass(ItemEntity.class, area).stream()
+                    .allMatch(item -> existingDrops.contains(item.getUUID())), "Moving decorations must not duplicate item drops");
+            var clone = new com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack>();
+            net.minecraft.server.commands.CloneCommands.register(clone, net.minecraft.commands.CommandBuildContext.simple(
+                    level.registryAccess(), level.enabledFeatures()));
+            BlockPos cloneTarget = unrelated.relative(front, 3);
+            String from = unrelated.getX() + " " + unrelated.getY() + " " + unrelated.getZ();
+            String to = cloneTarget.getX() + " " + cloneTarget.getY() + " " + cloneTarget.getZ();
+            try {
+                helper.assertTrue(clone.execute("clone " + from + " " + from + " " + to + " replace force",
+                        player.createCommandSourceStack().withPermission(
+                                net.minecraft.server.permissions.LevelBasedPermissionSet.GAMEMASTER)) > 0,
+                        "Ordinary vanilla clone must remain unaffected outside build execution");
+            } catch (com.mojang.brigadier.exceptions.CommandSyntaxException failure) {
+                throw new IllegalStateException("Vanilla clone regression failed", failure);
+            }
+            helper.assertTrue(level.getBlockState(cloneTarget).is(Blocks.GOLD_BLOCK),
+                    "Vanilla clone must not retain the build's sparse source filter");
+        } finally {
+            entities.forEach(HangingEntity::discard);
+            level.getEntitiesOfClass(ItemEntity.class, area).stream()
+                    .filter(item -> !existingDrops.contains(item.getUUID())).forEach(ItemEntity::discard);
+        }
     }
 
     private static void assertOutline(GameTestHelper helper, List<ClientboundLevelParticlesPacket> particles,

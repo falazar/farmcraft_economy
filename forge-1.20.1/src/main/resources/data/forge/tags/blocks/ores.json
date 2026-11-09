@@ -1,0 +1,15 @@
+{
+  "replace": false,
+  "values": [
+    "farmupcraft:ruby_ore",
+    "farmupcraft:deepslate_ruby_ore",
+    "farmupcraft:opal_ore",
+    "farmupcraft:deepslate_opal_ore",
+    "farmupcraft:sapphire_ore",
+    "farmupcraft:deepslate_sapphire_ore",
+    "farmupcraft:topaz_ore",
+    "farmupcraft:deepslate_topaz_ore",
+    "farmupcraft:peridot_ore",
+    "farmupcraft:deepslate_peridot_ore"
+  ]
+}

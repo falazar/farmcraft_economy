@@ -42,6 +42,18 @@ class StoneManagerTest {
     }
 
     @Test
+    void levelSevenBoughtClaimPlotBonusRequiresBoughtPlotAndLevelSevenOrHigher() {
+        assertFalse(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("plot", 6));
+        assertTrue(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("plot", 7));
+        assertTrue(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("farm", 8));
+        assertTrue(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("village center", 7));
+        assertFalse(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("village", 7));
+        assertFalse(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("VILLAGE", 10));
+        assertFalse(StoneManager.isBoughtClaimPlotWithLevelSevenBonus("", 10));
+        assertFalse(StoneManager.isBoughtClaimPlotWithLevelSevenBonus(null, 10));
+    }
+
+    @Test
     void subscribesToTheCancellableAttemptRatherThanAnAfterBreakPhase() throws Exception {
         assertEquals("farmupcraft", StoneManager.class.getAnnotation(EventBusSubscriber.class).modid());
         assertTrue(ICancellableEvent.class.isAssignableFrom(BreakBlockEvent.class));

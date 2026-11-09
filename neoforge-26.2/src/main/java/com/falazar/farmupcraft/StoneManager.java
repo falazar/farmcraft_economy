@@ -31,7 +31,27 @@ public class StoneManager {
             level.destroyBlock(event.getPos(), false);
             event.setNotifyClient(true);
             event.setCanceled(true);
+            return;
         }
+        if (!player.isCreative() && hasLevelSevenVillagePlotBonus(event.getPos(), level)
+                && player.hasCorrectToolForDrops(state)) {
+            net.minecraft.world.level.block.Block.dropResources(state, level, event.getPos(),
+                    level.getBlockEntity(event.getPos()), player, player.getMainHandItem());
+        }
+    }
+
+    static boolean hasLevelSevenVillagePlotBonus(net.minecraft.core.BlockPos pos, ServerLevel level) {
+        var chunk = ChunkManager.getPlot(pos, level);
+        if (chunk == null || chunk.getVillageId() == null) {
+            return false;
+        }
+        var village = com.falazar.farmupcraft.events.ModEvents.getVillageDatabase(level).getData(chunk.getVillageId());
+        return isBoughtClaimPlotWithLevelSevenBonus(chunk.getType(), village == null ? 0 : village.getLevel());
+    }
+
+    static boolean isBoughtClaimPlotWithLevelSevenBonus(String plotType, int villageLevel) {
+        return villageLevel >= 7 && plotType != null && !plotType.isBlank()
+                && !"village".equalsIgnoreCase(plotType.trim());
     }
 
     static boolean isAffectedBlock(BlockState state) {

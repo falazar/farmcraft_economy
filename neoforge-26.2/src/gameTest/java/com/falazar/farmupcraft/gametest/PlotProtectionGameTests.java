@@ -33,6 +33,7 @@ public final class PlotProtectionGameTests {
                     PlotProtectionGameTests::houseOwnerBreak);
             functions.register(FarmUpCraftNeoForge.prefix("plot_house_visitor_access"),
                     PlotProtectionGameTests::houseVisitorAccess);
+            functions.register(FarmUpCraftNeoForge.prefix("plot_road"), PlotProtectionGameTests::road);
         });
     }
 
@@ -65,9 +66,49 @@ public final class PlotProtectionGameTests {
             helper.assertValueEqual(ModEvents.getPlayerDatabase(fixture.level).getData(player.getUUID()).getCoins(),
                     37, "plot protection must not change the player's coins");
         }
+
         helper.succeed();
     }
 
+    private static void road(GameTestHelper helper) {
+            try (var fixture = new ResourcePlotFixture(helper)) {
+                var villageId = UUID.randomUUID();
+                var villages = ModEvents.getVillageDatabase(fixture.level);
+                var plots = ModEvents.getChunkDataDatabase(fixture.level);
+                var players = ModEvents.getPlayerDatabase(fixture.level);
+                var village = new com.falazar.farmupcraft.data.VillageData(villageId, "Road test",
+                        fixture.player.chunkPosition(), 1, java.util.List.of(fixture.player.chunkPosition()),
+                        true, 250, "", "cow", "", fixture.player.getName().getString(),
+                        java.util.List.of(fixture.player.getUUID()));
+                villages.putData(villageId, village);
+                try {
+                    plots.putData(fixture.key, new ChunkData("plot", fixture.player.getId(), villageId,
+                            fixture.player.getUUID()));
+                    players.putData(fixture.player.getUUID(), new PlayerData(fixture.player.getId(),
+                            fixture.player.getUUID(), villageId, 1000));
+                    var source = fixture.player.createCommandSourceStack();
+                    var dispatcher = fixture.level.getServer().getCommands().getDispatcher();
+                    var suggestions = dispatcher.getCompletionSuggestions(dispatcher.parse("plot buy r", source)).join();
+                    helper.assertTrue(suggestions.getList().stream().anyMatch(s -> s.getText().equals("road")),
+                            "Road is offered in buy autocomplete");
+                    var typeSuggestions = dispatcher.getCompletionSuggestions(dispatcher.parse("plot settype r", source)).join();
+                    helper.assertTrue(typeSuggestions.getList().stream().anyMatch(s -> s.getText().equals("road")),
+                            "Road is offered in settype autocomplete");
+                    helper.assertValueEqual(dispatcher.execute("plot settype road", source), 1, "Road type accepted");
+                    helper.assertValueEqual(plots.getData(fixture.key).getType(), "road", "Road persists in plot data");
+                    helper.assertValueEqual(players.getData(fixture.player.getUUID()).getCoins(), 892,
+                            "Road conversion uses half of 215 rounded up to 108 coins");
+                    helper.assertValueEqual(dispatcher.execute("plot settype road", source), 1, "Already-road is idempotent");
+                    helper.assertValueEqual(players.getData(fixture.player.getUUID()).getCoins(), 892,
+                            "Repeated settype does not charge again");
+                } finally {
+                    villages.removeDataBatch(java.util.List.of(villageId));
+                }
+            } catch (com.mojang.brigadier.exceptions.CommandSyntaxException error) {
+                throw new IllegalStateException("Road plot command failed", error);
+            }
+            helper.succeed();
+        }
     private static void houseVisitorAccess(GameTestHelper helper) {
         try (var fixture = new ResourcePlotFixture(helper)) {
             var player = fixture.player;

@@ -1,4 +1,50 @@
+TODO: Village level-up plot requirements: require specific specialized plots (such as graveyard, refinery, restaurant, etc.) before a village can reach certain higher levels, and show these requirements in /village levelup and /village info2.
+
+TODO: Move NPC-owned files into their owning world save (both loaders; implementation requires reviewed migration).
+    Confirmed preference: NPC profiles and generated NPC state should be world-specific, preferably in the normal save directory under <world>\farmupcraft\npcData, not shared instance\npcData. Include assigned profile files, generic/generated profiles, threat-note state, gem profile metadata/migration backups and world-specific conversation history; review each surface rather than moving only the main profile JSON.
+    Keep reusable example/personality templates and AI endpoint/service configuration global only if explicitly intended; world-owned profiles must not silently fall back to mutable global files. Resolve paths through the owning server's world root, including asynchronous LLM work, commands and cleanup.
+    Back up the existing instance npcData before migration. Match profiles to the owning world's NPC records/assigned filenames; preserve custom fields and references. Do not import/delete all global profiles for every world. Report ambiguous ownership/collisions and support idempotent interrupted migration.
+    Verify two worlds and cloned saves with identical NPC/player UUIDs or assigned filenames do not share or overwrite profiles, notes, hints or history. Ensure ordinary world backups include NPC-owned files and restore correctly. No runtime code changes made for this request.
+
+TODO: Audit world isolation and complete-world backup coverage (both loaders; do not change runtime code until reviewed).
+    Current evidence: main SavedData databases live in each world's dimension data; generated gem assignments live in <world>\farmupcraft\gems. These are not one shared world database. Database backups/exports live outside the save under instance\databases and use a UUID derived from the absolute save path, separating worlds but changing identity if a save moves.
+    Confirmed shared surfaces to review: instance\npcData profiles, explicitly assigned profile filenames, generic profiles, threat_notes_cache.json and gem-migration-v1-backups; instance\logs\<player>\<date>\NPC.txt conversation logs. UUID filenames reduce accidental collisions but do not make these world-scoped; cloned worlds, assigned names, profile deletion/migration and shared threat-note consumption need explicit policy.
+    Classify every file/cache as intentionally global defaults/config/templates versus world-owned state. Shared config\gem_biome_config.json is currently an administrator default policy, not the generated world rules; config\farmupcraft\chores.md and AI/service settings need an explicit global-vs-world override decision. Audit other market/config/import/export/scan/report paths and static caches/async workers on both loaders, including world switching, stop/start, dimensions and stale queued writes.
+    Decide a consistent world-owned root such as <world>\farmupcraft for NPC profiles, conversations, generated notes, migrations and backups; keep reusable templates/service configuration global only by explicit design. Review stable world identity on copy/rename/move and cloned-save behavior before migrating path-derived external database folders.
+    Plan backed-up, versioned, idempotent migration with collision/ambiguity diagnostics, preserved custom fields and assigned profile references, no silent global fallback or cross-world overwrites, and no external editing of running worlds. Do not blindly import all global NPC files into every world.
+    Test two worlds in one instance (including same player/NPC UUIDs and assigned filenames), copied/moved saves, world reloads and interrupted migration. Verify commands, LLM jobs, profile cleanup, gem migrations and backup/export operations use the owning server/world.
+    Backup gap: the verified Rimfog2 save ZIP includes world-local data but NOT instance npcData, conversation logs, global configs or external database backups/exports. Define and verify a complete FarmUpCraft backup/restore bundle or document required companion files; retain original files until migration/restore is verified.
+
+DONE: Underground gems (both versions).
+    Ruby, opal, sapphire, topaz, peridot; original temporary art, diamond-tier ores, Fortune/Silk Touch/XP, editable biome policy, seeded biome/height rules, bounded old-chunk population and deterministic new/old border deposits. Limited stable villager hints, backed-up profile migration, new special ruin-note chest hints, and market defaults. Verified common/mining/graphics/native border/retry tests and both release builds; see GEMS_PLAN.md for limits.
+    Claims are intentionally eligible, including player-placed host stone/dirt/sand. Back up existing worlds before first installation. Shared NeoForge JAR deployed with backup/hash verification; instance copy deferred while Minecraft is running.
+
+DONE: Structure identity collisions (both versions): registry type + starting chunk distinguish structures sharing a chunk; retain legacy IDs/visits/chest progress, collision-check allocated IDs, persist start_chunk for stable rescans. Height filters affect displayed results, not capture. /village structures rescan recovers previously omitted starts; Survival players already inside recovered structures are marked visited.
+
+DONE: Automatic road and railway surveys (both versions).
+    Roads seed from outward-facing village claim borders, including irregular boundaries/holes, then trace both inward and outward. Rails seed ONLY inside trainstation plots; they must follow continuous matching track, curves and ascending rails.
+    Require a six-position connected candidate before tracing. Count connected routes at least 48 blocks long (inside + outside), keeping their shorter segments at junctions/ruins. Centreline thinning avoids counting road width as extra length.
+    Split segments at junctions, ruin contacts and claim boundaries. Save deterministic segment IDs, complete point geometry/endpoints, inside/outside lengths, other-village claim contacts, blue claimed-plot contacts, and surface structure-instance contacts.
+    One missing road block is allowed, never two. Rails cannot cross a missing track. Slopes/diagonals use position-to-position travel distance.
+    Automatic queue checks every 10 seconds; each village's ROAD and RAIL attempts have independent persisted 24-real-hour gates. Last checked/start time is saved before scanning; failures, incomplete scans and restarts do not bypass the gate.
+    Trace up to 800 blocks outward from village exits, plus inside-village distance. At the distance/work/unloaded limit, report incomplete, retaining the previous complete measurement as stale rather than replacing it with a false dead end.
+    Bounded server-thread sampling; centreline/graph analysis runs on a private snapshot off-thread. Never load or generate missing chunks. Additional position/seed-work budgets bound large networks and station scans.
+    Materials: farmupcraft:road_surfaces tag (paths, gravel, planks, crafted masonry), every registered slab/stair including optional-mod subclasses, verified Macaw bridge deck IDs (not supports/lights), and Refurbished Furniture stepping stones.
+    Surface ruins use loaded surface-generation structure pieces at route height; underground-generation structures and vanilla villages are excluded. Do not query remote structure locations or use the old Y=60 heuristic.
+    /village routes [villageName] reports saved totals/segments, village/plot/ruin contact counts, UTC last-checked/last-complete/next-eligible datetimes, and incomplete/stale status. No manual recording or cooldown-bypass command.
+    /village roads and /village railroads list start/end coordinates, measured length, start-to-end direction and named connections, eight segments per page; optional villageName/page arguments. Saved-only display does not rescan.
+    Persistent discovery ledger/inboxes announce first road/rail discoveries, new >=6-position extensions and new connections to online home-village members; offline members receive saved notices on login. Unchanged/resegmented/rebuilt known routes do not spam notices; partial surveys are labelled. No retroactive history for newly joined members.
+    Scope: overworld village claims, matching the existing dimensionless village/plot databases. No rewards/upkeep changes.
+    LIMITATION / FOLLOW-UP: material/topology detection cannot infer player intent. A sufficiently long eligible floor/roof/gravel strip connected to an exit can still resemble a road; broad plazas have ambiguous centrelines. Raw natural stone is deliberately not in the default road tag. Consider explicit exclusions if live-world surveys expose false positives.
+
 TODO: Limit JourneyMap visibility to four chunks (64 blocks) away from the player.
+
+TODO: Explore Mapping skills with the new GUIs, letting players unlock biome searches and other map/exploration tools as their skill improves.
+
+DONE: Restore lake and island names in map displays (both versions), and auto-scan on village creation and level-up.
+    Named discoveries use one center JourneyMap marker (<Name> Lake / <Name> Island) and show surface-entry titles on both loaders. Creating a village or leveling it up automatically triggers an asynchronous lake/island scan around the village center with radius 25 + 5 * villageLevel chunks (30 chunks at level 1 up to 75 chunks at level 10).
+
+TODO: Tundra supports the onion, tomato, and garlic trio - a prime farming spot.
 
 TODO TEMP PATCH REMOVAL: Ice and Fire 2.2-mc26.2-unofficial-beta.1 stone-statue rendering workaround (NeoForge 26.2). After an upstream update fixes temporary model entity ID assignment, verify the previously crashing statue renders without our patch, then remove IceAndFireStoneStatueMixin, its farmupcraft.mixins.json client registration, StoneStatueRenderCompat, and the stone_statue_model_id game test/resources. Do not retain this workaround indefinitely.
 
@@ -6,7 +52,7 @@ TODO: Create a Prism Launcher-importable Rimfog2 Modrinth pack (.mrpack) for eas
 
 BUILD MOVE PREVIEW AND CONFIRMATION (BOTH VERSIONS):
     DONE: After the second corner selection, show red source/green destination particle outlines and the non-air block count / total cost (1 gp per block). Require explicit clickable Confirm / Cancel or /build confirm before moving or charging; recheck blocks, block entity data, permissions, destination block entities, and funds at confirmation. Changed areas require a new preview. Both push and pull movement capped at 10 blocks; building width capped at 20.
-    TODO: Add a client-side ghost-block preview: highlight source blocks that will be removed and render semi-transparent destination blocks without changing the world. Preview only; preserve normal collision, inventories, and server authority. Implement for Forge 1.20.1 and NeoForge 26.2.
+    DONE: Add a client-side ghost-block preview: highlight source blocks that will be removed and render semi-transparent destination blocks without changing the world. Preview only; preserve normal collision, inventories, and server authority. Implemented for Forge 1.20.1 and NeoForge 26.2 via BuildPreviewPacket and BuildPreviewRenderer.
 
 TODO: Attempt to log in as a regular non-operator player in our regular world, move, break a block, and place a block; obtain approval before modifying the live world, or use a copied save.
 TODO NEOFORGE COMPATIBILITY TEST: Ported the nine-veswax-to-one-honeycomb recipe, Silk Touch-only veswax loot, optional emu/duck entries in HarvestCraft's c:egg tag, and optional BOP savanna additions. Verify crafting and Silk Touch/no-Silk drops once a working 26.2 Lycanites build is available (currently disabled); verify egg recipes and savanna classification with companion mods installed. Lycanites resources are guarded by mod_loaded; Forge originals are unchanged.
@@ -17,7 +63,8 @@ DONE NEOFORGE EXTERNAL DATAPACK: Convert and bundle all 155 JSONs from Rimfog's 
 DONE FORGE EXTERNAL DATAPACK: Verify all 155 original JSONs were already bundled in the Forge resources and rebuilt 1.20.1 jar, each exactly once and semantically matching Rimfog's pack. Java 17 build -x copyJar passes; no live deployment or new Forge in-world generation test was performed.
 DONE DAILY CHORES DEFAULTS: Bundle the original chores file in both jars and seed config/farmupcraft/chores.md at server startup only when missing, preferring an existing legacy Rimfog/chores.md. Preserve existing/empty/custom files and log failures. Fourteen shared tests and 60 NeoForge world tests pass; actual first-start copy verified byte-for-byte. Rebuilt jars are not automatically deployed.
 TODO LATER: Complete explicit Forge-to-NeoForge saved-data migration with atomic install/rollback; keep legacy inspection read-only and apply disabled until approved. Never test imports on the only copy of a save.
-TODO: Give double mining bonus for villages at level 7 in any bought claim plot.
+DONE: Give double mining bonus for villages at level 7 in any bought claim plot (both versions).
+    Successful stone/dirt mining rolls in any bought claim plot belonging to a level 7+ village yield 2x drops (normal green "village" chunks do not receive the bought-plot bonus).
 TODO LATER: Make Biomes O' Plenty (BOP) optional in the NeoForge port; safely skip BOP-specific content/rules when absent and verify startup/gameplay without BOP or its dependency chain.
 TODO: Add an /npc claim method to turn a mob into an NPC, allow naming, assign an AI profile file, and set behavior to nonhostile, wary, or hostile.
 TODO: Create npc dragon nearby to talk to.

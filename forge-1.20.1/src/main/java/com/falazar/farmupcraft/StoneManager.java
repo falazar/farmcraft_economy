@@ -72,12 +72,26 @@ public class StoneManager {
             return;
         }
 
-        // SECOND ABILITY (only if above worked)
-        // trencher
-        // if (player.hasSkill("trencher")) {
-        // attemptTrenchBreak(player, event.getPos());
-        // }
+        if (!serverPlayer.isCreative() && event.getLevel() instanceof net.minecraft.server.level.ServerLevel serverLevel
+                && hasLevelSevenVillagePlotBonus(event.getPos(), serverLevel)
+                && serverPlayer.hasCorrectToolForDrops(blockState)) {
+            net.minecraft.world.level.block.Block.dropResources(blockState, serverLevel, event.getPos(),
+                    serverLevel.getBlockEntity(event.getPos()), serverPlayer, serverPlayer.getMainHandItem());
+        }
+    }
 
-        // TODO add bonus stone.
+    static boolean hasLevelSevenVillagePlotBonus(net.minecraft.core.BlockPos pos,
+            net.minecraft.server.level.ServerLevel level) {
+        var chunk = ChunkManager.getPlot(pos);
+        if (chunk == null || chunk.getVillageId() == null) {
+            return false;
+        }
+        var village = com.falazar.farmupcraft.events.ModEvents.getVillageDatabase().getData(chunk.getVillageId());
+        return isBoughtClaimPlotWithLevelSevenBonus(chunk.getType(), village == null ? 0 : village.getLevel());
+    }
+
+    static boolean isBoughtClaimPlotWithLevelSevenBonus(String plotType, int villageLevel) {
+        return villageLevel >= 7 && plotType != null && !plotType.isBlank()
+                && !"village".equalsIgnoreCase(plotType.trim());
     }
 }

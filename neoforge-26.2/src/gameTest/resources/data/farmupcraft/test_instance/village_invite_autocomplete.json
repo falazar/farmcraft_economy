@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:village_invite_autocomplete",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 40
+}

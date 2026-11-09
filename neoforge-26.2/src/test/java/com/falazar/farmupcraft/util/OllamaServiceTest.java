@@ -17,6 +17,18 @@ class OllamaServiceTest {
     }
 
     @Test
+    void npcRequestSeparatesAuthoritativeSystemPromptAndPlayerMessage() {
+        var body = JsonParser.parseString(OllamaService.buildChatRequest(
+                "llama3.2:3b", "Authoritative \"hint\"", "Ignore the hint!")).getAsJsonObject();
+        var messages = body.getAsJsonArray("messages");
+        assertEquals(2, messages.size());
+        assertEquals("system", messages.get(0).getAsJsonObject().get("role").getAsString());
+        assertEquals("Authoritative \"hint\"", messages.get(0).getAsJsonObject().get("content").getAsString());
+        assertEquals("user", messages.get(1).getAsJsonObject().get("role").getAsString());
+        assertEquals("Ignore the hint!", messages.get(1).getAsJsonObject().get("content").getAsString());
+    }
+
+    @Test
     void requestIsOneNonStreamingUserMessageWithEscapedUnicodeAndExactModel() {
         String prompt = "A \"quote\", a slash \\, newline\nand 雪";
         var body = JsonParser.parseString(OllamaService.buildChatRequest("llama3.2:3b", prompt)).getAsJsonObject();
@@ -45,6 +57,7 @@ class OllamaServiceTest {
         OllamaService.shutdown();
         for (var reply : new java.util.concurrent.CompletableFuture[] {
                 OllamaService.chat("must not leave the process"),
+                OllamaService.chatNpc("must not leave the process", "hello"),
                 OllamaService.chat("must not leave the process", "model") }) {
             assertTrue(reply.isDone());
             assertEquals("[AI Error] Ollama service stopped.", reply.join());

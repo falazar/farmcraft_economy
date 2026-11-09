@@ -1,0 +1,18 @@
+{
+  "key.farmupcraft.menu": "Open FarmUpcraft menu",
+  "item.farmupcraft.ruby": "Ruby",
+  "block.farmupcraft.ruby_ore": "Ruby Ore",
+  "block.farmupcraft.deepslate_ruby_ore": "Deepslate Ruby Ore",
+  "item.farmupcraft.opal": "Opal",
+  "block.farmupcraft.opal_ore": "Opal Ore",
+  "block.farmupcraft.deepslate_opal_ore": "Deepslate Opal Ore",
+  "item.farmupcraft.sapphire": "Sapphire",
+  "block.farmupcraft.sapphire_ore": "Sapphire Ore",
+  "block.farmupcraft.deepslate_sapphire_ore": "Deepslate Sapphire Ore",
+  "item.farmupcraft.topaz": "Topaz",
+  "block.farmupcraft.topaz_ore": "Topaz Ore",
+  "block.farmupcraft.deepslate_topaz_ore": "Deepslate Topaz Ore",
+  "item.farmupcraft.peridot": "Peridot",
+  "block.farmupcraft.peridot_ore": "Peridot Ore",
+  "block.farmupcraft.deepslate_peridot_ore": "Deepslate Peridot Ore"
+}

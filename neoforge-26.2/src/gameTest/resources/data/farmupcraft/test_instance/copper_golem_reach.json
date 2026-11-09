@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:copper_golem_reach",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 100
+}

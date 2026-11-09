@@ -5,8 +5,12 @@ import com.falazar.farmupcraft.data.PlayerData;
 import com.falazar.farmupcraft.data.VillageData;
 import com.falazar.farmupcraft.data.WorldData;
 import com.falazar.farmupcraft.database.DataBase;
+import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.database.message.MarketViewPacket;
 import com.falazar.farmupcraft.events.ModEvents;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.MarketView;
+import com.falazar.farmupcraft.util.MarketSalePricing;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -23,6 +27,7 @@ import net.minecraft.network.chat.Style;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -54,9 +59,21 @@ public class MarketCommand {
                 .executes(MarketCommand::showMarketInfo);
         builder.then(infoBuilder);
 
-        // Define the "show" sub-command
-        // with four options: misc, stone, food, wood
-        LiteralArgumentBuilder<CommandSourceStack> showBuilder = Commands.literal("show")
+        // Define the "show" sub-command (graphical market screen) and "show2" (text chat list)
+        var showBuilder = Commands.literal("show").executes(ctx -> showMarketScreen(ctx.getSource(), "general", 10));
+        for (String category : MarketView.CATEGORIES) {
+            var tab = Commands.literal(category).executes(ctx -> showMarketScreen(ctx.getSource(), category, null));
+            if (category.equals("high")) {
+                tab.then(Commands.argument("minCoins", IntegerArgumentType.integer(1))
+                        .executes(ctx -> showMarketScreen(ctx.getSource(), "high",
+                                IntegerArgumentType.getInteger(ctx, "minCoins"))));
+            }
+            showBuilder.then(tab);
+        }
+        builder.then(showBuilder);
+
+        LiteralArgumentBuilder<CommandSourceStack> show2 = Commands.literal("show2")
+                .executes(context -> showMarketList(context.getSource(), "general"))
                 .then(Commands.literal("general").executes(context -> {
                     return showMarketList(context.getSource(), "general");
                 }))
@@ -77,10 +94,20 @@ public class MarketCommand {
                             int minCoins = IntegerArgumentType.getInteger(context, "minCoins");
                             return showHighValueItems(context.getSource(), minCoins);
                         })));
-        builder.then(showBuilder);
+        builder.then(show2);
+        builder.then(Commands.literal("favorite")
+                .then(Commands.argument("itemId", StringArgumentType.string())
+                        .then(Commands.argument("favorite", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                .executes(ctx -> setMarketFavorite(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "itemId"),
+                                        com.mojang.brigadier.arguments.BoolArgumentType.getBool(ctx, "favorite"))))));
 
         // Define a "sell" sub-command, to sell all items of that type
         LiteralArgumentBuilder<CommandSourceStack> sellBuilder = Commands.literal("sell")
+                .then(Commands.literal("item")
+                        .then(Commands.argument("itemId", StringArgumentType.string())
+                                .executes(context -> sellMarketItem(context.getSource(),
+                                        StringArgumentType.getString(context, "itemId")))))
                 .then(Commands.literal("general").executes(context -> {
                     sellMarketItems(context.getSource(), "general");
                     return 0;
@@ -336,6 +363,66 @@ public class MarketCommand {
         return 1;
     }
 
+    public static int showMarketScreen(CommandSourceStack source, String category, Integer minimumPrice) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+        var wallet = PlayerCommand.getPlayer(source);
+        if (wallet == null) return 0;
+        var active = getFilteredActiveGoods(category);
+        if (!category.equals("high") && !category.equals("favorites") && (active == null || active.isEmpty())) {
+            if (seedMarketType(source, category) == 0) return 0;
+        }
+        try {
+            int price = minimumPrice == null ? wallet.getMarketMinimumPrice() : minimumPrice;
+            var view = buildMarketView(player, category, price, wallet.getCoins());
+            if (category.equals("high") && wallet.getMarketMinimumPrice() != price) {
+                wallet.setMarketMinimumPrice(price);
+                PlayerCommand.savePlayer(player.getUUID(), wallet);
+            }
+            EDBMessages.sendToPlayer(new MarketViewPacket(view), player);
+            return 1;
+        } catch (IllegalArgumentException error) {
+            LOGGER.error("Cannot open graphical market: " + error.getMessage());
+            source.sendFailure(Component.literal("Cannot open market: invalid market data. See log."));
+            return 0;
+        }
+    }
+
+    public static int setMarketFavorite(CommandSourceStack source, String itemId, boolean favorite) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+        var wallet = PlayerCommand.getPlayer(source);
+        if (wallet == null) return 0;
+        var good = ModEvents.getGoodsDataDatabase().getData(itemId);
+        if (good == null || good.getItem() == null) {
+            source.sendFailure(Component.literal("Cannot change favorite: unknown market item."));
+            return 0;
+        }
+        wallet.setMarketFavorite(itemId, favorite);
+        PlayerCommand.savePlayer(player.getUUID(), wallet);
+        return 1;
+    }
+
+    static MarketView buildMarketView(
+            ServerPlayer player, String category, int minimumPrice, int coins) {
+        var entries = new ArrayList<MarketView.Entry>();
+        var preferences = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        for (var good : ModEvents.getGoodsDataDatabase().getValues()) {
+            boolean favorite = preferences != null && preferences.isMarketFavorite(good.getItemId());
+            if (!good.isActive() || (category.equals("high") ? good.getCost() < minimumPrice
+                    : category.equals("favorites") ? !favorite : !good.getMarketType().equals(category))) continue;
+            Item item = good.getItem();
+            if (item == null) continue;
+            entries.add(new MarketView.Entry(good.getItemId(), good.getCost(),
+                    countSaleItems(player.getInventory(), item), favorite));
+        }
+        return new MarketView(category, minimumPrice, coins, entries);
+    }
+
     public static int showMarketList(CommandSourceStack source, String type) {
         try {
             Entity nullableSummoner = source.getEntity();
@@ -469,11 +556,44 @@ public class MarketCommand {
     // Sell all items of a given type in the player's inventory.
     // Lower the price by 1 for each set of 32 sold.
     // Randomly increase the price of another item by 1 for each set of 64 sold.
+    public static int sellMarketItem(CommandSourceStack source, String itemId) {
+        if (!(source.getEntity() instanceof Player player)) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+        if (PlayerCommand.getPlayer(source) == null) return 0;
+        var good = ModEvents.getGoodsDataDatabase().getData(itemId);
+        Item item = good == null ? null : good.getItem();
+        if (good == null || !good.isActive() || item == null) {
+            source.sendFailure(Component.literal("That item is no longer active in the market."));
+            return 0;
+        }
+        if (countSaleItems(player.getInventory(), item) == 0) {
+            source.sendFailure(Component.literal("You have none of that item to sell."));
+            return 0;
+        }
+        try {
+            int count = countSaleItems(player.getInventory(), item);
+            var quote = MarketSalePricing.quote(good.getCost(), good.getAmountSold(), count);
+            Math.addExact(PlayerCommand.getPlayer(source).getCoins(), quote.coins());
+            Math.addExact(good.getAmountSold(), count);
+            int coins = sellAllItemInInventory(source, player, item);
+            PlayerCommand.givePlayerCoins(source, coins);
+            if (player instanceof ServerPlayer serverPlayer)
+                EDBMessages.sendToPlayer(new com.falazar.farmupcraft.database.message.MarketSaleReceiptPacket(coins), serverPlayer);
+            return 1;
+        } catch (IllegalArgumentException | IllegalStateException | ArithmeticException error) {
+            LOGGER.error("Cannot sell market item " + itemId + ": " + error.getMessage());
+            source.sendFailure(Component.literal("Could not sell that market item - see log."));
+            return 0;
+        }
+    }
+
     public static int sellAllItemInInventory(CommandSourceStack source, Player playerSource, Item item) {
         // Find all items matching in inventory and sell them.
 
         // STEP 1: Look over player inventory now and count matching items.
-        int count = playerSource.getInventory().countItem(item);
+        int count = countSaleItems(playerSource.getInventory(), item);
         LOGGER.info("DEBUG: Selling " + count + " of " + item.getDescriptionId());
 
         // STEP 2: Remove all items.
@@ -522,22 +642,15 @@ public class MarketCommand {
 
         // TODO test can increase cost of SAME item, probably dont want that.
 
+        var alternatives = getFilteredActiveGoods(good.getMarketType()).stream()
+                .filter(candidate -> !candidate.getItemId().equals(good.getItemId()))
+                .filter(candidate -> candidate.getCost() < Integer.MAX_VALUE).toList();
+        if (alternatives.isEmpty()) return;
+        Random random = new Random();
         for (int i = 0; i < sets64; i++) {
             // Get a random item from the active filtered list.
-            Collection<GoodsData> allGoods = getFilteredActiveGoods(good.getMarketType());
-            Random random = new Random();
-            GoodsData randomGood = allGoods.stream()
-                    .skip(random.nextInt(allGoods.size())) // Skip a random number of items
-                    .findFirst() // Get the first item after skipping
-                    .orElse(null); // If no item found, return null
-            // Dont raise same good cost, find another good, without increasing counter.
-            if (randomGood == null || randomGood.getItemId().equals(good.getItemId())) {
-                // If we got the same good or null, skip this iteration.
-                LOGGER.info("DEBUG: Skipping cost increase for " + good.getItem().getDescriptionId()
-                        + " as it is the same or null.");
-                i--; // Decrement i to retry this iteration.
-                continue;
-            }
+            GoodsData randomGood = alternatives.get(random.nextInt(alternatives.size()));
+            if (randomGood.getCost() == Integer.MAX_VALUE) continue;
 
             randomGood.setCost(randomGood.getCost() + 1); // Increase the cost by 1.
             ModEvents.getGoodsDataDatabase().putData(randomGood.getItemId(), randomGood);
@@ -579,6 +692,17 @@ public class MarketCommand {
                 + ", final cost=" + cost);
 
         return coinsTotal;
+    }
+
+    static int countSaleItems(Inventory inventory, Item item) {
+        int count = 0;
+        for (ItemStack stack : inventory.items) {
+            if (stack.is(item)) count = Math.addExact(count, stack.getCount());
+        }
+        for (ItemStack stack : inventory.offhand) {
+            if (stack.is(item)) count = Math.addExact(count, stack.getCount());
+        }
+        return count;
     }
 
     // TODO remove out to proper home. player maybe.
@@ -1034,6 +1158,14 @@ public class MarketCommand {
                 seedMarketType(source, type, false);
             }
         }
+        var database = ModEvents.getGoodsDataDatabase();
+        for (var entry : com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES.entrySet()) {
+            String id = "farmupcraft:" + entry.getKey();
+            if (database.getData(id) == null) {
+                database.putData(id, new GoodsData(id, entry.getValue(), 0, "rare", false, "general", ""));
+                database.setDirty();
+            }
+        }
     }
 
     public static boolean importMarketItemsTXT(CommandSourceStack source, String type) {
@@ -1294,7 +1426,7 @@ public class MarketCommand {
         String itemName = item.getDescription().getString();
         boolean inInventory = playerSource != null
                 && playerSource.getInventory().contains(item.getDefaultInstance());
-        int inventoryCount = inInventory ? playerSource.getInventory().countItem(item) : 0;
+        int inventoryCount = inInventory ? countSaleItems(playerSource.getInventory(), item) : 0;
         NumberFormat numberFormat = NumberFormat.getInstance();
         String costStr = numberFormat.format(cost);
         String label = inInventory
@@ -1312,6 +1444,14 @@ public class MarketCommand {
         // Strip trailing newline from label so we can append the [x] on the same line.
         String labelNoNewline = label.endsWith("\n") ? label.substring(0, label.length() - 1) : label;
         MutableComponent line = Component.literal(labelNoNewline).withStyle(style);
+        if (inInventory) {
+            line.append(Component.literal(" - sell").withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
+                    .withUnderlined(true)
+                    .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
+                            "/market sell item \"" + itemId + "\""))
+                    .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                            Component.literal("Sell all of this item in your inventory")))));
+        }
 
         // Admin [x] remove button — only shown in creative mode.
         // Wrap itemId in quotes so Brigadier handles the colon in namespaced IDs

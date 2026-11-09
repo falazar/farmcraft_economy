@@ -1,0 +1,10 @@
+{
+  "replace": false,
+  "values": [
+    "farmupcraft:ruby",
+    "farmupcraft:opal",
+    "farmupcraft:sapphire",
+    "farmupcraft:topaz",
+    "farmupcraft:peridot"
+  ]
+}

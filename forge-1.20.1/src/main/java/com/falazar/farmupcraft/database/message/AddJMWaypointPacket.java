@@ -32,6 +32,7 @@ public class AddJMWaypointPacket {
     private final String dimId;
     private final boolean persistent;
     private final int color;
+    private final boolean openMap;
 
     /** Convenience constructor — persistent gold waypoint (existing behaviour). */
     public AddJMWaypointPacket(int x, int y, int z, String name, String dimId) {
@@ -39,6 +40,10 @@ public class AddJMWaypointPacket {
     }
 
     public AddJMWaypointPacket(int x, int y, int z, String name, String dimId, boolean persistent, int color) {
+        this(x, y, z, name, dimId, persistent, color, false);
+    }
+
+    public AddJMWaypointPacket(int x, int y, int z, String name, String dimId, boolean persistent, int color, boolean openMap) {
         this.x = x;
         this.y = y;
         this.z = z;
@@ -46,6 +51,7 @@ public class AddJMWaypointPacket {
         this.dimId = dimId;
         this.persistent = persistent;
         this.color = color;
+        this.openMap = openMap;
     }
 
     public AddJMWaypointPacket(FriendlyByteBuf buf) {
@@ -56,6 +62,7 @@ public class AddJMWaypointPacket {
         this.dimId = buf.readUtf();
         this.persistent = buf.readBoolean();
         this.color = buf.readInt();
+        this.openMap = buf.isReadable() && buf.readBoolean();
     }
 
     public void toBytes(FriendlyByteBuf buf) {
@@ -66,6 +73,7 @@ public class AddJMWaypointPacket {
         buf.writeUtf(dimId);
         buf.writeBoolean(persistent);
         buf.writeInt(color);
+        buf.writeBoolean(openMap);
     }
 
     public static void handle(AddJMWaypointPacket msg, Supplier<NetworkEvent.Context> contextSupplier) {
@@ -77,8 +85,12 @@ public class AddJMWaypointPacket {
     @OnlyIn(Dist.CLIENT)
     private static void addWaypoint(AddJMWaypointPacket msg) {
         IClientAPI api = JourneyMapIntegration.getApi();
-        if (api == null)
+        if (api == null) {
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "JourneyMap is not installed or is not ready."));
             return;
+        }
 
         ResourceKey<Level> dim = ResourceKey.create(Registries.DIMENSION, new ResourceLocation(msg.dimId));
         Waypoint waypoint = new Waypoint(
@@ -92,6 +104,7 @@ public class AddJMWaypointPacket {
 
         try {
             api.show(waypoint);
+            if (msg.openMap) JourneyMapIntegration.openMapAt(msg.x, msg.z);
         } catch (Exception e) {
             FarmUpCraft.LOGGER.warn("Failed to add JourneyMap waypoint: " + e.getMessage());
         }

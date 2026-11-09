@@ -72,7 +72,7 @@ public final class EggCapacityGameTests {
                     for (int count : new int[]{0, 29, 30, 31}) {
                         cleanup.forEach(Entity::discard);
                         cleanup.clear();
-                        plots.putData(key, new ChunkData(plot, -1, UUID.randomUUID()));
+                        plots.putData(key, new ChunkData(plot, -1, UUID.randomUUID(), null, List.of(), pos.getY()));
                         for (int i = 0; i < count; i++) {
                             var animal = EntityTypes.COW.create(level, EntitySpawnReason.TRIGGERED);
                             helper.assertTrue(animal != null, "Create animal fixture");
@@ -81,7 +81,7 @@ public final class EggCapacityGameTests {
                             helper.assertTrue(level.addFreshEntity(animal), "Add animal fixture");
                             cleanup.add(animal);
                         }
-                        helper.assertValueEqual(AnimalsManager.countAnimalsInChunk(level, pos), count,
+                        helper.assertValueEqual(AnimalsManager.countAnimalsInChunk(level, pos), plot.equals("pasture") ? count : 0,
                                 "Fixture must measure exact animal cap");
                         var egg = (net.minecraft.world.entity.projectile.Projectile)
                                 eggType.create(level, EntitySpawnReason.TRIGGERED);

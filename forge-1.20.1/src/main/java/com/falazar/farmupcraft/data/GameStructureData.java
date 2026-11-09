@@ -3,10 +3,12 @@ package com.falazar.farmupcraft.data;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class GameStructureData {
     public static final Codec<BlockPos> BLOCK_POS_CODEC = RecordCodecBuilder.create(instance -> instance.group(
@@ -32,10 +34,12 @@ public class GameStructureData {
             Codec.INT.optionalFieldOf("total_chest_count", 0)
                     .forGetter(GameStructureData::getTotalChestCount),
             BLOCK_POS_CODEC.listOf().optionalFieldOf("opened_chest_positions", new ArrayList<>())
-                    .forGetter(GameStructureData::getOpenedChestPositions))
+                    .forGetter(GameStructureData::getOpenedChestPositions),
+            Codec.LONG.optionalFieldOf("start_chunk").forGetter(data -> data.startChunk))
             .apply(instance, GameStructureData::new));
 
     private final Long id;
+    private Optional<Long> startChunk = Optional.empty();
     private String name;
     private final BlockPos centerPos;
     private final String type;
@@ -112,6 +116,23 @@ public class GameStructureData {
      */
     public Long getId() {
         return id;
+    }
+
+    private GameStructureData(Long id, String name, BlockPos centerPos, String type, boolean onClaimedPlot,
+            boolean wasVisited, BlockPos minPos, BlockPos maxPos, List<Long> chunkPositions,
+            BlockPos specialChestPos, boolean specialChestOpened, int totalChestCount,
+            List<BlockPos> openedChestPositions, Optional<Long> startChunk) {
+        this(id, name, centerPos, type, onClaimedPlot, wasVisited, minPos, maxPos, chunkPositions,
+                specialChestPos, specialChestOpened, totalChestCount, openedChestPositions);
+        this.startChunk = startChunk;
+    }
+
+    public long getStartChunk() {
+        return startChunk.orElse(id);
+    }
+
+    public void setStartChunk(long startChunk) {
+        this.startChunk = Optional.of(startChunk);
     }
 
     /**
@@ -211,6 +232,19 @@ public class GameStructureData {
 
     public boolean hasBoundingBox() {
         return !BlockPos.ZERO.equals(minPos) || !BlockPos.ZERO.equals(maxPos);
+    }
+
+    public boolean isUnderground() {
+        return (hasBoundingBox() ? maxPos : centerPos).getY() < 60;
+    }
+
+    public boolean intersectsSection(SectionPos section) {
+        if (!hasBoundingBox()) return SectionPos.of(centerPos).equals(section);
+        SectionPos min = SectionPos.of(minPos), max = SectionPos.of(maxPos);
+        return section.y() >= min.y() && section.y() <= max.y()
+                && (hasChunkPositions() ? chunkPositions.contains(section.chunk().toLong())
+                    : section.x() >= min.x() && section.x() <= max.x()
+                        && section.z() >= min.z() && section.z() <= max.z());
     }
 
     public List<Long> getChunkPositions() {

@@ -15,5 +15,6 @@ public class LevelRendererMixin {
     public void farmupcraft$renderClaimedChunk(LightTexture pLightTexture, float pPartialTick, double pCamX, double pCamY, double pCamZ, CallbackInfo ci) {
         LevelRenderer levelRenderer = (LevelRenderer) (Object) this;
         BorderRenderer.renderClaimedChunk(levelRenderer, pLightTexture, pPartialTick, pCamX, pCamY, pCamZ);
+        com.falazar.farmupcraft.client.BuildPreviewRenderer.render(pCamX, pCamY, pCamZ);
     }
 }

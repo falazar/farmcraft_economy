@@ -1,4 +1,5 @@
 {
+  "neoforge:conditions": [{ "type": "neoforge:mod_loaded", "modid": "pamhc2crops" }],
   "feature": "pamhc2crops:soggy_garden",
   "placement": [
     { "type": "minecraft:heightmap", "heightmap": "MOTION_BLOCKING" },

@@ -25,6 +25,14 @@ public final class EDBMessages {
         registrar.playToClient(HighlightChunkPacket.TYPE, HighlightChunkPacket.STREAM_CODEC);
         registrar.playToClient(ShowVillageChunksPacket.TYPE, ShowVillageChunksPacket.STREAM_CODEC);
         registrar.playToClient(OpenJeiRecipePacket.TYPE, OpenJeiRecipePacket.STREAM_CODEC);
+        registrar.playToClient(MarketViewPacket.TYPE, MarketViewPacket.STREAM_CODEC);
+        registrar.playToClient(MarketSaleReceiptPacket.TYPE, MarketSaleReceiptPacket.STREAM_CODEC);
+        registrar.playToClient(VillageViewPacket.TYPE, VillageViewPacket.STREAM_CODEC);
+        registrar.playToClient(VillageStructuresViewPacket.TYPE, VillageStructuresViewPacket.STREAM_CODEC);
+        registrar.playToClient(VillageListViewPacket.TYPE, VillageListViewPacket.STREAM_CODEC);
+        registrar.playToClient(PlotViewPacket.TYPE, PlotViewPacket.STREAM_CODEC);
+        registrar.playToClient(NpcSpeechPacket.TYPE, NpcSpeechPacket.STREAM_CODEC);
+        registrar.playToClient(BuildPreviewPacket.TYPE, BuildPreviewPacket.STREAM_CODEC);
     }
 
     public static void sendToPlayer(CustomPacketPayload payload, ServerPlayer player) {

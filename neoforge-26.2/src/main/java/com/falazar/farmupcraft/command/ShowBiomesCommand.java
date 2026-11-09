@@ -40,6 +40,10 @@ public final class ShowBiomesCommand {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("show")
+                .then(Commands.literal("plantable")
+                        .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
+                                .executes(c -> CropsManager.showPlantableInventory(c.getSource(),
+                                        net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(c, "pos")))))
                 .then(Commands.literal("plotcrops").executes(c -> showPlotCrops(c.getSource())))
                 .then(Commands.literal("biomes")
                         .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
@@ -50,7 +54,8 @@ public final class ShowBiomesCommand {
                 .then(Commands.literal("cropbiomes")
                         .then(Commands.argument("crop", StringArgumentType.greedyString())
                                 .suggests((context, builder) -> SharedSuggestionProvider.suggest(
-                                        cropAliases(context.getSource()).keySet(), builder))
+                                        cropAliases(context.getSource()).keySet(),
+                                        builder.createOffset(builder.getStart() + builder.getRemaining().lastIndexOf(' ') + 1)))
                                 .executes(c -> {
                             showCropBiomes(c.getSource(), StringArgumentType.getString(c, "crop"));
                             return 0;
@@ -154,13 +159,30 @@ public final class ShowBiomesCommand {
             source.sendFailure(Component.literal("No biome crop rules are configured."));
             return;
         }
-        Item cropItem = resolveCrop(cropAliases(source).getOrDefault(cropName, cropName));
-        if (cropItem == Items.AIR) {
-            source.sendFailure(Component.literal("Crop not found: " + cropName));
+        Set<ResourceKey<Biome>> shared;
+        List<String> crops;
+        try {
+            crops = com.falazar.farmupcraft.util.CropBiomeQuery.crops(cropName);
+            var aliases = cropAliases(source);
+            shared = com.falazar.farmupcraft.util.CropBiomeQuery.shared(crops, crop -> {
+                Item item = resolveCrop(aliases.getOrDefault(crop, crop));
+                if (item == Items.AIR) throw new IllegalArgumentException("Crop not found: " + crop);
+                return manager.getBiomesForItem(item).stream().flatMap(b -> b.unwrapKey().stream())
+                        .collect(java.util.stream.Collectors.toSet());
+            });
+        } catch (IllegalArgumentException error) {
+            source.sendFailure(Component.literal(error.getMessage()));
             return;
         }
-        Component biomes = getBiomeCropsChat(source.getPlayer(), manager, cropItem);
-        source.sendSuccess(() -> Component.literal("§bBiomes you can plant " + cropName + " in: ").append(biomes), false);
+        Set<String> villageBiomes = getPlayerVillageBiomeSet(source.getPlayer());
+        Component biomes = shared.stream()
+                .map(key -> Component.translatable(CropsManager.getBiomeLangKey(key.identifier()))
+                        .withStyle(villageBiomes.contains(key.identifier().toString()) ? ChatFormatting.GREEN : ChatFormatting.WHITE))
+                .sorted(Comparator.comparing(Component::getString))
+                .reduce((first, second) -> first.append(", ").append(second))
+                .orElse(Component.literal(crops.size() == 1 ? "None" : "No shared biomes"));
+        source.sendSuccess(() -> Component.literal("§bBiomes you can plant " + String.join(", ", crops)
+                + (crops.size() > 1 ? " together in: " : " in: ")).append(biomes), false);
     }
 
     private static Set<String> getPlayerVillageBiomeSet(Player player) {

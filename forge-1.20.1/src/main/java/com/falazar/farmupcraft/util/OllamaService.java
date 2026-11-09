@@ -69,10 +69,18 @@ public class OllamaService {
      *         string on failure.
      */
     public static CompletableFuture<String> chat(String prompt, String model) {
+        return chat(prompt, model, null);
+    }
+
+    public static CompletableFuture<String> chatNpc(String prompt, String playerMessage) {
+        return chat(prompt, DEFAULT_MODEL, playerMessage);
+    }
+
+    private static CompletableFuture<String> chat(String prompt, String model, String playerMessage) {
         return CompletableFuture.supplyAsync(() -> {
             HttpURLConnection conn = null;
             try {
-                String requestBody = buildChatRequest(model, prompt);
+                String requestBody = buildChatRequest(model, prompt, playerMessage);
                 byte[] bodyBytes = requestBody.getBytes(StandardCharsets.UTF_8);
 
                 // HttpURLConnection is used here intentionally — java.net.http.HttpClient
@@ -129,12 +137,22 @@ public class OllamaService {
     // -------------------------------------------------------------------------
 
     private static String buildChatRequest(String model, String content) {
+        return buildChatRequest(model, content, null);
+    }
+
+    private static String buildChatRequest(String model, String content, String playerMessage) {
         JsonObject message = new JsonObject();
-        message.addProperty("role", "user");
+        message.addProperty("role", playerMessage == null ? "user" : "system");
         message.addProperty("content", content);
 
         JsonArray messages = new JsonArray();
         messages.add(message);
+        if (playerMessage != null) {
+            JsonObject player = new JsonObject();
+            player.addProperty("role", "user");
+            player.addProperty("content", playerMessage);
+            messages.add(player);
+        }
 
         JsonObject body = new JsonObject();
         body.addProperty("model", model);

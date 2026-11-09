@@ -67,7 +67,25 @@ public class ModEvents {
                     .setKeySerializer(new UUIDDataSerializer())
                     .setValueSerializer(new CodecDataSerializer<>(GameZone.CODEC)).autoSync().build();
 
-    private static final List<DataBaseAccess<?, ?>> DATABASES = List.of(BIOME_RULES_DATABASE, CHUNK_DATA_DATABASE,
+    private static final DataBaseAccess<String, com.falazar.farmupcraft.util.RouteSurvey.Saved> ROUTE_SURVEY_DATABASE =
+            new DataBaseBuilder<String, com.falazar.farmupcraft.util.RouteSurvey.Saved>(prefix("route_survey_database"))
+                    .setKeySerializer(new StringDataSerializer())
+                    .setValueSerializer(new CodecDataSerializer<>(VillageRouteSurveys.CODEC)).build();
+
+    public static DataBase<String, com.falazar.farmupcraft.util.RouteSurvey.Saved> getRouteSurveyDatabase(Level level) {
+        return getDatabase(ROUTE_SURVEY_DATABASE, level);
+    }
+
+    private static final DataBaseAccess<String, com.falazar.farmupcraft.util.RouteDiscovery> ROUTE_DISCOVERY_DATABASE =
+            new DataBaseBuilder<String, com.falazar.farmupcraft.util.RouteDiscovery>(prefix("route_discovery_database"))
+                    .setKeySerializer(new StringDataSerializer())
+                    .setValueSerializer(new CodecDataSerializer<>(VillageRoads.CODEC)).build();
+
+    public static DataBase<String, com.falazar.farmupcraft.util.RouteDiscovery> getRouteDiscoveryDatabase(Level level) {
+        return getDatabase(ROUTE_DISCOVERY_DATABASE, level);
+    }
+
+    private static final List<DataBaseAccess<?, ?>> DATABASES = List.of(ROUTE_DISCOVERY_DATABASE, ROUTE_SURVEY_DATABASE, BIOME_RULES_DATABASE, CHUNK_DATA_DATABASE,
             PLAYER_DATABASE, VILLAGE_DATABASE, GOODS_DATA_DATABASE, WORLD_DATA_DATABASE, NPC_DATABASE,
             GAME_STRUCTURE_DATABASE, GAME_ZONE_DATABASE);
 

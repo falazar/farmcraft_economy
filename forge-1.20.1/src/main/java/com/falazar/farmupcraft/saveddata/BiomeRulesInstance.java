@@ -102,6 +102,13 @@ public class BiomeRulesInstance {
         return randomCrops;
     }
 
+    public List<Item> getCropsForBiome(ServerLevel level, String biomeId) {
+        if (randomCrops.isEmpty()) {
+            randomCrops = new ArrayList<>(rulesData.getCropRules().getCropItems(level, biomeId));
+        }
+        return randomCrops;
+    }
+
 
     /**
      * Checks if a given item stack's item is considered a crop for this biome.

@@ -2,12 +2,15 @@ package com.falazar.farmupcraft;
 
 import com.falazar.farmupcraft.data.NpcData;
 import com.falazar.farmupcraft.events.ModEvents;
+import com.falazar.farmupcraft.database.message.EDBMessages;
+import com.falazar.farmupcraft.database.message.NpcSpeechPacket;
 import com.falazar.farmupcraft.neoforge.FarmUpCraftNeoForge;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.NpcConversationLogger;
 import com.falazar.farmupcraft.util.NpcDataLoader;
 import com.falazar.farmupcraft.util.OllamaService;
 import net.minecraft.ChatFormatting;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -23,6 +26,7 @@ import net.neoforged.neoforge.event.ServerChatEvent;
 import net.neoforged.neoforge.event.entity.living.LivingChangeTargetEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.tick.EntityTickEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 
 import java.util.Map;
 import java.util.UUID;
@@ -34,6 +38,7 @@ public final class NpcManager {
     private static final long CONVERSATION_TIMEOUT_MS = 120_000;
     private static final double MAX_TALK_DISTANCE = 10.0;
     private static final Map<UUID, ActiveConversation> ACTIVE_CONVERSATIONS = new ConcurrentHashMap<>();
+    private static final java.util.Set<ActiveConversation> THINKING = ConcurrentHashMap.newKeySet();
 
     private NpcManager() {}
 
@@ -44,22 +49,84 @@ public final class NpcManager {
                 || !(event.getTarget() instanceof LivingEntity target)) return;
         ServerLevel level = player.level();
         requireServerThread(level.getServer());
+        if (target instanceof Villager villager
+                && player.getMainHandItem().is(net.minecraft.world.item.Items.BREAD)) {
+            VillagerFollowManager.toggle(player, villager);
+            event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            return;
+        }
         // Villagers always greet; claimed non-villager mobs can use their assigned AI profiles too.
         if (!(target instanceof Villager) && ModEvents.getNpcDatabase(level).getData(target.getUUID()) == null)
             return;
         String name = target.getName().getString();
-        player.sendSystemMessage(Component.literal("Hello, I am ")
-                .append(Component.literal(name).withStyle(ChatFormatting.GOLD))
-                .append(Component.literal("!")).withStyle(ChatFormatting.GREEN), false);
+        boolean familiar = target.getPersistentData().getCompoundOrEmpty(NpcReplyRetry.TALKED_PLAYERS_KEY)
+                .getBooleanOr(player.getUUID().toString(), false);
+        if (!familiar) {
+            player.sendSystemMessage(Component.literal("Hello, I am ")
+                    .append(Component.literal(name).withStyle(ChatFormatting.GOLD))
+                    .append(Component.literal("!")).withStyle(ChatFormatting.GREEN), false);
+            EDBMessages.sendToPlayer(NpcSpeechPacket.speech(target.getUUID(), "Hello, I am " + name + "!"), player);
+        }
         clearConversation(player.getUUID());
         NpcData profile = NpcDataLoader.findProfile(level, name, target.getUUID());
         if (profile == null) {
-            tell(player, "(This NPC has no readable profile and cannot be spoken to.)");
-            return;
+            if (!(target instanceof Villager)) {
+                tell(player, "(This NPC has no readable profile and cannot be spoken to.)");
+                return;
+            }
+            profile = com.falazar.farmupcraft.gems.GemWorld.generic(name, target.getUUID());
         }
+        beginConversation(player, target);
+        String greeting = familiar ? NpcReplyRetry.returningGreeting(
+                player.getName().getString(), level.getRandom().nextInt(10)) : "";
+        tell(player, NpcReplyRetry.listeningMessage(name, greeting, familiar));
+        if (familiar) EDBMessages.sendToPlayer(NpcSpeechPacket.speech(target.getUUID(),
+                greeting), player);
+    }
+
+    static void beginConversation(ServerPlayer player, LivingEntity npc) {
+        requireServerThread(player.level().getServer());
         ACTIVE_CONVERSATIONS.put(player.getUUID(),
-                new ActiveConversation(target.getUUID(), name, level, System.currentTimeMillis()));
-        tell(player, "[NPC] " + name + " is listening. Say something in chat within 2 minutes!");
+                new ActiveConversation(npc.getUUID(), npc.getName().getString(), player.level(),
+                        System.currentTimeMillis(), player));
+        if (npc instanceof Mob mob) holdConversation(mob);
+    }
+
+    public static boolean holdConversation(Mob mob) {
+        if (!(mob.level() instanceof ServerLevel)) return false;
+        ActiveConversation focused = null;
+        for (var conversation : ACTIVE_CONVERSATIONS.values()) {
+            if (!conversation.npc.equals(mob.getUUID()) || availableNpc(conversation.player, conversation) != mob)
+                continue;
+            if (focused == null || conversation.startedAt > focused.startedAt
+                    || conversation.startedAt == focused.startedAt
+                    && conversation.player.getUUID().compareTo(focused.player.getUUID()) > 0)
+                focused = conversation;
+        }
+        if (focused == null) return false;
+        mob.getNavigation().stop();
+        mob.setXxa(0);
+        mob.setYya(0);
+        mob.setSpeed(0);
+        mob.setJumping(false);
+        mob.setDeltaMovement(0, mob.getDeltaMovement().y, 0);
+        mob.lookAt(EntityAnchorArgument.Anchor.EYES, focused.player.getEyePosition());
+        mob.setYHeadRot(mob.getYRot());
+        mob.setYBodyRot(mob.getYRot());
+        return true;
+    }
+
+    @SubscribeEvent
+    public static void onConversationTick(ServerTickEvent.Post event) {
+        ACTIVE_CONVERSATIONS.entrySet().removeIf(entry -> {
+            var conversation = entry.getValue();
+            if (conversation.level.getServer() != event.getServer()
+                    || availableNpc(conversation.player, conversation) != null) return false;
+            tell(conversation.player, "[NPC] Your conversation with " + conversation.name
+                    + " ended (time, distance or world changed).");
+            return true;
+        });
     }
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
@@ -77,9 +144,12 @@ public final class NpcManager {
         }
         NpcData profile = NpcDataLoader.findProfile(conversation.level, conversation.name, conversation.npc);
         if (profile == null) {
-            clearConversation(player.getUUID());
-            tell(player, "[NPC] The profile for " + conversation.name + " is missing or invalid.");
-            return;
+            if (!(npc instanceof Villager)) {
+                clearConversation(player.getUUID());
+                tell(player, "[NPC] The profile for " + conversation.name + " is missing or invalid.");
+                return;
+            }
+            profile = com.falazar.farmupcraft.gems.GemWorld.generic(conversation.name, conversation.npc);
         }
         String message = event.getMessage().getString();
         String playerName = player.getName().getString();
@@ -90,21 +160,62 @@ public final class NpcManager {
         NpcConversationLogger.log(playerName, playerName, message);
         LOGGER.info("[NPC Conversation] <{}> to {}: {}", playerName, conversation.name, message);
         tell(player, "[NPC] " + conversation.name + " is thinking...");
-        String prompt = AIManager.buildNpcSystemPrompt(profile, playerName, message);
-        OllamaService.chat(prompt).whenComplete((reply, error) -> server.execute(() -> {
+        if (THINKING.stream().anyMatch(pending -> pending.player.getUUID().equals(playerId)) || !THINKING.add(conversation)) {
+            tell(player, "[NPC] Please wait for the current reply.");
+            return;
+        }
+        var gemTopic = com.falazar.farmupcraft.gems.GemWorld.conversationGem(
+                conversation.level, conversation.npc, npc.blockPosition(), message);
+        String prompt;
+        try {
+            prompt = AIManager.buildNpcSystemPrompt(profile, playerName, message);
+            if (gemTopic != null) prompt += NpcPrompts.gems(
+                    com.falazar.farmupcraft.gems.GemPlatform.configDir(),
+                    gemTopic.kind() == com.falazar.farmupcraft.gems.GemRules.Kind.NONE ? "IGNORANCE" : gemTopic.kind().name(),
+                    gemTopic.fact());
+        } catch (IllegalStateException | IllegalArgumentException error) {
+            THINKING.remove(conversation);
+            LOGGER.error("NPC prompt could not be loaded for {}", conversation.name, error);
+            tell(player, "[NPC Error] Could not load the conversation prompt. Check the prompt files and server log.");
+            return;
+        }
+        LOGGER.info("[NPC Prompt] player={}, npc={}, gemMode={}\n{}", playerName, conversation.name,
+                gemTopic == null ? "NONE" : gemTopic.kind(), prompt);
+        String requestPrompt = prompt;
+        NpcReplyRetry.request(
+                () -> OllamaService.chatNpc(requestPrompt, message).orTimeout(30, java.util.concurrent.TimeUnit.SECONDS),
+                server::execute,
+                () -> server.getPlayerList().getPlayer(playerId) == player
+                        && ACTIVE_CONVERSATIONS.get(playerId) == conversation
+                        && availableNpc(player, conversation) != null,
+                reply -> gemTopic != null
+                        ? com.falazar.farmupcraft.gems.GemWorld.enforceGemReply(conversation.level, gemTopic, reply)
+                        : reply,
+                gemTopic != null,
+                () -> LOGGER.warn("NPC gem reply rejected for {}; retrying once with the same prompt", conversation.npc))
+                .whenComplete((reply, error) -> server.execute(() -> {
+            THINKING.remove(conversation);
             // Never deliver to a retained player/entity from a previous world, login or conversation.
             ServerPlayer current = server.getPlayerList().getPlayer(playerId);
             if (current != player || ACTIVE_CONVERSATIONS.get(playerId) != conversation
                     || availableNpc(current, conversation) == null) return;
-            if (error != null || reply == null || reply.isBlank() || reply.startsWith("[AI Error]")) {
-                LOGGER.error("NPC conversation failed for {}: {}", conversation.npc,
-                        error != null ? error.getMessage() : reply, error);
-                tell(current, "[NPC Error] Could not obtain a reply. Please try again.");
+            String safeReply = NpcReplyRetry.replyOrBusy(reply, error,
+                    (failedReply, failure) -> LOGGER.error("NPC conversation failed for {}: {}; using busy reply",
+                            conversation.npc, failure != null ? failure.getMessage() : failedReply, failure));
+            if (safeReply.startsWith("[NPC Error]")) {
+                tell(current, safeReply);
                 return;
             }
-            NpcConversationLogger.log(playerName, conversation.name, reply);
-            LOGGER.info("[NPC Conversation] <{}> to {}: {}", conversation.name, playerName, reply);
-            tell(current, "[NPC] " + conversation.name + ": " + reply);
+            NpcConversationLogger.log(playerName, conversation.name, safeReply);
+            LOGGER.info("[NPC Conversation] <{}> to {}: {}", conversation.name, playerName, safeReply);
+            tell(current, "[NPC] " + conversation.name + ": " + safeReply);
+            EDBMessages.sendToPlayer(NpcSpeechPacket.speech(conversation.npc, safeReply), current);
+            if (NpcReplyRetry.countsAsConversation(reply, error)) {
+                var target = availableNpc(current, conversation);
+                var talked = target.getPersistentData().getCompoundOrEmpty(NpcReplyRetry.TALKED_PLAYERS_KEY);
+                talked.putBoolean(playerId.toString(), true);
+                target.getPersistentData().put(NpcReplyRetry.TALKED_PLAYERS_KEY, talked);
+            }
         }));
     }
 
@@ -121,6 +232,7 @@ public final class NpcManager {
     public static void onClaimedNpcTargetChange(LivingChangeTargetEvent event) {
         if (!(event.getEntity() instanceof Mob mob) || !(mob.level() instanceof ServerLevel level)) return;
         requireServerThread(level.getServer());
+        holdConversation(mob);
         NpcData data = ModEvents.getNpcDatabase(level).getData(mob.getUUID());
         if (data != null && "nonhostile".equalsIgnoreCase(data.getBehavior())
                 && event.getNewAboutToBeSetTarget() != null) {
@@ -147,6 +259,7 @@ public final class NpcManager {
     public static void shutdown(MinecraftServer server) {
         requireServerThread(server);
         ACTIVE_CONVERSATIONS.entrySet().removeIf(entry -> entry.getValue().level.getServer() == server);
+        THINKING.removeIf(conversation -> conversation.level.getServer() == server);
     }
 
     private static void tell(ServerPlayer player, String text) {
@@ -157,5 +270,5 @@ public final class NpcManager {
         if (!server.isSameThread()) throw new IllegalStateException("NPC mutation must run on the server thread");
     }
 
-    private record ActiveConversation(UUID npc, String name, ServerLevel level, long startedAt) {}
+    private record ActiveConversation(UUID npc, String name, ServerLevel level, long startedAt, ServerPlayer player) {}
 }

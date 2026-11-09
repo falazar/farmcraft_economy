@@ -32,6 +32,561 @@ legacy-world migration warning are documented in the development notes below.
 
 ## Commands
 
+### NeoForge audio-device failure recovery
+
+NeoForge 26.2 delays automatic sound-engine retries for five real-time minutes after
+initialization fails (for example, an HDMI TV disconnecting while off). Vanilla's
+original error and stack trace remain visible, followed by one cooldown warning
+per failed attempt; repeated per-tick device-loss checks are suppressed during
+the cooldown. Sound output may remain unavailable until those five minutes expire.
+Manual sound-device/resource reloads bypass the automatic cooldown and can retry
+immediately. Successful initialization restores normal device monitoring; another
+failure restarts the five-minute cooldown. No device is hardcoded and saved sound settings are
+unchanged. This does not suppress unrelated audio errors or attachment-sync errors.
+Cooldown boundary/reset tests use `:test --tests '*SoundRetryCooldownTest'`.
+The disposable client probe uses `src\networkTest\run-player-actions.ps1
+-GemRender -SoundRetry` with prepared dev launches; it checks the transformed
+sound engine's suppressed automatic checks, due retry, and actual manual reload.
+
+### Underground gems
+
+Both targets add ruby, opal, sapphire, topaz, and peridot items, with stone and
+deepslate ore variants and original temporary 16x16 graphics. Harvesting requires
+a diamond-tier pickaxe or better. Ordinary mining drops one gem and 1-5 XP;
+diamond-style Fortune increases gem drops (Fortune III: 1-4), while Silk Touch
+drops the matching ore block without XP.
+
+The editable biome policy is installed at `config\gem_biome_config.json`.
+World-specific seeded assignments are saved under
+`<world>\farmupcraft\gems\gem_biomes.json`: each gem selects three distinct eligible
+Overworld biomes with separate center heights and +/-15 bands. Cave biomes are
+excluded. Rare biomes are excluded except Jade Cliffs, Mystic Grove, Ominous
+Woods, and Volcanic Plains. Other mods' eligible Overworld biomes are supported;
+absent optional biome IDs do not require installing their mods. Administrator
+policy edits must not be used to silently reroll an existing world's assignments.
+
+New terrain receives gems through world generation. Previously generated chunks
+are populated incrementally while loaded, using saved completion markers.
+Deterministic deposits reproduce their chunk-owned portions across borders.
+Generation does not force-load unexplored chunks. Old-chunk population waits
+for its loaded 3x3 neighborhood so exact block-biome sampling stays consistent
+at borders; an isolated old chunk may remain pending. Per-tick budgets limit
+work to 256 samples, 64 placements, and eight considered chunks.
+Flat/single-biome worlds with fewer than three eligible biomes explicitly disable
+gem generation rather than invent assignments or fail normal world startup.
+Previously initialized missing/corrupt rule files still report an error.
+Placement replaces only
+eligible host materials and stays at least five blocks under the terrain
+surface/seabed. For new placements of all five gems, targets touching face-adjacent
+air have a deterministic 50% chance to try a fully buried replacement instead.
+Up to twelve positions one/two blocks away are tried, within the same owning
+chunk, permitted biome, and height band. Hidden targets are unchanged; existing
+ores/completed chunks are not retroactively altered. If no valid buried position
+exists, the rejected exposed target is omitted, so total amounts may decrease.
+Relocations avoid other planned target origins, and overlapping origins are
+resolved in stable order so partial-generation retries cannot duplicate gems.
+New-world terrain references are Crag 70, Stony Peaks 120, Snowy Slopes 100,
+Highland 100, and Jade Cliffs 120; other non-ocean biomes default to 64.
+These are terrain anchors, not gem center depths. Actual column burial is still
+checked. Existing saved biome assignments, depths, and references are preserved.
+This is a per-target exposure rule, not a guaranteed 50% reduction in visible veins.
+**This intentionally applies inside
+claims and can replace player-placed stone/dirt/sand host blocks. Back up existing
+worlds before installing this feature.** The editable `farmupcraft:gem_replaceable`
+block tag defines the host materials.
+
+Villagers use a saved, exclusive knowledge roll: 1/10 ordinary hints, 1/30 rare
+hints, otherwise no gem knowledge. Each knowledgeable villager knows one hint
+about one gem. Rare hints split equally between one possible level and a
+two-biome rumor containing one true and one false alternative. Code randomizes
+the alternatives' order; the AI phrases only the permitted facts and invalid
+factual responses produce explicit errors. Direction evidence uses only nearby
+loaded biomes within 128 blocks, with a loose height hint when none is available.
+If the biome at the villager's X/Z and the gem's underground height already
+matches, the hint also uses the loose height bound instead of a compass direction.
+Loose height hints are clamped to the world's saved minimum/maximum Y. At a
+world boundary they say "at or above/below" to include the boundary itself;
+they never suggest an out-of-world level such as -80 in a -64-bottom world.
+Villagers without custom profiles receive a generic conversation profile.
+Ordinary gem knowledge has a 7% chance per villager; rumor and approximate-level
+knowledge each retain 1/60 (about 1.67%). The remaining 89.67% have no knowledge.
+An independent deterministic reduction removes 30% of former ordinary
+assignments without changing rare assignments or retained villagers' hint facts.
+All spoken gem answers now go through the LLM, including knowledgeable hints,
+rumors, and admissions of ignorance. Whole-word mentions of gem/gems or a gem's
+singular/plural name trigger the gem prompt (not substrings such as "gemini").
+On non-triggering messages, knowledgeable villagers have a 5% unsolicited gem
+topic roll before the LLM call. Otherwise no gem prompt or fact is included.
+Only the common and selected mode sections are sent, never the whole gem file.
+No code-written hint is appended afterward. Code still selects the
+permitted fact and knowledge probabilities. The model may rephrase facts and add
+personality. Ordinary conversation and ignorant replies have no code
+content validation; the ordinary-conversation geology/number/biome filter has
+been removed. Knowledgeable replies
+must be nonempty and at most 600 characters, mention the assigned gem, retain
+any supplied numeric level (including its minus sign) and compass direction.
+The Overworld reference is optional. No additional rumor, above/below, or approximate-level
+checks apply.
+It does not prevent additional invented facts or reliably understand natural
+language, even though the prompt still instructs the model not to invent them.
+Invalid gem replies are logged and retried once with
+the same prompt; a second invalid reply shows an NPC error, never a canned
+successful gem fallback. Empty replies, service errors, and timeouts are logged
+and shown as "I'm a bit busy right now. Could we talk later?" without a retry.
+The busy response is delivered and logged like normal NPC speech. Each
+attempt has a 30-second timeout, and replies are discarded if the conversation
+ends.
+
+Editable UTF-8 conversation prompts are copied on first use to
+`config/farmupcraft/prompts/npc-conversation.txt` and `npc-gems.txt`.
+Both are reread on every conversation request, without overwriting user edits.
+Gem instructions supplement the existing villager profile: the profile controls
+personality and speaking style, while gem constraints govern only permitted facts.
+The base uses `{npc_name}`, `{description}`, `{personality}`, `{player_name}`,
+and `{player_message}`. The gem file has `[COMMON]`, `[IGNORANCE]`, `[RUMOR]`,
+`[ORDINARY]`, and `[LEVEL]` sections; only the common and active mode are sent.
+Keep `{gem_mode}` and `{gem_fact}` in the selected text. Unreadable/empty files or
+invalid sections/placeholders produce a logged error and a visible notification.
+NPC prompts are sent as system instructions, with player chat in a separate
+user message. Exact expanded prompts are logged under `[NPC Prompt]` in the
+server log; these include NPC profile and player text. Structure-note and
+profile-generation requests retain their existing request format.
+Existing profile migration preserves custom fields and stores backups under
+`npcData\gem-migration-v1-backups`.
+
+Only newly created FarmUpCraft special ruin-note chests use the same hint chances.
+Ordinary chests, reused chests, and existing special chests are not retrofitted.
+Gem hints are paper notes; no exact deposit coordinates or full rule tables are
+provided to ordinary players. Missing market entries receive initial prices:
+ruby/sapphire 100, opal 80, topaz/peridot 60; existing configured prices remain.
+
+See [GEMS_PLAN.md](GEMS_PLAN.md) for the design and verification checklist.
+The original asset generator is [generate-gem-assets.cjs](scripts/generate-gem-assets.cjs).
+NeoForge mining acceptance uses `:runGameTestServer -PgameTests=farmupcraft:gem_*`.
+The disposable graphical probe is `src\networkTest\run-player-actions.ps1 -GemRender`
+after preparing development launch exports.
+
+`/show cropbiomes <crop> [crop2] [crop3]` accepts up to three space-separated
+crop aliases or item IDs. With multiple crops it lists only biomes shared by
+every crop, retaining green highlighting for biomes in your village.
+
+`/village list2 [page]` opens an alphabetical graphical village directory.
+Each row shows its level, unique claimed-chunk count, X/Z coordinates and
+ownership status, highlights your home village, and has an Info button opening
+that village's existing dashboard. Scroll within each 64-village page and use
+Previous/Next for larger directories. `/village list` keeps its chat output;
+the graphical list is also available from `/menu`.
+
+The wood market catalog includes bamboo planks and cherry/mangrove boats
+(including chest boats) in both versions, plus the pale oak wood family in
+NeoForge. After upgrading an existing world, an operator can run
+`/market importtxt wood` to add missing entries without resetting existing
+prices or stock. Newly imported items start inactive and enter normal market
+rotation; unavailable optional-mod items are skipped with diagnostics.
+
+Biome crop selections are saved by named biome/item IDs. Startup and tag reloads
+add rules for newly eligible biomes without rerolling existing selections, and
+rebuild crop-search indexes from those saved selections. New allocations use the
+world seed, stable biome name, and sorted crop item IDs rather than registry
+numbers. BOP Overworld coverage follows its runtime dimension tags, excluding
+Nether/End biomes. Removed biome rules are logged and retained (but excluded
+from searches) so restoring that biome can recover its crops. Invalid data still
+reports errors. Do not clear the biome manager during a mod update: clearing is
+an intentional reset and discards existing allocations, including retained ones.
+Back up worlds before changing biome mods; this protects FarmUpCraft's crop
+data, not Minecraft terrain or other mods' saved-data compatibility.
+For example: `/show cropbiomes carrot potato wheat`. Single-crop lookup is
+unchanged; unknown crops and more than three inputs produce an error.
+
+Mangrove propagules use the same planting roll as ordinary saplings on both
+targets: 10% base success outside nursery plots, 65% inside, plus one percentage
+point per two player experience levels. Failed attempts consume one propagule.
+This includes planting on mud or clay; mangroves remain unrestricted by biome,
+and Creative players keep the existing exemption.
+
+Sapling planting checks the actual placement position, including off-hand use,
+replacing grass/flowers, and placement across plot borders. Failed planting shows
+an action-bar notice and consumes one sapling. The bonus plot is a **nursery**,
+not an orchard. HarvestCraft fruit saplings retain their guaranteed-success
+exemption; ordinary saplings can also reach guaranteed success with enough XP.
+Leaf loot uses the same extra drop gate for player breaking and natural decay:
+20% outside nurseries, or 30% per nursery level (guaranteed at level 4+).
+This multiplies the normal vanilla/mod loot chance, rather than replacing it:
+an ordinary 5% sapling chance becomes about 1% outside nurseries.
+
+Creepers without a combat target seek visible, reachable vanilla chests, trapped
+chests, and barrels within 12 blocks, including claimed village land. They walk
+within two blocks and use their normal fuse/explosion, not remote block removal.
+Walls block detection, and losing the storage target cancels the fuse. This
+requires `mobGriefing=true`; normal explosion permissions and other mods still
+apply. Ender chests and shulker boxes are not targeted.
+
+Mature `CropBlock` crops (including vanilla and HarvestCraft) on farm plots have
+a harvest failure chance of 30% at farm level 1, 20% at level 2, 10% at level 3,
+and zero at level 4+. Both right-click attempts and player breaking use the rule.
+Failure resets the crop to age zero without removing its block or giving any
+produce/seeds/extra farm bonus; an action-bar notice explains that it must regrow.
+Successful harvests retain their existing yields and higher-level right-click
+HarvestCraft bonus. Immature crops, non-farm plots, Creative players, bone-meal
+interactions, and building-move operations are unaffected.
+The right-click failure gate runs at HIGHEST priority, before Harvest With Ease's
+HIGH-priority harvesting handler, so it cannot harvest/reset the clicked crop
+before the failure roll. The optional NeoForge integration test exercises real
+carrot and HarvestCraft bell-pepper right-clicks at all four farm levels.
+Run `:runGameTestServer -PgameTests=farmupcraft:harvest_with_ease_failures`
+with `-PharvestWithEaseTestJar=<local Harvest With Ease jar>` and
+`-PharvestWithEaseCobwebTestJar=<local Cobweb jar>` to enable it. These jars are
+test-runtime-only; no harvesting mod is bundled or required by FarmUpCraft.
+
+HarvestCraft tree-fruit right-clicks also run before Harvest With Ease. In the
+installed 26.2 HarvestCraft version, tree fruit extends `CropBlock`, so Harvest
+With Ease selects it without additional crop configuration. The separate fruit
+rule retains 40% base success, +2 percentage points per 100 net pickups, +1 per
+XP level, and +20 in an orchard biome, capped at 98% success. Nursery levels add
+bonus fruit on success, not failure protection. Failure removes the entire fruit
+block and returns no loot. Maple, paperbark, and spiderweb use their actual
+products (maple syrup, vanilla paper, and vanilla string) for item/stat lookup.
+On both targets, each successful fruit/nut harvest roll has a 50% chance to
+reduce a random different fruit/nut's effective pickup progress by one. Only
+types with positive progress qualify; progress never falls below zero. Bonus
+items do not cause additional rolls. Cinnamon, syrup, paper, and string do not
+participate. Effective progress is net pickups minus a separate per-player
+penalty saved in player entity data (`farmupcraft_fruit_skill_penalties`),
+preserved on death and dimension changes. Vanilla pickup/drop statistics are
+not modified; success rates and pickup milestone messages use effective progress.
+Both targets log every handled mature tree-fruit harvest roll, including player,
+block/position, biome, net pickup count, XP level, raw rate, the 0-99 roll,
+`successIfRollBelow` threshold, and `SUCCESS`/`FAILURE`. The log uses the actual
+single harvest roll without consuming an extra random value. A successful roll
+allows normal harvesting to continue; it is not confirmation of final loot
+delivery by another mod. Creative/client/offhand, bone meal, unripe fruit, and
+already-canceled interactions do not roll on NeoForge.
+The optional `farmupcraft:harvest_with_ease_tree_fruit` world test verifies every
+registered mature tree fruit at nursery levels 1/4 and XP levels 0/20/100, with
+all 100 rolls, using the same local-jar test properties above.
+
+Ordinary HarvestCraft hanging-fruit trees use five-to-six-block trunks, putting
+fruit at block two or three above flat ground with one or two clear blocks below.
+Pinenut retains its natural seven-block minimum and height variation. Cinnamon,
+maple, and paperbark retain six-block minimum trunks so their lowest harvestable
+bark does not extend into the soil. Fruit types, canopy shapes, and placement
+rarity are retained; ordinary tree height variation is deliberately narrowed.
+This changes newly
+generated trees, not trees already in the world. Actual planted-sapling growth
+and configured/placed generation are covered by in-world clearance tests.
+
+New structure note chests prefer the nearest valid central area, with randomized
+choices within a small distance band rather than corner-first or roof-first
+placement. Existing nearby chests are reused; if all are farther than eight
+blocks from the center, a safe central chest is added when possible. New chests
+stay inside known structure bounds, search up to 16 blocks horizontally from the
+center, and require air, solid support, headroom, and a walkable adjacent spot.
+Already recorded special chests and visited structures are not moved or rewritten.
+AI notes now vary across journals, letters, riddles, reports, folklore, warnings,
+and other voices; offline fallbacks also include many new combinations. Previously
+cached notes are still consumed unchanged until exhausted. Notes are atmospheric,
+not guaranteed quests or treasure directions.
+
+`/village info2` opens the FarmUpcraft Village Overview dashboard on both
+targets. Like `/village info`, it defaults to your home village and accepts
+an optional quoted village name. Read-only cards show level, treasury,
+daily income/upkeep/net, next plot cost, structures, land, nearby villagers,
+founder, breeding animal, center, and members, using the existing info
+calculations. Debts/negative daily balances are red; positive finances are
+green. The village overview has a green/gold village banner, inline land stats,
+a short quote unique to each level, and original pixel-style village artwork
+that develops from cottages to a walled settlement as the village levels up.
+The artwork is illustrative, not a screenshot or terrain map. Separate treasury,
+next-level progression, and community panels replace the spreadsheet of cards.
+Progression shows the coin cost, saved villager/structure counts and required
+counts, next range, plot-upgrade limit changes, and increased base upkeep.
+The progression section contains the current level's Level Up button for your
+home village; it scrolls with the section rather than staying in the footer.
+Daily upkeep is displayed as an orange negative amount; this is presentation
+only and does not change the upkeep or net-income calculations.
+Confirmation states the charge and requirements; village coins pay first, with
+any remainder paid from the player's wallet. Village debt is not spent or added
+to the level-up price. Insufficient combined funds leave both balances unchanged.
+The server checks
+the village identity and quoted level before using the existing level-up action,
+then the overview refreshes. Other villages and level 10 cannot be upgraded from
+this screen. Requirements remain visible in the progression panel.
+Viewing another village by name hides the treasury and progression panels,
+their financial data, and the level-up button.
+Villager counts and the last census time are saved on each village. Every five
+minutes, online players' current village chunks are checked; a village is scanned
+only if a player is inside it and its last census is at least two real-world hours
+old (or missing). Info and level-up commands use the same refresh gate and saved
+count. The scan is centered on the city-center chunk, extends ten chunks in X/Z
+and the full world height, and counts living loaded villagers without loading or
+generating chunks. Offline or unoccupied villages retain their saved counts;
+unloaded villagers are not included.
+Scroll to reach the whole overview; wide screens place the treasury and
+progression panels side by side. Tooltips appear only for text that was clipped,
+not as duplicates of visible information.
+Plot info retains its compact stat tiles and existing action buttons.
+Reopen the command for updated values; `/village info` remains
+the chat version. The market screen title is FarmUpcraft Village Market.
+
+### Automatic roads and railways
+
+`/village routes [villageName]` reads saved survey results; it does not start a
+manual survey or bypass the cooldown. The server automatically queues bought
+villages, with separate road/rail gates of **24 real hours between attempts**.
+It saves the last-checked/start datetime before sampling, the last complete
+datetime, next eligible datetime (UTC), segment geometry/endpoints, lengths and
+contacts. Interrupted or failed attempts also retain their daily gate.
+
+`/village roads` and `/village railroads` list saved segments, including start/end
+coordinates, measured length, compass direction from start to end, and connections
+(or `none`). Connections resolve village names, claimed plot types/chunks and
+surface-ruin types. Lists show eight segments per page: `/village roads 2` or
+`/village roads "Village Name" 2`; named-village and paging forms also work for
+railroads. The header includes survey status and last-checked UTC datetime;
+incomplete totals are explicitly partial. Listing never starts a new scan.
+
+First discovery of a qualifying road/railway, a new extension of at least six
+previously unknown centreline positions, or a new connection notifies all current
+members of that village. Online members receive gold chat notices; offline
+members' notices are saved and delivered on their next login. Membership is
+resolved by home village, not proximity. Persistent geometry/contact history
+prevents unchanged daily surveys, junction re-segmentation, small centreline
+shifts, or rebuilding a known road from repeating discovery announcements.
+Partial-survey discoveries are labelled partial. Consumed inboxes and discovery
+history survive restarts; former members do not receive another village's queued
+notices. Ordinary new members do not receive historical discoveries retroactively.
+
+Road discovery checks every outward-facing village claim border, tracing inward
+and outward from candidates with at least six connected paving positions.
+Routes need at least **48 blocks of connected travel**, including their inside
+portion. Shorter segments belonging to a qualifying route are retained. Junctions,
+claim transitions and surface-ruin contacts split segments; shared sections are
+counted once per village/network. Centreline measurement removes paving width;
+diagonal and sloped steps use position-to-position distance. A one-block missing
+road section is allowed; two missing blocks stop the trace.
+
+Railways are discovered **only in `trainstation` plots** and traced along
+matching rail orientations, curves and ascending track. Parallel tracks do not
+join sideways, and missing track is never jumped.
+
+Materials include the `farmupcraft:road_surfaces` block tag (paths, gravel,
+planks and crafted masonry), all registered slab/stair blocks, Macaw's Bridges
+deck variants, and Refurbished Furniture stepping stones. Bridge piers and lights
+are not road decks. Tags can extend the default full-block materials. Material
+eligibility cannot reliably distinguish a long connected floor/roof/gravel strip
+from an intentional road; raw natural stone is excluded by default.
+
+The outward limit is **800 blocks of route length**, plus the connected inside
+portion. Sampling is budgeted over server ticks; graph analysis uses a private
+off-thread snapshot, never live world reads. Missing chunks are **not loaded or
+generated**. Unloaded terrain, distance/work limits and failures are explicitly
+incomplete; their partial results do not replace the previous complete measurement,
+which remains available as stale. Thus an 800-block/unloaded endpoint is not a
+confirmed dead end.
+
+Contacts record other villages' claimed areas and blue claimed plots. Ruins use
+actual loaded surface-generation structure pieces at road height, not just a
+shared X/Z chunk or a fixed Y=60 cutoff. Underground-generation structures and
+vanilla villages are excluded. Results disclose only contact counts, not ruin
+coordinates. Surveys currently use overworld claims, consistent with the existing
+dimensionless village/plot databases, and have no rewards or upkeep effects.
+
+Inside village boundaries, repeated "You discovered" messages for the same
+structure have a two-minute per-player cooldown, including vertical section
+crossings while jumping. Different structures and wilderness discoveries
+still display immediately. Visited/claimed updates are not delayed.
+Entry notices check the structure's covered chunks and full vertical bounding
+range, not only its center section. Village lists hide unvisited structures only
+when their entire saved bounding box is below Y=60 (legacy records without bounds
+use their center). A surface igloo with a basement therefore remains visible.
+
+Middle-click farmland to list inventory crops/seeds plantable under the
+target block's biome rules and plot level, with combined inventory/offhand
+counts. Level-3+ plots include eligible crops from other biomes in that chunk,
+just like planting; Creative and disabled biome rules retain their exemptions.
+This only displays a chat list, without creating or moving items.
+Middle-clicking an existing crop retains the seed-name/pick behavior.
+
+Right-click a villager with bread in your main hand to toggle following on both
+targets. Bread is not consumed, and this click does not open trading or an NPC
+conversation. Only the player being followed can toggle it off. Followers walk
+using normal pathfinding, stop within two blocks, and wait if their player is
+offline, dead, in another dimension, or more than 48 blocks away; they never
+teleport. The assigned player UUID survives saves/reloads. Ordinary conversations
+temporarily pause following, and toggling it off restores normal villager AI.
+
+LazzyMars and BossPanda96366 receive double positive XP-point gains on both
+targets (exact usernames, case-insensitive). This covers orbs and rewards or
+commands using XP-point grants. Other players, XP losses, enchanting costs,
+direct level grants, and commands setting XP values are unchanged.
+
+`road` is available in `/plot buy road`, `/plot settype road`, and `/plot list`
+on both targets. It is a designation only, with no road-specific effects.
+Normal plot pricing, village-level type limits, ownership, and protection apply.
+
+`/village structures` hides the internal `exclusives/` prefix in list/detail
+names and newly created structure waypoint labels. Stored names, structure
+types/IDs, and claim behavior are unchanged; existing records need no rescan.
+Waypoints added by clicking those structure coordinates are green; ordinary
+waypoint commands retain their gold color. Previously created waypoints are
+not recolored automatically.
+
+`/village invite <playerName>` offers online player names with Tab completion
+on both targets, including case-insensitive partial-name matching. Invitation
+eligibility and acceptance rules are unchanged.
+
+Structure tracking distinguishes the registry type **and** starting chunk on
+both targets, so an underground cabin and a surface grave starting in the same
+chunk are saved separately. IDs are persisted, with occupied-ID checks; legacy
+records keep their IDs, visits, claims, and chest progress. Scans save every
+encountered start even when an `upper`/`lower` filter hides it from the results.
+After upgrading an existing world, run `/village structures rescan` near missing
+structures to recover them from Minecraft's generated structure records. A
+Survival player standing inside a recovered structure is marked as having visited
+it during the scan; remote unvisited underground structures remain hidden from
+village lists. Recovery does not regenerate terrain or reset existing records.
+
+Market item lines show a separate clickable `- sell` when the player has that
+item in their sellable inventory. It runs `/market sell item "<itemId>"`,
+selling all matching items with the existing market pricing and price changes.
+The command rechecks inventory and active-market status when clicked; recipe
+links on item names remain unchanged.
+
+The High tab remembers each player's last minimum-price limit in their saved player data,
+including across tab changes, closing the market, and reconnecting. New players start at 10 coins.
+The Favorites tab lists that player's saved favorite active items across all market categories,
+without the High price cutoff. Use the `+` / `-` button beside an item to add or remove it;
+hovering explains the action. Favorites persist across reconnects and do not change sale rules.
+Updated clients and servers are required together for the market's favorite-state payload.
+
+On both loaders, `/menu` or **Alt+F** opens the general FarmUpcraft menu, with shortcuts
+to Village overview, Plot info, Market, Village structures, and Player info / wallet.
+The last shortcut shows the existing player details in chat. Change the shortcut under
+Controls -> Key Binds -> Miscellaneous -> Open FarmUpcraft menu. The menu does not pause
+the game and its buttons retain the normal server-side command permissions.
+
+On both Forge and NeoForge, `/market show2` opens a custom graphical market
+(defaults to `general`)
+with down/up arrows on the selected High tab to adjust the displayed minimum
+price by one coin. Each click requests a fresh server snapshot and returns to
+the first page; controls are disabled while waiting and at the price bounds.
+Categories match the chat list: `general`, `food`,
+`wood`, `stone`, and `high [minCoins]` (default minimum 10).
+Compact single-line rows show item icons and current per-item prices (e.g.
+`9 coins`), plus `Have XX` only when the player owns some of that item,
+sorted by highest price first. **Sell all** sells all matching inventory/offhand
+items through the normal server-validated sale command, then refreshes prices,
+counts, and the displayed coin balance. A small green/gold "Sale complete"
+popup shows "Received X coins" for four seconds after a successful sale.
+Its amount comes from a server receipt sent only after wallet credit, not a
+client estimate or wallet difference; failed sales do not show a success popup.
+The popup survives the automatic market refresh and does not interrupt selling.
+Prices can fall during a bulk sale, so
+the initial per-item price is not a guaranteed price for the whole stack.
+Right-click an icon to show its recipe in JEI; recipe viewing requires JEI,
+but the market screen itself does not. The icon tooltip keeps the right-click
+recipe hint; the bottom hint and category/sort subtitle are hidden to leave
+more room for items. Tabs, page buttons, and Close
+provide navigation; there is no manual Refresh button. Sales still refresh
+automatically, and reopening the command loads a fresh snapshot.
+The existing `/market show` chat interface is unchanged.
+The matching FarmUpCraft build must be installed on the client and server.
+
+On both targets, `/village structures2` opens a graphical structure browser
+for your home village. Compact two-line rows show visited/claimed status, coordinates, and
+distance from your position when opened. Filter tabs select all, claimed,
+unclaimed, or unvisited structures. Unvisited surface structures can appear, but unvisited
+underground structures remain hidden. The list uses mouse-wheel scrolling, a
+draggable scrollbar, and keyboard navigation instead of pages. Filters reset
+the scroll position; resizing preserves it. Each row's Map button uses the
+existing server-validated stable structure ID and adds a green map waypoint,
+requests the village claim overlay, and opens JourneyMap centered on that
+structure only after the server validates it and the client adds its marker.
+Clickable structure coordinates in chat use the same flow.
+Missing JourneyMap is reported in chat rather than silently ignored.
+Rows show distances as `135 blocks NE`, using eight compass directions relative
+to your position when the screen opens. Row and Map-button hover popups are
+removed; distance/direction appear first on the detail line.
+The same village membership, underground visibility, and center-chunk claim
+rules apply as `/village structures`. Reopen for updated status/distances.
+
+`/plot info2` opens a graphical dashboard for the chunk you are standing in:
+colored grouped panels with type and owner together, compact short fields,
+and a large top-right abilities panel with fully wrapped text. Narrow windows
+stack the panels. The dashboard scrolls instead of paging. Village, wallet,
+village level/treasury and permissions cards are omitted; plot level appears
+only for upgradeable types (not plain plots, village land or wilderness).
+Visitors, protection height, biomes and full farm crop/pasture animal
+information remain available. Wilderness is viewable
+but has no purchase controls. **Buy** offers plot types to village members on
+eligible land; **Change type** is founder-only. Both require a second confirmation
+showing the type, location, and coin cost before any command is sent.
+Type choices read `farm for 108 coins`. Type changes (including `/plot settype`)
+cost half the normal next-plot purchase price, rounded up: 215 becomes 108,
+455 becomes 228. Same-type changes and Creative changes remain free.
+Purchase and upgrade prices are unchanged.
+The server rechecks dimension/chunk, previous type, and the quoted cost before
+using the ordinary purchase/type-change handlers. Wallet, village debt,
+type limits, adjacency, and Creative rules remain enforced by those handlers.
+Successful or rejected actions reopen an authoritative snapshot; errors appear
+in chat. The original `/plot info` and `/village structures` chat commands
+remain unchanged.
+
+Nursery sections in both `/plot info` and `/plot info2` show a live fruit/nut
+tree total and a per-type breakdown (for example, `Almond: 2, Apple: 3`).
+Both Forge and NeoForge scan all tagged logs in the current chunk over the
+full world height, independent of the viewer's elevation. HarvestCraft tree
+fruit/nut blocks (at any growth stage) or vanilla cocoa within one block of
+a log, including diagonals, identify its tree. Face-connected logs count
+once, regardless of fruit quantity; touching leaves do not merge trees.
+Connected timber structures cannot be distinguished from connected trunks.
+Trees without any remaining attached fruit are not counted, nor are saplings
+or loose fruit away from logs. A mixed-fruit trunk counts once in the total
+and once under each attached type. Only logs in this chunk are grouped;
+fruit just across its edge is checked only if that neighboring chunk is
+already loaded. Viewing never grows, harvests, or changes the trees.
+
+Farm and pasture sections in both `/plot info` and `/plot info2` share the
+same detailed server snapshot calculations. Farms include planted crops and
+scan height, current Pam harvest-bonus chance, biome planting and trample
+rules, growth-speed clarification, crop-help commands, and next upgrade.
+Pastures include current count/cap/fullness, animal-type breakdown,
+village breeding species/feed, breeding rules, and next upgrade. Milk rules,
+shearing bonuses, sheep-dye chance, and egg-hatching restrictions appear only
+for applicable selected species or animals present in the pasture; zero drop
+bonuses are omitted. Daily limits say "real day". Wool-regrowth and Creative
+exception rows are hidden without changing those mechanics. GUI text wraps without requiring hover;
+scroll to see longer sections. Viewing does not assign breeding grains or mutate animals.
+The pasture scan-height row is hidden in both GUI and chat. Milk and breeding
+descriptions omit the adult qualifiers; duck feed says "fish also accepted".
+These wording changes do not change animal age requirements.
+Farm text uses "Protection at level 2", growth speed "No bonus", and harvest
+bonus "None" when zero. The separate harvest-scope row is removed; nonzero
+bonuses retain a short Pam/Survival qualifier. Empty visitor lists move onto
+the plot type/owner line; named visitors remain in Land & Access.
+
+Pasture animal counts use the plot's saved purchase height (`bought_y`), not
+the viewer's or interacting animal's height. The fixed band is purchase Y - 6
+through purchase Y + 6 inclusive, across that chunk; an animal's feet/block
+position must be inside, so a body overlapping from outside does not count.
+The same band gates pasture entry notices, breeding, milking, shearing,
+egg hatching/laying permission and level bonuses. Outside the band there are
+no pasture bonuses, dye-chance checks, wool-regrowth enforcement or entry notices;
+pasture-required Survival interactions and hatching are rejected. Existing
+Creative bypasses remain unchanged. Changing type does not move the saved base.
+Legacy plots without a saved purchase height retain their existing Y 60 default.
+
+On NeoForge 26.2, `/gamemode` changes only the targeted players, not the
+world's default game mode. This prevents a LAN host switching to Creative
+from silently putting new and returning guests into Creative when the LAN
+game mode follows the world default. `/defaultgamemode` and the explicit LAN
+game-mode setting remain deliberate ways to choose the join mode. This
+restores the separation already present on Forge 1.20.1. Allow Commands is
+independent of game mode; turning it off does not prevent Creative abilities.
+If the world default was already changed to Creative before this fix, reset
+it once with `/defaultgamemode survival` and select Survival for LAN guests;
+the fix does not guess or overwrite an intentionally Creative world.
+
 HarvestCraft cookware tooltips show remaining uses and original capacity.
 Capacity is fixed on first use: 500 normally, or 10,000 in a kitchen; moving
 plots does not upgrade tools or change warning thresholds (50/500 respectively).
@@ -60,6 +615,27 @@ and testing branches are permission-gated where appropriate.
 | `/plot` | `info`, `buy`, `delete`, `reclaim`, `list`, `upgrade`; manage owners, types, and visitors. |
 | `/npc` | Find, claim, and list NPCs; manage profiles and names; initialize villagers. |
 | `/scan` | `islands`, `point`, and `clear` for island scans and scan points. |
+
+Named island/lake discoveries now use one center JourneyMap marker, not four
+corner markers. Lakes require at least 50 water blocks; islands require at least
+40 land blocks. Smaller previously saved records do not produce markers or titles.
+Names omit the stored numeric size suffix in chat, map markers, and entry titles
+(for example, `Frost-1089` displays as `Frost Island`); saved identifiers are unchanged.
+The chat size in chunks is a bounding-box measure, not the block-count threshold.
+Successful saved discoveries are shared with everyone in the
+same dimension and synchronized on login/dimension change. JourneyMap is optional:
+near the surface, entering a discovered feature's bounding box shows a vanilla
+title such as "Mist Lake" or "Storm Island", fading over four seconds. Entry
+checks run once per second, with a 20-second notification cooldown; the smallest
+feature wins overlapping bounds. Underground players more than 16 blocks from
+the local surface do not receive area titles. Bounds are approximate rectangular
+scan extents, not exact shoreline polygons, and a calculated center can lie over
+water. Scan-point discoveries are saved as well as full scans. Creating a village or
+leveling it up automatically starts an asynchronous lake/island scan around the
+village center with a radius of `25 + 5 * level` chunks (30 chunks at level 1 up
+to 75 chunks at level 10), well beyond the green village claim area. Results live under
+the current save's `farmupcraft/scans/<namespace>/<dimension>/`.
+Legacy Forge global scan files are not automatically assigned to a world.
 | `/show` | `biomes`; `/show biomecrops` lists plantable crops for the biome you are standing in, or supply `<biome>` to look up another biome. `/show cropbiomes <crop>` lists suitable biomes. Both crop lookups appear in `/farmupcraft help`. |
 | `/structures` | `find`, `list`, `detail`, `chests`, `inside`; manage visited-state markers. |
 | `/zone` | `list` and `rename` configured zones. |
@@ -69,7 +645,67 @@ and testing branches are permission-gated where appropriate.
 | `/tester` | Development and diagnostic commands; not intended as normal player gameplay. |
 | `/farmupcraft-legacy` | NeoForge legacy SavedData preflight. `inspect` only checks a copied legacy data directory; `apply` is deliberately blocked and does not import data. |
 
+### Pasture entry notices
+
+Entering a pasture chunk sends a chat notice with its current animal count
+out of 30, colored red and marked **FULL** when at or above the cap.
+The notice uses the same nearby-height animal count as existing pasture
+breeding checks and `/plot info` (Y - 2 through Y + 3 around the player).
+There is a 10-minute cooldown per player, dimension, and pasture chunk;
+vertical-only section crossings do not trigger it. Re-entering during the
+cooldown does not extend the timer. Cooldowns reset when the server stops.
+
+### NPC conversations
+
+NeoForge 26.2 shows a small camera-facing speech panel above an NPC's name
+when you right-click to greet it and when its existing conversation reply
+arrives. Only the player receiving that dialogue sees the bubble. Ordinary
+chat messages still contain the full reply; the bubble uses a short preview,
+wrapped to at most three lines. A new line replaces the old bubble instead
+of stacking. Bubbles last sixteen seconds, fade during the last second and
+between 12 and 16 blocks away, respect walls, and follow the NPC as it moves.
+They are client-only visual entities: no world-save changes, background AI
+requests or extra automatic chatter. Changing worlds, disconnecting, losing
+the NPC or moving out of range removes them.
+
+To preview the appearance without an AI profile/service, look directly at a
+nearby villager and run `/fbubble`, or `/fbubble Your test sentence here`.
+The preview is visible only to you and uses the same rendering and lifetime
+as real dialogue. Updated NeoForge clients and servers are needed together
+for the new speech payload. This first visual prototype is NeoForge-only.
+The isolated graphical probe (`src\networkTest\run-player-actions.ps1
+-SpeechBubbles -Port 25583`, using freshly prepared network launch exports)
+checks the real greeting packet, camera-facing/depth-tested display state,
+replacement, wrapping, fading, expiry and distance cleanup, and records
+front/side/fading framebuffer screenshots. Test fixtures never enter the
+release jar or the user's world.
+
+While an NPC conversation is open, the NPC stops navigating and faces the
+player, including while waiting for an LLM reply. The temporary hold ends with
+the existing two-minute conversation timeout, moving more than 10 blocks away,
+death, logout, changing dimension, or opening a conversation with another NPC.
+Normal AI resumes afterward; the NPC's saved `NoAI` flag is never changed.
+Villager merchant updates continue during the hold, so earned trade level-ups
+are not delayed by chat. Vanilla still waits until the trading screen closes
+before counting down its 40-tick level-up timer. Wandering and villager brain
+behaviors remain paused; ordinary non-villager NPC goals remain paused too.
+If multiple players converse with the same NPC, it faces the most recently
+opened valid conversation (UUID order breaks simultaneous ties), and remains
+held until no valid conversation remains. Late LLM replies are discarded after
+the conversation ends.
+On both targets, an NPC remembers each player's UUID in its saved entity data
+after delivering a successful chat reply (not an error or busy fallback).
+Subsequent clicks randomly select one of ten greetings, such as
+"Good to see you, NAME!", "Hello there, NAME!", or "Welcome back, NAME!", instead of
+"is listening"; first-time clicks retain the introduction. Clicking alone does
+not establish familiarity. This memory survives world reloads and NPC/player
+renames, is specific to that NPC and player, and starts with the first successful
+exchange after this update; older chat logs are not imported.
+
 ### Player help and login welcome
+
+Every login shows a gold reminder: "Use /menu or press Alt+F to see all the options!"
+This reminder continues after the new-player welcome period ends.
 
 `/player givecoins <name> <amount>` transfers a positive amount from your wallet
 to another online or previously recorded offline player. Insufficient funds,
@@ -146,13 +782,73 @@ collision. Use two copper ingots in the top-left and top-middle slots, with
 wooden sticks in the center and bottom-right slots. This crafts one skillet;
 the original single-copper layout no longer crafts a skillet.
 
+### Copper golem reach
+
+NeoForge copper golems can interact with containers two blocks above their standing
+feet position, rather than only one. Their existing eight-block vertical search,
+horizontal interaction distance, line-of-sight checks, and sorting rules are unchanged.
+
+### Mineshaft ore replenishment
+
+Mining a natural ore inside a mineshaft's full structure bounding box in Survival or
+Adventure has a 10% chance to create one ore block within 48 blocks horizontally
+(three chunks) and within Y +/-6. Each registered ore block type has equal odds,
+including compatible `c:ores` / `forge:ores` tags; stone/deepslate variants are
+separate block types. Only loaded natural stone/deepslate is replaced, never air,
+containers, existing ore, or tracked player-built stone. The destination need not
+be inside the mineshaft. If 128 candidate positions find no safe host, nothing spawns.
+Each replenishment attempt has a 50% chance to require a host touching air on one
+of its six faces; the other half have no air-contact restriction and may also touch
+air by chance. No fallback removes the requirement on air-facing attempts.
+Successful spawns tell the mining player a lucky-mine message, cycling through ten
+different messages. Failed attempts do not show a success message.
+Player-placed ores are tracked persistently per dimension from this update onward
+and cannot trigger replenishment; older placed ores cannot be identified retroactively.
+Piston movement preserves placement exclusions conservatively. Only completed,
+uncanceled player mining counts, not explosions or mob block destruction.
+
+### Hard-mode bundle carrying
+
+On Hard difficulty, players already carrying a bundle cannot acquire another through
+ground pickup, container clicks/shift-clicks/hotbar swaps, crafting, or trading.
+This includes colored bundles and bundles in the offhand or on the inventory
+cursor. A blocked item stays intact in its source, with an action-bar warning:
+"It's too heavy to carry another bundle." Warnings are limited to once every three
+seconds. Other difficulties and acquiring the first bundle are unchanged.
+Blocked transfers leave the bundle in its source; blocked crafting/trading does
+not consume ingredients, payment, or offer uses. Moving or storing your owned
+bundle and exchanging it for another are allowed. Existing extra bundles are
+not deleted. Administrative grants and items inside other container items are
+not covered by this inventory-acquisition rule.
+
+### Hostile retaliation
+
+Hostile mobs hit by a player gain retaliation obstacle behavior while targeting that
+same Survival/Adventure player. If they cannot reach the attacker, they roll a 20%
+chance once every 40 ticks (2 seconds) to break one nearby obstructing block or jump
+and place stone beneath themselves toward an elevated attacker. Each hit permits at
+most one successful action: either one block broken or one pillar block placed.
+After that, another hit is required; repeated hits before an action do not stockpile
+actions or bypass the two-second interval. Failed rolls or blocked actions do not
+consume the permission. There is no vertical pursuit limit beyond the world's build
+height, but each pillar block requires a fresh hit and the mob must retain its target.
+Only nearby obstacles directly between the mob and player are considered. Containers,
+block entities, fluids, and unbreakable blocks are excluded. Village plots do not
+provide an extra exemption. Mob-griefing and loader block-change permission hooks
+still apply; jumping requires clear headroom and never replaces an occupied block.
+
 ### One-time gameplay defaults
 
-Both JARs bundle the old Spice of Life: Onion 42-food progression. When Onion is
+Both JARs bundle a Spice of Life: Onion 62-food progression. Diversity requirements
+for the eight rewards are **20, 25, 27, 33, 38, 50, 55, 61** (reward effects unchanged).
+This adds 10 to every previous requirement and another 10 to the last three.
+When Onion is
 installed, FarmUpCraft merges the tracking limit and eight rewards into its global
 config during mod construction, before Onion initializes. Other options are kept.
 The original config is backed up under `config/farmupcraft/`; the
-`solonion-progression-v1.done` marker there prevents overwriting later admin edits.
+`solonion-progression-v2.done` marker there prevents overwriting later admin edits.
+Existing v1 installations receive this update once, with a separate
+`solonion-before-progression-v2.json` backup; unrelated config options are preserved.
 This applies to all worlds in that instance, including dedicated servers.
 Onion remains optional; installing it later triggers the setup on the next launch.
 
@@ -187,12 +883,21 @@ and colored-bundle recipes are unchanged. Forge 1.20.1 has no vanilla bundle rec
 
 ### Structure visits and claims
 
+Creating a village or successfully leveling it up automatically queues missing
+AI profiles for loaded villagers in that village's chunks. Existing files and
+pending requests are skipped; generation is staggered and uses the existing AI
+retry flow. This does not force-load chunks. Villagers born or arriving later
+are covered by the next level-up scan or `/npc initvillagers`, not by a
+birth/arrival profile-generation hook. The configured AI service is required.
+
 Coordinates in `/village structures` lists and structure details are underlined
 and clickable: click them to add a personal JourneyMap waypoint at the structure
 center, named after the structure. No operator permission is needed. The click
 uses the stable structure ID and rechecks village membership and structure
 availability, so moving or reordering the list cannot select another structure.
-This adds a waypoint; it does not teleport the player or open the map.
+This adds a green waypoint and opens JourneyMap centered on it; it never
+teleports the player. Ordinary `/farmcraft waypoint` commands still only add a
+waypoint without opening the map.
 
 Both targets require a structure to be visited before it can be marked claimed.
 Buying a village claims territory, not its structures: only the village-center
@@ -232,12 +937,71 @@ Namespaced IDs can be entered directly without quotes.
 motion-blocking height (ignoring leaves), not underground biomes at Y=0.
 The supplied Y coordinate does not reveal caves beneath the scanned terrain.
 
+### Villager ladders
+
+In both targets, villagers no longer get the automatic upward ladder boost
+when pushing against a wall. They retain normal slow ladder descent and can
+walk off at the bottom; no teleporting or forced relocation is used. This
+applies to adults and children, including ladders extending `LadderBlock`.
+Use stairs for villager access between floors. Player climbing, other mobs,
+vines, and scaffolding are unchanged.
+
 ### Villager sleep healing
 
 In both targets, living villagers heal to their own maximum health immediately
 when they enter bed to sleep, including villagers with boosted maximum health.
 This does not require village membership. Remaining asleep does not continuously
 heal damage; players and other sleeping entities are unaffected.
+
+### Villager household signs
+
+In both targets, loaded villagers with an assigned bed in a bought village get
+an oak wall sign outside their home's nearest reachable exterior doorway.
+Signs list each resident's name and profession (or `Child`), with two residents
+per four-line sign and additional signs beside the same door for overflow.
+Existing villagers are included; newborns wait until they receive a bed.
+
+The initial check is staggered within about ten seconds of loading; subsequent
+full checks run at most once every 144,000 world ticks (two hours at 20 TPS).
+The next-check time is saved on the villager, so reloading does not bypass it.
+A lightweight staggered timer gate runs every 200 entity ticks without inspecting
+beds, signs, village records, or paths until the full check is due.
+Purchase eligibility, new bed assignments, moves, and name/profession changes
+are detected at the next scheduled check, so they can take up to two hours.
+A bounded walking search
+starts beside the bed at the same height or one block up/down, can pass through
+hand-openable interior doors and use steps,
+and rejects blocked exterior approaches. Nearby open sky identifies the exterior;
+the doorway and sign may be under a porch. The search spans 24 blocks horizontally
+and twelve vertically from the bed (including downstairs entrances reached by
+stairs); sky must be reachable within eight blocks of
+the outside approach. Signs use the wall to the right when viewed from outside, skipping both halves of
+double doors. Each wall column tries the upper position then directly below it,
+so an existing upper sign is preserved and the new sign goes underneath. Overflow
+uses the next right-hand column, up to three columns beyond the door edge. Support
+must be a sturdy wall face, never a door or trapdoor, in the same bought village. No chunks
+are force-loaded. Unsuitable entrances or full sign space are logged and marked
+done using the same per-bed flag as successful placement. There are no placement
+retries at that bed, even if the entrance or sign space is later improved.
+Each scheduled check logs bed/sign coordinates and whether the saved sign is
+present, missing, or unloaded. Permanently skipped beds get a diagnostic-only
+entrance search, never a placement retry. Diagnostics include visited nodes,
+seed count, door/approach rejection counts, unloaded/height/budget limits, and
+bed-adjacent feet/head/floor block states (including modded IDs). Placement logs
+record the chosen door, outside direction, sign position, and route distance.
+
+The per-bed placement flag is saved on the villager, and shared resident entries
+are saved on the sign. Removing a sign does not recreate it at the same bed.
+Changing beds removes that resident from an unchanged old sign, deletes the sign
+only when it becomes empty, and permits a new entry at the new home. Cleanup waits
+for the old sign's chunk to be loaded. Names/professions refresh only on unchanged
+generated signs. Player edits to either side, color, glow, wax, or facing protect
+the sign permanently from automatic updates or deletion once detected.
+Unchanged generated signs attached to a door (or directly above one) get a
+one-time relocation attempt on the resident's next scheduled two-hour check.
+Shared entries move individually, preserving residents not checked yet and
+leaving player-edited signs untouched. No live-world repair command or faster
+polling is added; a failed relocation is also marked done for that bed.
 
 ### Moving walls and buildings
 
@@ -246,24 +1010,49 @@ Both targets provide `/build pull_wall <distance>` and
 left-click one bottom corner, then right-click the other bottom corner. The two
 blocks must be at the same height on a straight X/Z line. Stand in front of the
 wall: pull moves toward your side, push moves away. The second click creates a
-preview only: red particle outlines mark the source and green outlines mark the
-destination, visible only to you and refreshed while awaiting confirmation.
-These are bounding boxes, not translucent ghost blocks, and particles can be
-obscured by terrain. Chat shows the dimensions, non-air block count, price, and
+preview only: red particle outlines mark the source, green outlines mark the
+destination, and a client-side ghost-block preview highlights the source blocks
+to be removed in red while rendering semi-transparent destination blocks at the
+target positions without changing the world. Chat shows the price and
 clickable Confirm/Cancel actions. Run `/build confirm` (or click Confirm) to move;
 `/build cancel` cancels without charging. Starting another build command replaces
 the old preview. Selections/previews expire after two minutes or on logout/
-dimension change. Remaining particles fade naturally when canceled or completed.
+dimension change. Ghost blocks clear immediately when confirmed, canceled,
+expired, or on logout; remaining particles fade naturally.
 
 The wall is one block deep and 15 blocks tall including the bottom row.
 Buildings are also 15 blocks tall; depth is found by tracing back along both
-bottom edges, stopping before either edge first reaches dirt, plain stone, or
-air, with a maximum depth of 20 blocks including the front row. This is a
+bottom edges independently to their first dirt, plain stone, or air block.
+The longer edge determines depth, capped at 20 blocks including the front row;
+an edge does not resume after its first stopping block. This is a
 rectangular selection, not an automatic outline of the building.
+Build selection logs include dimension, both selected corners, movement direction,
+inclusive source/destination bounds, size, offset, and the exact bottom-edge blocks
+that stopped depth detection. Block-entity overlap logs identify the destination,
+incoming source block, and whether the destination is inside the moving source.
+Block entities inside the source may overlap because they move too; only
+stationary block entities outside the source block the move.
 
-Each successful move costs 1 gp (one wallet coin) per non-air source block,
-regardless of movement distance. Creative-mode moves are free and do not require
-a wallet; previews show the actual block count and a zero cost. Switching between
+Both commands also include supported attachments one block outside the selected
+box, such as wall torches, banners, signs (including hanging signs), ladders,
+buttons, levers, lanterns, rails, and plants. Support is checked using each
+block's survival rules, including modded blocks implementing those rules.
+Unrelated neighboring blocks are not added to the move. Attachments extending
+farther out, or attachments that would lose their support at the destination,
+cancel the move and ask for a larger selection rather than dropping items.
+Sign text on both sides, colors/glow/wax, banner patterns/names, and other block
+entity data are preserved. Paintings, item frames, and glow item frames move
+with their backing blocks, retaining their identity, artwork, contents, and
+rotation. Their entire backing must move or have identical support at the new
+location. Occupied decoration destinations are rejected.
+
+Pull wall costs 1 gp (one wallet coin) per non-air source block. Push building
+costs one-quarter as much: 1 gp per 4 non-air source blocks, with the total
+rounded up (5 blocks cost 2 gp). Both prices are independent of movement
+distance. Included attachment blocks count toward the price; hanging entities
+do not add a separate charge. Creative-mode moves are free and do not require
+a wallet; previews show a zero cost. For both wall and building moves, preview
+chat shows only the total cost and clickable Confirm/Cancel controls. Switching between
 creative and survival requires a new preview because the price changes.
 The total is displayed after selection; an
 insufficient balance cancels the move without changing blocks. Failed or canceled
@@ -271,7 +1060,9 @@ moves are not charged. Successful moves deduct and save the cost and display the
 remaining balance. Confirmation rechecks permissions, funds, loaded chunks,
 world limits, and destination block entities. Any change to source/destination
 blocks, block entity data (including inventory), or traced depth boundary
-invalidates the preview and requires reselection. Walking around the building
+invalidates the preview and requires reselection. Nearby hanging decoration
+changes, including adding/removing a painting or changing a frame's item or
+rotation, also require a new preview. Walking around the building
 does not change the previewed movement direction.
 
 Building and wall widths are both limited to 20 blocks, including both selected corners.
@@ -286,7 +1077,8 @@ Every affected block is preflighted for break/place events, normal editing
 permissions, and the existing village/house protections before moving anything.
 Permission probes skip FarmUpCraft's harvesting rolls, bonus drops, and chest/
 spawner traps: moving a block is not harvesting it.
-Entities and claim ownership are not moved.
+Other entities (including villagers, mobs, and armor stands) and claim ownership
+are not moved.
 
 Village map overlays automatically turn on when a player founds a village,
 accepts a village invitation, or is added to a village by an administrator while
@@ -323,6 +1115,9 @@ Every five minutes of server ticks, while two or more players are online on Hard
 difficulty, all online operators with game-master command permission receive a
 reminder to consider `/difficulty normal` for the kids. Difficulty is never changed
 automatically. The existing solo reminder to consider Hard remains unchanged.
+Both difficulty reminders exclude usernames ending in `bot` (case-insensitive,
+including BridgeBot) from player counts and recipients. One human plus a bot
+therefore uses the solo reminder, not the multiplayer reminder.
 
 HarvestCraft harvested crops with a matching plantable seed item can also be
 planted directly (for example `kaleitem` and `kaleseeditem`). Placement uses the
@@ -457,6 +1252,47 @@ live Minecraft mods directory. Omit it only when intentionally deploying.
 Artifacts are written to `forge-1.20.1\build\libs`.
 
 ### Build NeoForge on Windows
+
+The NeoForge 26.2 jar also supports Minecraft + NeoForge + FarmUpCraft alone.
+HarvestCraft's four modules, Biomes O' Plenty, TerraBlender and GlitchCore are
+optional integrations, not mandatory FarmUpCraft dependencies. Their version
+constraints still apply when installed, and companion mods can have their own
+dependencies. JEI and JourneyMap remain optional; commands that need their UI
+report the missing integration instead of loading its API.
+
+Mod-specific datapack content is conditional and optional tag entries are
+ignored when their content is absent. Vanilla village, economy and crop
+gameplay remain available; installing fewer mods does not add replacement
+HarvestCraft crops or BOP biomes. When none of the bundled food-market items
+are installed, market initialization explicitly imports vanilla foods at the
+usual starting price, so daily market rotation still works. The normal
+HarvestCraft food list is unchanged when its items are available.
+This is not permission to remove content mods
+from an existing modded save: blocks, items and biome/worldgen references in
+that save can still require those mods. Use a new world or a disposable copy.
+
+Development runs include the usual content bundle by default. Use
+`-PbareNeoForge=true` to omit companion mods from development runtime
+classpaths (it does not change what is bundled in the production jar):
+
+```powershell
+.\gradlew.bat "-Dorg.gradle.java.home=$($env:JAVA_HOME.TrimEnd('\'))" -PbareNeoForge=true runBareGameTestServer
+```
+
+This dedicated acceptance test rejects any runtime mod other than Minecraft,
+NeoForge and FarmUpCraft, creates a world, checks village/market registration
+and databases, runs daily market rotation, and exercises a real vanilla wheat right-click failure with no
+harvesting mod. Use `runClient -PbareNeoForge=true` for a bare graphical
+development client. The flag is unnecessary for an installed jar: simply
+install only the mods you want.
+
+Bare compatibility was verified with an actual dedicated world test and a
+separate graphical client connected to a loopback dedicated server. Both
+inventories contained only Minecraft, NeoForge and FarmUpCraft; startup and
+datapack loading had no ERROR entries. The non-operator survival client moved,
+broke dirt and placed dirt through normal game action paths, with server
+confirmation and clean exits. Full-content regression tests also passed for
+Harvest With Ease ground crops/tree fruit and bundled recipes/tags.
 
 From `neoforge-26.2`, run `.\gradlew.bat build`. The Java 25 compilation
 toolchain can be provisioned by Gradle. Gradle 9.2.1 itself can run with JDK 21.
@@ -823,7 +1659,7 @@ Actual optional-integration absence is also verified using separate loopback
 dedicated-server and graphical-client processes on port 25580 in a fresh
 disposable root. Fresh launch preparation removes both JEI and JourneyMap jars
 and rejects leaked bundled/separately resolved APIs. Strict runtime inventories
-confirm FarmUpCraft and required content are present while JEI, JourneyMap and
+confirm FarmUpCraft and the content bundle are present while JEI, JourneyMap and
 JourneyMap API are absent. Production login, balance update, dimension resync,
 large full snapshot and logout-cache receipts pass, and both peers shut down
 cleanly. The development-only scripts are in `src/optionalRuntimeTest`; they do

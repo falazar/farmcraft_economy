@@ -417,6 +417,7 @@ minecraft:acacia_sapling
 minecraft:acacia_stairs
 minecraft:acacia_trapdoor
 minecraft:acacia_wood
+minecraft:bamboo_planks
 minecraft:birch_door
 minecraft:birch_fence
 minecraft:birch_fence_gate
@@ -427,6 +428,8 @@ minecraft:birch_sapling
 minecraft:birch_stairs
 minecraft:birch_trapdoor
 minecraft:birch_wood
+minecraft:cherry_boat
+minecraft:cherry_chest_boat
 minecraft:cherry_door
 minecraft:cherry_fence
 minecraft:cherry_fence_gate
@@ -458,6 +461,8 @@ minecraft:jungle_sapling
 minecraft:jungle_stairs
 minecraft:jungle_trapdoor
 minecraft:jungle_wood
+minecraft:mangrove_boat
+minecraft:mangrove_chest_boat
 minecraft:mangrove_door
 minecraft:mangrove_fence
 minecraft:mangrove_fence_gate

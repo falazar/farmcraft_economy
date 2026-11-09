@@ -14,7 +14,7 @@ public final class StartupDefaults {
     private StartupDefaults() {}
 
     public static boolean installOnion(Path config, boolean modern) throws IOException {
-        Path marker = config.resolve("farmupcraft").resolve("solonion-progression-v1.done");
+        Path marker = config.resolve("farmupcraft").resolve("solonion-progression-v2.done");
         if (Files.exists(marker)) return false;
         String resource = "/farmupcraft/defaults/solonion-" + (modern ? "modern" : "legacy") + ".json";
         JsonObject preset;
@@ -27,12 +27,12 @@ public final class StartupDefaults {
                 ? JsonParser.parseString(Files.readString(target)).getAsJsonObject() : new JsonObject();
         Files.createDirectories(marker.getParent());
         if (Files.exists(target)) {
-            Path backup = config.resolve("farmupcraft").resolve("solonion-before-progression-v1.json");
+            Path backup = config.resolve("farmupcraft").resolve("solonion-before-progression-v2.json");
             if (!Files.exists(backup)) Files.copy(target, backup);
         }
         preset.entrySet().forEach(entry -> settings.add(entry.getKey(), entry.getValue()));
         Files.writeString(target, new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(settings));
-        Files.writeString(marker, "Installed FarmUpCraft food progression v1. Later edits are preserved.\n");
+        Files.writeString(marker, "Installed FarmUpCraft food progression v2. Later edits are preserved.\n");
         return true;
     }
 

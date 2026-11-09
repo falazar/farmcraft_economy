@@ -23,7 +23,11 @@ public class PlayerData {
             Codec.STRING.optionalFieldOf("border_color", "blue").forGetter(PlayerData::getBorderColor),
             Codec.LONG.optionalFieldOf("first_welcome_day", com.falazar.farmupcraft.util.PlayerOnboarding.UNSET_DAY)
                     .forGetter(PlayerData::getFirstWelcomeDay),
-            Codec.BOOL.optionalFieldOf("village_map_show", false).forGetter(PlayerData::isVillageMapShow))
+            Codec.BOOL.optionalFieldOf("village_map_show", false).forGetter(PlayerData::isVillageMapShow),
+            Codec.intRange(1, Integer.MAX_VALUE).optionalFieldOf("market_minimum_price", 10)
+                    .forGetter(PlayerData::getMarketMinimumPrice),
+            Codec.STRING.listOf().optionalFieldOf("market_favorites", java.util.List.of())
+                    .forGetter(PlayerData::getMarketFavorites))
             .apply(instance, PlayerData::new));
 
     private final int id;
@@ -34,6 +38,24 @@ public class PlayerData {
     private String borderColor;
     private long firstWelcomeDay;
     private boolean villageMapShow;
+    private int marketMinimumPrice;
+    private final java.util.Set<String> marketFavorites = new java.util.LinkedHashSet<>();
+
+    public java.util.List<String> getMarketFavorites() { return java.util.List.copyOf(marketFavorites); }
+
+    public boolean isMarketFavorite(String itemId) { return marketFavorites.contains(itemId); }
+
+    public void setMarketFavorite(String itemId, boolean favorite) {
+        if (favorite) marketFavorites.add(itemId);
+        else marketFavorites.remove(itemId);
+    }
+
+    public int getMarketMinimumPrice() { return marketMinimumPrice; }
+
+    public void setMarketMinimumPrice(int price) {
+        if (price < 1) throw new IllegalArgumentException("Market minimum price must be positive");
+        marketMinimumPrice = price;
+    }
 
     public boolean isVillageMapShow() { return villageMapShow; }
 
@@ -60,6 +82,18 @@ public class PlayerData {
 
     public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
             String borderColor, long firstWelcomeDay, boolean villageMapShow) {
+        this(id, playerUUID, homeVillageUUID, coins, borderShow, borderColor, firstWelcomeDay, villageMapShow, 10);
+    }
+
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
+            String borderColor, long firstWelcomeDay, boolean villageMapShow, int marketMinimumPrice) {
+        this(id, playerUUID, homeVillageUUID, coins, borderShow, borderColor, firstWelcomeDay,
+                villageMapShow, marketMinimumPrice, java.util.List.of());
+    }
+
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
+            String borderColor, long firstWelcomeDay, boolean villageMapShow, int marketMinimumPrice,
+            java.util.List<String> marketFavorites) {
         this.id = id;
         this.playerUUID = playerUUID;
         this.homeVillageUUID = homeVillageUUID;
@@ -68,6 +102,8 @@ public class PlayerData {
         this.borderColor = borderColor;
         this.firstWelcomeDay = firstWelcomeDay;
         this.villageMapShow = villageMapShow;
+        setMarketMinimumPrice(marketMinimumPrice);
+        this.marketFavorites.addAll(marketFavorites);
     }
 
     /**

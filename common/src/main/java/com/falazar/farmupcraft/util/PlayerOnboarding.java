@@ -6,6 +6,30 @@ import java.util.List;
 public final class PlayerOnboarding {
     public static final long UNSET_DAY = Long.MIN_VALUE;
     public static final String WELCOME = "Welcome to FarmUpCraft! Use /farmupcraft help for player commands.";
+    public static final String MENU_REMINDER = "Use /menu or press Alt+F to see all the options!";
+    public static final long MARKET_REMINDER_DELAY_TICKS = 15L * 60L * 20L; // 15 minutes at 20 TPS (18,000 ticks)
+    public static final long MARKET_REMINDER_DELAY_MS = 15L * 60L * 1000L; // 15 minutes in milliseconds
+    public static final List<String> MARKET_REMINDERS = List.of(
+            "Be sure and check the marketplace today with /market show!",
+            "Don't forget to check the marketplace! Run /market show to see today's prices.",
+            "Hey! Be sure and check the marketplace — type /market show to browse what's buying.",
+            "Got extra goods on hand? Be sure and check the marketplace using /market show!",
+            "Friendly reminder: be sure and check the marketplace with /market show!",
+            "Curious what's in demand today? Be sure and check the marketplace via /market show!",
+            "Your pockets could use some extra coins — be sure and check the marketplace with /market show!",
+            "Take a moment to check the marketplace! Use /market show to view active deals.",
+            "Have you visited the market yet? Be sure and check the marketplace with /market show!",
+            "Merchants are buying! Be sure and check the marketplace by running /market show.",
+            "Be sure and check the marketplace (/market show) to see which crops, wood, and stone pay best today!",
+            "Looking to earn some coins for your village? Be sure and check the marketplace with /market show!",
+            "Before your chests fill up, be sure and check the marketplace using /market show!",
+            "Today's market rotation is open — be sure and check the marketplace with /market show!",
+            "Need coins for plots or upkeep? Be sure and check the marketplace with /market show!",
+            "Quick tip: be sure and check the marketplace (/market show) to spot high-value items!",
+            "Traders have fresh offers waiting — be sure and check the marketplace with /market show!",
+            "See what your harvest is worth today! Be sure and check the marketplace with /market show.",
+            "Time for a market check! Be sure and check the marketplace by typing /market show.",
+            "Don't miss out on good prices — be sure and check the marketplace with /market show!");
     public static final List<String> HELP = List.of(
             "FarmUpCraft player commands",
             "/player info - View your coins and village.",
@@ -40,5 +64,9 @@ public final class PlayerOnboarding {
     public static boolean shouldWelcome(long firstDay, LocalDate today) {
         long day = today.toEpochDay();
         return firstDay != UNSET_DAY && firstDay <= day && firstDay > day - 5;
+    }
+
+    public static String marketReminder(int index) {
+        return MARKET_REMINDERS.get(Math.floorMod(index, MARKET_REMINDERS.size()));
     }
 }

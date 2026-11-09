@@ -355,13 +355,17 @@ public class FarmCraftCommand {
         }
 
         public static int addMapWaypoint(CommandSourceStack source, int x, int y, int z, String name) {
+                return addMapWaypoint(source, x, y, z, name, 0xFFD700);
+        }
+
+        public static int addMapWaypoint(CommandSourceStack source, int x, int y, int z, String name, int color) {
                 Entity entity = source.getEntity();
                 if (!(entity instanceof ServerPlayer player)) {
                         source.sendFailure(Component.literal("Must be a player."));
                         return 0;
                 }
                 String dimId = player.level().dimension().location().toString();
-                EDBMessages.sendToPlayer(new AddJMWaypointPacket(x, y, z, name, dimId), player);
+                EDBMessages.sendToPlayer(new AddJMWaypointPacket(x, y, z, name, dimId, true, color), player);
                 source.sendSuccess(
                                 () -> Component.literal(
                                                 "Waypoint \"" + name + "\" added at " + x + ", " + y + ", " + z + ".")

@@ -81,6 +81,7 @@ public class NpcCommand {
      * minutes by {@link #tickRetryQueue(MinecraftServer)}.
      */
     public static final java.util.concurrent.ConcurrentLinkedQueue<ProfileRequest> PENDING_PROFILES = new java.util.concurrent.ConcurrentLinkedQueue<>();
+    private static final Set<UUID> SCHEDULED_PROFILES = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     // -------------------------------------------------------------------------
     // Threat notes cache — auto-replenishment
@@ -779,6 +780,16 @@ public class NpcCommand {
      * one, and saves the profile both to run/npcData/ and the NPC database.
      */
     public static int initVillagers(CommandSourceStack source) {
+        PlayerData data = getPlayer(source);
+        VillageData village = data == null ? null : data.getHomeVillage();
+        return initVillagers(source, village, false);
+    }
+
+    public static int initVillageProfiles(CommandSourceStack source, VillageData village) {
+        return initVillagers(source, village, true);
+    }
+
+    private static int initVillagers(CommandSourceStack source, VillageData village, boolean automatic) {
         try {
             Entity nullableSummoner = source.getEntity();
             Player summoner = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
@@ -787,8 +798,6 @@ public class NpcCommand {
                 return 0;
             }
 
-            PlayerData playerData = getPlayer(source);
-            VillageData village = playerData != null ? playerData.getHomeVillage() : null;
             if (village == null) {
                 source.sendFailure(Component.literal("You are not a member of any village."));
                 return 0;
@@ -797,7 +806,20 @@ public class NpcCommand {
             // Scan villagers within 10-chunk radius of the village center.
             Level level = summoner.level();
             List<LivingEntity> villagers = VillageCommand.getVillagersList(summoner.blockPosition(), level, 10);
+            if (automatic) {
+                var center = village.getPosition().getWorldPosition();
+                int radius = ((4 + village.getLevel()) * 2 + 1) * 16;
+                villagers = new ArrayList<>(level.getEntitiesOfClass(Villager.class,
+                        new AABB(center.getX() - radius, level.getMinBuildHeight(), center.getZ() - radius,
+                                center.getX() + radius, level.getMaxBuildHeight(), center.getZ() + radius),
+                        villager -> {
+                            ChunkData chunk = ModEvents.getChunkDataDatabase().getData(
+                                    new ChunkPos(villager.blockPosition()).toLong());
+                            return chunk != null && village.getUUID().equals(chunk.getVillageId());
+                        }));
+            }
             if (villagers.isEmpty()) {
+                if (automatic) return 0;
                 source.sendFailure(Component.literal("No villagers found nearby."));
                 return 0;
             }
@@ -813,7 +835,8 @@ public class NpcCommand {
                     .count();
             final long fNeedsProfile = needsProfile;
             final long fAlreadyHas = alreadyHas;
-            source.sendSuccess(() -> Component.literal("Found " + villagers.size()
+            int foundCount = villagers.size();
+            source.sendSuccess(() -> Component.literal("Found " + foundCount
                     + " villager(s): " + fAlreadyHas + " already have profiles, generating " + fNeedsProfile
                     + " new profile(s)..."), false);
             LOGGER.info("initVillagers: {} total, {} already have profiles, {} to generate.", villagers.size(),
@@ -850,7 +873,7 @@ public class NpcCommand {
             int structureIndex = 0;
             // Stagger AI calls 60 seconds apart — each request can take up to 90s,
             // so 30s wasn't enough and caused overlapping requests (Ollama 500 errors).
-            int delaySeconds = 0;
+            int delaySeconds = automatic ? Math.max(1, SCHEDULED_PROFILES.size()) * 60 : 0;
             for (LivingEntity entity : villagers) {
                 if (!(entity instanceof Villager villager))
                     continue;
@@ -865,6 +888,7 @@ public class NpcCommand {
                             false);
                     continue;
                 }
+                if (isAlreadyQueued(npcUUID) || !SCHEDULED_PROFILES.add(npcUUID)) continue;
 
                 String profession = villager.getVillagerData().getProfession().toString();
                 // Assign one structure to be curious about (cycle through the list).
@@ -888,6 +912,7 @@ public class NpcCommand {
                         java.util.concurrent.CompletableFuture.delayedExecutor(
                                 fDelay, java.util.concurrent.TimeUnit.SECONDS))
                         .exceptionally(err -> {
+                            SCHEDULED_PROFILES.remove(fUUID);
                             LOGGER.error("initVillagers: background task for '{}' threw: {}", fName,
                                     err.getMessage(), err);
                             server.execute(() -> source.sendFailure(Component.literal(
@@ -1081,6 +1106,7 @@ public class NpcCommand {
             boolean isRegen,
             String existingText) {
 
+        SCHEDULED_PROFILES.add(npcUUID);
         java.util.concurrent.CompletableFuture<String> future = isRegen
                 ? AIManager.regenerateNpcPersonality(npcName, profession, existingText,
                         villagerNames, villageName, biomes, structureCuriosity)
@@ -1088,6 +1114,7 @@ public class NpcCommand {
                         villagerNames, villageName, biomes, structureCuriosity);
 
         future.thenAccept(personality -> server.execute(() -> {
+            SCHEDULED_PROFILES.remove(npcUUID);
             if (personality != null && personality.startsWith("[AI Error]")) {
                 // Queue for retry instead of permanently dropping.
                 if (!isAlreadyQueued(npcUUID)) {
@@ -1123,6 +1150,7 @@ public class NpcCommand {
                         "[NPC] AI done but failed to write file for " + npcName));
             }
         })).exceptionally(err -> {
+            SCHEDULED_PROFILES.remove(npcUUID);
             // Queue for retry on exception too.
             if (!isAlreadyQueued(npcUUID)) {
                 PENDING_PROFILES.offer(new ProfileRequest(npcName, npcUUID, profession,

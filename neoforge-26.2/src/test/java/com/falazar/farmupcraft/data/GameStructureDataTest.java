@@ -4,6 +4,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.SectionPos;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.nbt.NbtOps;
 import net.neoforged.testframework.junit.EphemeralTestServerProvider;
 import org.junit.jupiter.api.Test;
@@ -16,6 +18,40 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(EphemeralTestServerProvider.class)
 class GameStructureDataTest {
+    @Test
+    void grassyIglooEntryIncludesSurfaceAndBasementDespiteUndergroundCenter() {
+        var igloo = new GameStructureData(-85899345881L, "igloo grassy",
+                new BlockPos(624, 57, -321), "repurposed_structures:igloo_grassy", false, false,
+                new BlockPos(621, 45, -326), new BlockPos(627, 69, -317),
+                List.of(ChunkPos.pack(38, -21), ChunkPos.pack(39, -21),
+                        ChunkPos.pack(38, -20), ChunkPos.pack(39, -20)));
+        assertFalse(igloo.isUnderground());
+        assertTrue(igloo.intersectsSection(SectionPos.of(new BlockPos(624, 66, -321))));
+        assertTrue(igloo.intersectsSection(SectionPos.of(new BlockPos(624, 46, -321))));
+        assertFalse(igloo.intersectsSection(SectionPos.of(new BlockPos(624, 20, -321))));
+        assertFalse(igloo.intersectsSection(SectionPos.of(new BlockPos(624, 80, -321))));
+        assertFalse(igloo.intersectsSection(SectionPos.of(new BlockPos(640, 66, -321))));
+        assertFalse(igloo.wasVisited(), "Checking entry must not mutate saved visits");
+    }
+
+    @Test
+    void boundsFallbackPreservesUndergroundSecrecyAndExcludesUncoveredPieceChunks() {
+        var data = new GameStructureData(1L, "Secret", new BlockPos(-17, 40, -17), "dungeon",
+                false, false, new BlockPos(-32, 20, -32), new BlockPos(15, 59, 15));
+        assertTrue(data.isUnderground());
+        assertTrue(data.intersectsSection(SectionPos.of(new BlockPos(-32, 20, -32))));
+        assertFalse(data.intersectsSection(SectionPos.of(new BlockPos(-33, 20, -32))));
+        data.setChunkPositions(List.of(ChunkPos.pack(-2, -2)));
+        assertFalse(data.intersectsSection(SectionPos.of(BlockPos.ZERO)));
+        data.setMaxPos(new BlockPos(15, 60, 15));
+        assertFalse(data.isUnderground());
+
+        var legacy = new GameStructureData(2L, "Legacy", new BlockPos(-17, 59, -17), "dungeon");
+        assertTrue(legacy.isUnderground());
+        assertTrue(legacy.intersectsSection(SectionPos.of(legacy.getCenterPos())));
+        assertFalse(legacy.intersectsSection(SectionPos.of(new BlockPos(-17, 64, -17))));
+    }
+
     @Test
     void minimalAndCompleteLegacyShapesRoundTripInJsonAndNbt() {
         assertShape("""

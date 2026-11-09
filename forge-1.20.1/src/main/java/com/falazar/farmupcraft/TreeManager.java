@@ -19,8 +19,10 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
@@ -32,6 +34,7 @@ import net.minecraftforge.registries.ForgeRegistries;
 import static com.pam.pamhc2trees.blocks.BlockPamFruit.AGE;
 import net.minecraftforge.event.entity.player.EntityItemPickupEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 
@@ -55,6 +58,7 @@ public final class TreeManager {
 
     private static final Map<String, List<String>> SAPLING_LIMITS = Map.of(
             "dark_oak", List.of("minecraft:dark_forest", "minecraft:dark_forest_hills"),
+            "pale_oak", List.of("minecraft:pale_garden"),
             "redwood", List.of("minecraft:giant_tree_taiga", "biomesoplenty:redwood_forest"),
             "magic", List.of("biomesoplenty:mystic_grove"),
             "cherry", List.of("minecraft:cherry_grove"),
@@ -92,6 +96,29 @@ public final class TreeManager {
 
     public static boolean isNurseryPlot(BlockPos pos, Level level) {
         return "nursery".equals(ChunkManager.getPlotType(pos, level));
+    }
+
+    public static com.falazar.farmupcraft.util.NurseryTreeCounter.Counts countFruitTrees(ServerLevel level, BlockPos pos) {
+        var chunk = level.getChunkAt(pos);
+        var chunkPos = chunk.getPos();
+        var logs = new java.util.HashMap<BlockPos, java.util.Set<String>>();
+        for (BlockPos cursor : BlockPos.betweenClosed(chunkPos.getMinBlockX(), level.getMinBuildHeight(), chunkPos.getMinBlockZ(),
+                chunkPos.getMaxBlockX(), level.getMaxBuildHeight() - 1, chunkPos.getMaxBlockZ())) {
+            if (!chunk.getBlockState(cursor).is(BlockTags.LOGS)) continue;
+            var fruits = new java.util.HashSet<String>();
+            for (BlockPos nearby : BlockPos.betweenClosed(cursor.offset(-1, -1, -1), cursor.offset(1, 1, 1))) {
+                if (!level.hasChunkAt(nearby)) continue;
+                var state = level.getBlockState(nearby);
+                var id = ForgeRegistries.BLOCKS.getKey(state.getBlock());
+                if (state.is(Blocks.COCOA) || id != null && id.getNamespace().equals("pamhc2trees")
+                        && state.hasProperty(net.minecraft.world.level.block.state.properties.BlockStateProperties.AGE_7)) {
+                    fruits.add(state.getBlock().getName().getString());
+                }
+            }
+            logs.put(cursor.immutable(), fruits);
+        }
+        return com.falazar.farmupcraft.util.NurseryTreeCounter.count(logs,
+                log -> java.util.Arrays.stream(net.minecraft.core.Direction.values()).map(log::relative).toList());
     }
 
     @SubscribeEvent
@@ -202,9 +229,7 @@ public final class TreeManager {
     public static void onRightClickSaplingPlant(PlayerInteractEvent.RightClickBlock event) {
         // Step 1: If in creative mode, skip all rules and allow planting all.
         Player playerSource = (Player) event.getEntity();
-        if (playerSource.getUsedItemHand() != InteractionHand.MAIN_HAND)
-            return;
-        if (playerSource.isCreative()) {
+        if (event.isCanceled() || playerSource.isCreative()) {
             return;
         }
 
@@ -219,13 +244,16 @@ public final class TreeManager {
         // STEP 2: Test if holding a sapling item, if not leave.
         ItemStack stack = event.getItemStack();
         String stackName = stack.getDescriptionId();
-        if (!stackName.contains("sapling")) {
+        if (!(stack.getItem() instanceof BlockItem blockItem)
+                || !(blockItem.getBlock().defaultBlockState().is(BlockTags.SAPLINGS)
+                || stackName.contains("sapling") || stack.is(Items.MANGROVE_PROPAGULE))) {
             return;
         }
 
-        // STEP 3: Only apply rules if actually planting on a dirt surface.
-        BlockState clickedState = level.getBlockState(clickedPos);
-        if (!clickedState.is(BlockTags.DIRT)) {
+        BlockPlaceContext placement = new BlockPlaceContext(playerSource, event.getHand(), stack,
+                event.getHitVec());
+        clickedPos = placement.getClickedPos();
+        if (!placement.canPlace() || !blockItem.getBlock().defaultBlockState().canSurvive(level, clickedPos)) {
             return;
         }
 
@@ -234,7 +262,7 @@ public final class TreeManager {
                 .replace("biomesoplenty.", "");
         LOGGER.info("DEBUG: onRightClickSaplingPlant shortName = " + shortName);
 
-        Holder<Biome> biome = event.getLevel().getBiome(event.getPos());
+        Holder<Biome> biome = level.getBiome(clickedPos);
         ResourceLocation biomeId = biome.unwrapKey().orElse(UNKNOWN_BIOME_RK).location();
         LOGGER.info("DEBUG: onRightClickSaplingPlant biome = " + biomeId);
         if (!TreeManager.isSaplingBiomeAllowed(shortName, biomeId)) {
@@ -268,13 +296,15 @@ public final class TreeManager {
         if (randomNum >= goodChance) {
             LOGGER.info("DEBUG: NOT allowing sapling plant " + goodChance);
             stack.shrink(1);
+            playerSource.displayClientMessage(Component.literal("The sapling failed to take root.")
+                    .withStyle(ChatFormatting.YELLOW), true);
             event.setCanceled(true);
             return;
         }
         LOGGER.info("DEBUG: allowing sapling plant " + goodChance);
     }
 
-    @SubscribeEvent
+    @SubscribeEvent(priority = net.minecraftforge.eventbus.api.EventPriority.HIGHEST)
     public static void onRightClickHarvestTrees(PlayerInteractEvent.RightClickBlock event) {
         // Check if the event is on client side, then skip.
         if (event.getEntity().level().isClientSide) {
@@ -318,11 +348,7 @@ public final class TreeManager {
         // Get Item and name.
         ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
         // DEBUG: itemname is item.pamhc2trees.pamchestnutitem
-        String itemName = blockId.replace("block.pamhc2trees.pam", "pamhc2trees:") + "item";
-        // Special case: Convert apple to old item name.
-        if (blockId.equals("block.pamhc2trees.pamapple")) {
-            itemName = "minecraft:apple";
-        }
+        String itemName = fruitItemId(ForgeRegistries.BLOCKS.getKey(block));
         // Get item from new name.
         Item item = ForgeRegistries.ITEMS.getValue(new ResourceLocation(itemName));
 
@@ -330,10 +356,7 @@ public final class TreeManager {
         int successPercent = 40;
 
         // STEP 5: Get how many fruits of this kind you have harvested from statistics.
-        int timesPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
-        // get times dropped, subtract the two will be close.
-        int timesDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
-        int timesHarvested = timesPickedUp - timesDropped;
+        int timesHarvested = effectiveFruitCount(serverPlayer, item);
         successPercent += (timesHarvested / 100) * 2; // 2% per 100 harvested.
         LOGGER.info("DEBUG: " + itemName + " timesharvested " + timesHarvested + " times. successPercent is "
                 + successPercent);
@@ -356,7 +379,12 @@ public final class TreeManager {
         int finalSuccessPercent = Math.min(successPercent, 98); // max 98 percent.
         Random rand = new Random();
         int randomNum = rand.nextInt(100); // 100% 0-99
-        if (randomNum >= finalSuccessPercent) {
+        boolean failed = randomNum >= finalSuccessPercent;
+        LOGGER.info("Tree fruit harvest roll: player={}, block={}, pos={}, biome={}, harvested={}, xp={}, rawRate={}, roll={}, successIfRollBelow={}, result={}",
+                player.getName().getString(), ForgeRegistries.BLOCKS.getKey(block), clickedPos, biomeRes,
+                timesHarvested, player.experienceLevel, successPercent, randomNum, finalSuccessPercent,
+                failed ? "FAILURE" : "SUCCESS");
+        if (failed) {
             // Cancel event and return now.
             event.setCanceled(true);
 
@@ -368,6 +396,8 @@ public final class TreeManager {
             player.displayClientMessage(Component.literal("You failed to harvest the fruit!"), false);
             return;
         }
+
+        reduceOtherFruitSkill(serverPlayer, item);
 
         // STEP 8b: Roll for extra fruit (experience-based double chance).
         int doubleSuccessPercent = successPercent / 2;
@@ -475,10 +505,8 @@ public final class TreeManager {
             return;
 
         // Current total before this pickup; after = current + amount being picked up.
-        int currentPickedUp = serverPlayer.getStats().getValue(Stats.ITEM_PICKED_UP.get(item));
-        int currentDropped = serverPlayer.getStats().getValue(Stats.ITEM_DROPPED.get(item));
-        int before = currentPickedUp - currentDropped;
-        int after = before + event.getItem().getItem().getCount();
+        int before = effectiveFruitCount(serverPlayer, item);
+        int after = effectiveFruitCount(serverPlayer, item, event.getItem().getItem().getCount());
 
         // Find the first milestone crossed in this pickup.
         for (int h = before + 1; h <= after; h++) {
@@ -493,6 +521,65 @@ public final class TreeManager {
                         false);
                 break; // only one message per pickup
             }
+
+        }
+    }
+
+    private static int effectiveFruitCount(ServerPlayer player, Item item) {
+        return effectiveFruitCount(player, item, 0);
+    }
+
+    private static int effectiveFruitCount(ServerPlayer player, Item item, int incoming) {
+        String id = ForgeRegistries.ITEMS.getKey(item).toString();
+        int net = player.getStats().getValue(Stats.ITEM_PICKED_UP.get(item))
+                - player.getStats().getValue(Stats.ITEM_DROPPED.get(item)) + incoming;
+        if (!FruitHarvestSkill.isFruitOrNut(id)) return net;
+        int penalty = player.getPersistentData().getCompound(FruitHarvestSkill.DATA_KEY).getInt(id);
+        return FruitHarvestSkill.effectiveCount(net, penalty);
+    }
+
+    private static String fruitItemId(ResourceLocation blockId) {
+        String path = blockId.getPath().replaceFirst("^pam", "");
+        return switch (path) {
+            case "apple" -> "minecraft:apple";
+            case "maple" -> "pamhc2trees:maplesyrupitem";
+            case "paperbark" -> "minecraft:paper";
+            case "spiderweb" -> "minecraft:string";
+            default -> "pamhc2trees:" + path + "item";
+        };
+    }
+
+    private static void reduceOtherFruitSkill(ServerPlayer player, Item harvested) {
+        String current = ForgeRegistries.ITEMS.getKey(harvested).toString();
+        if (!FruitHarvestSkill.isFruitOrNut(current)
+                || !FruitHarvestSkill.shouldReduce(player.level().getRandom().nextInt(100))) return;
+        Map<String, Integer> progress = new java.util.HashMap<>();
+        for (var block : ForgeRegistries.BLOCKS) {
+            ResourceLocation id = ForgeRegistries.BLOCKS.getKey(block);
+            if (id == null || !id.getNamespace().equals("pamhc2trees")
+                    || !block.defaultBlockState().hasProperty(AGE)) continue;
+            String fruitId = fruitItemId(id);
+            Item fruit = ForgeRegistries.ITEMS.getValue(new ResourceLocation(fruitId));
+            if (fruit != null && fruit != Items.AIR) {
+                progress.put(fruitId, effectiveFruitCount(player, fruit));
+            }
+        }
+        var candidates = FruitHarvestSkill.candidates(progress, current);
+        if (candidates.isEmpty()) return;
+        String target = candidates.get(player.level().getRandom().nextInt(candidates.size()));
+        var penalties = player.getPersistentData().getCompound(FruitHarvestSkill.DATA_KEY);
+        penalties.putInt(target, Math.addExact(penalties.getInt(target), 1));
+        player.getPersistentData().put(FruitHarvestSkill.DATA_KEY, penalties);
+        LOGGER.info("Tree fruit skill reduction: player={}, harvested={}, reduced={}, effectiveBefore={}, effectiveAfter={}",
+                player.getName().getString(), current, target, progress.get(target), progress.get(target) - 1);
+    }
+
+    @SubscribeEvent
+    public static void onPlayerClone(PlayerEvent.Clone event) {
+        var oldData = event.getOriginal().getPersistentData();
+        if (oldData.contains(FruitHarvestSkill.DATA_KEY)) {
+            event.getEntity().getPersistentData().put(FruitHarvestSkill.DATA_KEY,
+                    oldData.getCompound(FruitHarvestSkill.DATA_KEY).copy());
         }
     }
 }

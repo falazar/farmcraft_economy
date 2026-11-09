@@ -35,7 +35,7 @@ class TreeWorldgenParityTest {
             "soursop", "spiderweb", "walnut");
 
     @TestFactory
-    Stream<DynamicTest> allOneHundredLegacyDefinitionsRetainEveryActiveField() {
+    Stream<DynamicTest> allOneHundredDefinitionsRetainPlacementAndUseCompactFruitTrunks() {
         return names().flatMap(tree -> Stream.of(
                 DynamicTest.dynamicTest("configured_feature/" + configuredName(tree),
                         () -> assertEquals(expectedConfigured(tree),
@@ -97,10 +97,11 @@ class TreeWorldgenParityTest {
         String wood = OAK.contains(tree) ? "oak"
                 : Set.of("maple", "pinenut").contains(tree) ? "spruce" : "jungle";
         String placer = tree.equals("pinenut") ? "pine" : tree;
-        int base = tree.equals("pinenut") ? 7 : 4;
+        boolean bark = Set.of("cinnamon", "maple", "paperbark").contains(tree);
+        int base = tree.equals("pinenut") ? 7 : bark ? 6 : 5;
         int randA = tree.equals("pinenut") ? 2 : 1;
         int randB = tree.equals("pinenut") ? 3
-                : Set.of("cinnamon", "maple", "paperbark").contains(tree) ? 1 : 2;
+                : bark ? 1 : 0;
         // 1.20.1 setDirtAt(force_dirt=false): keep dirt-tag states EXCEPT grass/mycelium.
         // 26.2 removes both old keys; a no-fallback rule preserves that exact predicate.
         return JsonParser.parseString("""
@@ -167,7 +168,11 @@ class TreeWorldgenParityTest {
         var stream = TreeWorldgenParityTest.class.getResourceAsStream(path);
         assertNotNull(stream, path);
         try (var reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-            return JsonParser.parseReader(reader).getAsJsonObject();
+            var resource = JsonParser.parseReader(reader).getAsJsonObject();
+            assertEquals(JsonParser.parseString("""
+                    [{"type":"neoforge:mod_loaded","modid":"pamhc2trees"}]
+                    """), resource.remove("neoforge:conditions"), "Optional-mod loading condition");
+            return resource;
         }
     }
 }

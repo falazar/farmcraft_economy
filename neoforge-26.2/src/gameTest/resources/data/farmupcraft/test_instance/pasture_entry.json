@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:pasture_entry",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 40
+}

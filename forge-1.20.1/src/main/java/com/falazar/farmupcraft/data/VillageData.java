@@ -25,7 +25,9 @@ public class VillageData {
             UUIDUtil.STRING_CODEC.listOf().optionalFieldOf("member_uuids", new ArrayList<>())
                     .forGetter(VillageData::getMemberUUIDs),
             Codec.STRING.optionalFieldOf("animal_grains", "").forGetter(VillageData::getAnimalGrains),
-            VillagerRecord.CODEC.listOf().optionalFieldOf("reincarnation_pool", List.of()).forGetter(VillageData::getReincarnationPool))
+            VillagerRecord.CODEC.listOf().optionalFieldOf("reincarnation_pool", List.of()).forGetter(VillageData::getReincarnationPool),
+            Codec.intRange(0, Integer.MAX_VALUE).optionalFieldOf("villager_count", 0).forGetter(VillageData::getVillagerCount),
+            Codec.LONG.optionalFieldOf("last_villager_scan", 0L).forGetter(VillageData::getLastVillagerScan))
             .apply(instance, VillageData::new));
 
     private final UUID uuid;
@@ -43,6 +45,28 @@ public class VillageData {
     private List<UUID> memberUUIDs; // UUIDs of all players who are members of this village
     private String animalGrains; // Serialized map: "cow=item1,item2|sheep=item3,item4|..."
     private List<VillagerRecord> reincarnationPool;
+    private int villagerCount;
+    private long lastVillagerScan;
+
+    public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
+            boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange,
+            String founder, List<UUID> memberUUIDs, String animalGrains, List<VillagerRecord> reincarnationPool,
+            int villagerCount, long lastVillagerScan) {
+        this(uuid, name, position, level, claimedChunks, bought, coins, lastRanDaily, animalType,
+                lastAnimalTypeChange, founder, memberUUIDs, animalGrains, reincarnationPool);
+        updateVillagerCount(villagerCount, lastVillagerScan);
+    }
+
+    public int getVillagerCount() { return villagerCount; }
+    public long getLastVillagerScan() { return lastVillagerScan; }
+    public boolean isVillagerScanDue(long now) {
+        return lastVillagerScan == 0 || now < lastVillagerScan || now - lastVillagerScan >= 7_200_000L;
+    }
+    public void updateVillagerCount(int count, long now) {
+        if (count < 0 || now < 0) throw new IllegalArgumentException("Invalid villager census");
+        villagerCount = count;
+        lastVillagerScan = now;
+    }
 
     /**
      * Constructs a new VillageData object.

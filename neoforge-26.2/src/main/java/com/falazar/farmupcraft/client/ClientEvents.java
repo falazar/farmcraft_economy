@@ -26,11 +26,13 @@ public final class ClientEvents {
     @SubscribeEvent
     public static void extractBorders(ExtractLevelRenderStateEvent event) {
         BorderRenderer.extract(event);
+        BuildPreviewRenderer.extract(event);
     }
 
     @SubscribeEvent
     public static void submitBorders(SubmitCustomGeometryEvent event) {
         BorderRenderer.submit(event);
+        BuildPreviewRenderer.submit(event);
     }
 
     @SubscribeEvent

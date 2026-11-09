@@ -17,5 +17,9 @@ public interface CropRules {
     //List<Item> getCropItems(ServerLevel level);
     List<Item> getCropItems(ServerLevel level, int id);
 
+    default List<Item> getCropItems(ServerLevel level, String biomeId) {
+        return getCropItems(level, biomeId.hashCode());
+    }
+
     CropRulesType<? extends CropRules> type();
 }

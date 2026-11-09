@@ -195,10 +195,14 @@ public class FarmCraftCommand {
     }
 
     public static int addMapWaypoint(CommandSourceStack source, int x, int y, int z, String name) {
+        return addMapWaypoint(source, x, y, z, name, 0xFFD700);
+    }
+
+    public static int addMapWaypoint(CommandSourceStack source, int x, int y, int z, String name, int color) {
         ServerPlayer player = player(source);
         if (player == null) return 0;
         EDBMessages.sendToPlayer(new AddJMWaypointPacket(x, y, z, name,
-                player.level().dimension().identifier().toString()), player);
+                player.level().dimension().identifier().toString(), true, color), player);
         source.sendSuccess(() -> Component.literal(
                 "Waypoint \"" + name + "\" added at " + x + ", " + y + ", " + z + ".")
                 .withStyle(ChatFormatting.GREEN), false);

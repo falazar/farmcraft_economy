@@ -40,11 +40,12 @@ public class BiomeRulesManager extends SavedData {
     private static ClientLevel levelCache = null;
 
     private static ServerLevel level;
-    private static final Map<Holder<Biome>, BiomeRulesInstance> biomeRules = new ConcurrentHashMap<>();
+    private final Map<Holder<Biome>, BiomeRulesInstance> biomeRules = new ConcurrentHashMap<>();
+    private final Map<ResourceLocation, BiomeRulesInstance> unavailableBiomeRules = new ConcurrentHashMap<>();
 
 
     //todo add this here for now maybe need a better place?
-    private static final Map<Item, List<Holder<Biome>>> itemToBiomeList = new ConcurrentHashMap<>();
+    private final Map<Item, List<Holder<Biome>>> itemToBiomeList = new ConcurrentHashMap<>();
 
     //public static SavedData.Factory<BiomeRulesManager> factory() {
     //    return new SavedData.Factory<>(WorldEventManager::new, WorldEventManager::new);
@@ -121,6 +122,16 @@ public class BiomeRulesManager extends SavedData {
             listTag.add(biomeTag);
         }
 
+        unavailableBiomeRules.forEach((id, instance) -> {
+            CompoundTag biomeTag = new CompoundTag();
+            biomeTag.putString("biome", id.toString());
+            CompoundTag rulesTag = new CompoundTag();
+            Tag encoded = BiomeRulesInstance.CODEC.encodeStart(NbtOps.INSTANCE, instance)
+                    .getOrThrow(false, error -> LOGGER.error("Failed to preserve unavailable biome {}: {}", id, error));
+            rulesTag.put("rules_instance", encoded);
+            biomeTag.put("rules", rulesTag);
+            listTag.add(biomeTag);
+        });
         compoundTag.put("biome_rules", listTag);
 
         // Save the itemToBiomeList
@@ -174,7 +185,11 @@ public class BiomeRulesManager extends SavedData {
                     .flatMap(biomes -> biomes.getHolder(biomeRK));
 
             if (biomeHolderOptional.isEmpty()) {
-                LOGGER.error("Failed to load rules for biome '{}', biome not found.", biomeKey);
+                BiomeRulesInstance.CODEC.parse(NbtOps.INSTANCE,
+                                biomeTag.getCompound("rules").get("rules_instance"))
+                        .resultOrPartial(error -> LOGGER.error("Failed to preserve unavailable biome {}: {}", biomeKey, error))
+                        .ifPresent(instance -> unavailableBiomeRules.put(biomeRK.location(), instance));
+                LOGGER.warn("Biome '{}' is unavailable; retaining its saved crop selections for a future restore.", biomeKey);
                 continue; // Skip processing for this biome
             }
 
@@ -256,6 +271,7 @@ public class BiomeRulesManager extends SavedData {
     public void clear() {
         biomeRules.clear();
         itemToBiomeList.clear();
+        unavailableBiomeRules.clear();
         setDirty();
     }
 
@@ -275,7 +291,7 @@ public class BiomeRulesManager extends SavedData {
      * @return True if there are rules for the biome, false otherwise.
      */
     public boolean containsBiome(Holder<Biome> biomeHolder) {
-        return biomeRules.containsKey(biomeHolder);
+        return biomeRules.containsKey(biomeHolder) && biomeRules.get(biomeHolder).shouldSave();
     }
 
     /**
@@ -287,7 +303,7 @@ public class BiomeRulesManager extends SavedData {
      */
     public BiomeRulesInstance getBiomeRules(Holder<Biome> biome) {
         return biomeRules.computeIfAbsent(biome, e -> {
-            BiomeRulesInstance instance = BiomeRulesInstance.EMPTY;
+            BiomeRulesInstance instance = new BiomeRulesInstance(com.falazar.farmupcraft.data.BiomeRulesData.EMPTY);
             instance.setShouldSave(false);
             return instance;
         });
@@ -300,8 +316,26 @@ public class BiomeRulesManager extends SavedData {
      * @param rulesInstance The {@link BiomeRulesInstance} to set.
      */
     public void setBiomeRules(Holder<Biome> biome, BiomeRulesInstance rulesInstance) {
-        biomeRules.put(biome, rulesInstance);
+        var restored = unavailableBiomeRules.remove(biome.unwrapKey().orElseThrow().location());
+        biomeRules.put(biome, restored == null ? rulesInstance : restored);
         setDirty(); // Mark the data as dirty to be saved
+    }
+
+    public void rebuildItemIndex() {
+        Map<Item, List<Holder<Biome>>> rebuilt = new HashMap<>();
+        biomeRules.forEach((biome, rules) -> {
+            if (rules.shouldSave()) {
+                for (Item item : rules.getCrops(null)) {
+                    var biomes = rebuilt.computeIfAbsent(item, ignored -> new ArrayList<>());
+                    if (!biomes.contains(biome)) biomes.add(biome);
+                }
+            }
+        });
+        if (!itemToBiomeList.equals(rebuilt)) {
+            itemToBiomeList.clear();
+            itemToBiomeList.putAll(rebuilt);
+            setDirty();
+        }
     }
 
     public Collection<BiomeRulesInstance> getBiomeRules() {

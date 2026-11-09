@@ -129,11 +129,8 @@ public class AIManager {
     }
 
     static String buildChestThreatNotePrompt(String structureName) {
-        return "You are writing a short, menacing note left by a sinister villain inside a " +
-                structureName + " in a medieval fantasy world. " +
-                "Write exactly 1 to 3 sentences. The note should threaten the adventurer who found it, " +
-                "rant about how this place belongs to the villain, and hint at dark consequences for trespassers. " +
-                "Use archaic or dramatic language. Return ONLY the note text, no titles, no quotes, no labels.";
+        return com.falazar.farmupcraft.util.StructureNoteFlavor.prompt(structureName,
+                java.util.concurrent.ThreadLocalRandom.current());
     }
 
     public static CompletableFuture<String> generateChestThreatNote(String structureName) {
@@ -142,13 +139,8 @@ public class AIManager {
     }
 
     static String buildChestThreatNotesBatchPrompt(String structureName, int count) {
-        return "You are writing " + count + " short, menacing notes each left by a sinister villain inside a "
-                + structureName + " in a medieval fantasy world. "
-                + "Each note should be 1 to 3 sentences. Notes should threaten the adventurer who found them, "
-                + "rant about how the place belongs to the villain, and hint at dark consequences for trespassers. "
-                + "Use archaic or dramatic language. "
-                + "Return ONLY the " + count + " note texts, each separated by exactly '---NEXT---'. "
-                + "No titles, no quotes, no labels, no numbering — just the note texts separated by the delimiter.";
+        return com.falazar.farmupcraft.util.StructureNoteFlavor.batchPrompt(structureName, count,
+                java.util.concurrent.ThreadLocalRandom.current());
     }
 
     public static CompletableFuture<List<String>> generateChestThreatNotesBatch(String structureName, int count) {
@@ -173,14 +165,7 @@ public class AIManager {
     }
 
     public static String buildNpcSystemPrompt(NpcData profile, String playerName, String playerMessage) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("You are a Minecraft villager named ").append(profile.getName()).append(". ");
-        if (!profile.getDescription().isEmpty())
-            sb.append(profile.getDescription()).append(" ");
-        if (!profile.getPersonality().isEmpty())
-            sb.append("Your personality and background: ").append(profile.getPersonality()).append(" ");
-        sb.append("Keep your reply short (1-3 sentences), in character, and friendly. ");
-        sb.append("The player '").append(playerName).append("' says to you: ").append(playerMessage);
-        return sb.toString();
+        return NpcPrompts.base(com.falazar.farmupcraft.gems.GemPlatform.configDir(), profile.getName(),
+                profile.getDescription(), profile.getPersonality(), playerName, playerMessage);
     }
 }

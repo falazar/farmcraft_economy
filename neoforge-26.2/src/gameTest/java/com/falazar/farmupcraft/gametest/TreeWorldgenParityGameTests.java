@@ -59,6 +59,8 @@ public final class TreeWorldgenParityGameTests {
                     TreeWorldgenParityGameTests::loadedBindings);
             functions.register(FarmUpCraftNeoForge.prefix("tree_worldgen_parity_generation"),
                     TreeWorldgenParityGameTests::generation);
+            functions.register(FarmUpCraftNeoForge.prefix("tree_worldgen_sapling_clearance"),
+                    TreeWorldgenParityGameTests::saplingClearance);
         });
     }
 
@@ -160,6 +162,12 @@ public final class TreeWorldgenParityGameTests {
                 helper.assertTrue(configured.place(level, generator, RandomSource.create(0), origin),
                         tree + ": real configured generation succeeds on clear grass");
                 assertTree(helper, tree, config, origin, RandomSource.create(0));
+                for (int seed = 1; seed <= 16; seed++) {
+                    reset(helper, saved, origin, Blocks.GRASS_BLOCK);
+                    helper.assertTrue(configured.place(level, generator, RandomSource.create(seed), origin),
+                            tree + ": configured growth succeeds for seed " + seed);
+                    assertTree(helper, tree, config, origin, RandomSource.create(seed));
+                }
 
                 reset(helper, saved, origin, Blocks.GRASS_BLOCK);
                 helper.assertTrue(!placed.place(level, generator, RandomSource.create(REJECTED_SEED), origin.above(7))
@@ -211,6 +219,55 @@ public final class TreeWorldgenParityGameTests {
                         : Blocks.AIR.defaultBlockState(), 2));
     }
 
+    private static void saplingClearance(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var origin = helper.absolutePos(new BlockPos(0, 32, 0));
+        var saved = new LinkedHashMap<BlockPos, BlockState>();
+        BlockPos.betweenClosedStream(origin.offset(-6, -2, -6), origin.offset(6, 20, 6))
+                .forEach(pos -> saved.put(pos.immutable(), level.getBlockState(pos)));
+        long seed = 0;
+        while (RandomSource.create(seed).nextInt(7) != 0) seed++;
+        long growthSeed = seed;
+        reset(helper, saved, origin, Blocks.GRASS_BLOCK);
+        // Saplings check real light; allow the prepared surface's skylight updates to run first.
+        helper.runAfterDelay(5, () -> {
+            try {
+                for (String tree : TREES) {
+                    reset(helper, saved, origin, Blocks.GRASS_BLOCK);
+                    var sapling = block(helper, tree + "_sapling").defaultBlockState();
+                    level.setBlock(origin, sapling, 2);
+                    helper.assertTrue(level.getRawBrightness(origin.above(), 0) >= 9,
+                            tree + ": growth fixture has enough real light");
+                    for (int tick = 0; tick < 32 && level.getBlockState(origin).is(sapling.getBlock()); tick++) {
+                        level.getBlockState(origin).randomTick(level, origin, RandomSource.create(growthSeed));
+                    }
+                    helper.assertTrue(!level.getBlockState(origin).is(sapling.getBlock()),
+                            tree + ": real planted sapling grows through its random-tick stages ("
+                                    + sapling.getBlock().getClass().getName() + ")");
+                    var fruit = block(helper, "pam" + tree);
+                    int fruitCount = 0;
+                    for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-6, -2, -6), origin.offset(6, 20, 6))) {
+                        var state = level.getBlockState(pos);
+                        if (state.is(fruit)) {
+                            fruitCount++;
+                            assertFruitHeight(helper, tree, origin, pos);
+                        }
+                        if (state.is(BlockTags.LEAVES)) {
+                            helper.assertTrue(pos.getY() >= origin.getY() + 1,
+                                    tree + ": planted foliage stays above the first trunk block");
+                        }
+                    }
+                    helper.assertTrue(fruitCount > 0, tree + ": planted tree retains its own fruit");
+                    helper.assertTrue(level.getBlockState(origin.below()).is(BlockTags.DIRT),
+                            tree + ": planted tree keeps soil beneath its trunk");
+                }
+            } finally {
+                saved.forEach((pos, state) -> level.setBlock(pos, state, 2));
+            }
+            helper.succeed();
+        });
+    }
+
     private static void assertLegacyGroundProvider(
             GameTestHelper helper, TreeConfiguration config, BlockPos pos, String tree) {
         for (Block ground : List.of(Blocks.DIRT, Blocks.COARSE_DIRT, Blocks.ROOTED_DIRT, Blocks.PODZOL,
@@ -230,9 +287,9 @@ public final class TreeWorldgenParityGameTests {
 
     private static void assertTree(
             GameTestHelper helper, String tree, TreeConfiguration config, BlockPos origin, RandomSource random) {
-        int base = tree.equals("pinenut") ? 7 : 4;
+        int base = tree.equals("pinenut") ? 7 : BARK_FRUIT.contains(tree) ? 6 : 5;
         int randA = tree.equals("pinenut") ? 2 : 1;
-        int randB = tree.equals("pinenut") ? 3 : BARK_FRUIT.contains(tree) ? 1 : 2;
+        int randB = tree.equals("pinenut") ? 3 : BARK_FRUIT.contains(tree) ? 1 : 0;
         int height = base + random.nextInt(randA + 1) + random.nextInt(randB + 1);
         var fruit = block(helper, "pam" + tree);
         var trunk = config.trunkProvider.getState(helper.getLevel(), RandomSource.create(0), origin).getBlock();
@@ -240,21 +297,39 @@ public final class TreeWorldgenParityGameTests {
         for (int y = 0; y < height; y++) {
             var state = helper.getLevel().getBlockState(origin.above(y));
             helper.assertTrue(state.is(trunk) || BARK_FRUIT.contains(tree) && state.is(fruit),
-                    tree + ": generated straight trunk has its exact seeded legacy height at y=" + y);
+                    tree + ": generated straight trunk has its exact seeded height at y=" + y);
         }
         int fruitCount = 0;
         int leafCount = 0;
-        for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-6, 0, -6), origin.offset(6, 20, 6))) {
+        for (BlockPos pos : BlockPos.betweenClosed(origin.offset(-6, -2, -6), origin.offset(6, 20, 6))) {
             var state = helper.getLevel().getBlockState(pos);
             if (state.is(fruit)) {
                 fruitCount++;
+                assertFruitHeight(helper, tree, origin, pos);
             }
             if (state.is(leaves)) {
                 leafCount++;
+                helper.assertTrue(pos.getY() >= origin.getY() + 1,
+                        tree + ": leaves must stay above the first trunk block at " + pos);
             }
         }
+        helper.assertTrue(!helper.getLevel().getBlockState(origin.below()).is(fruit)
+                        && !helper.getLevel().getBlockState(origin.below()).is(trunk),
+                tree + ": tree generation must not bury trunk/harvestable bark in the soil");
         helper.assertTrue(fruitCount > 0, tree + ": registered HarvestCraft placer must generate its own real fruit");
         helper.assertTrue(leafCount > 0, tree + ": generation must include the exact legacy oak/jungle/spruce foliage");
+    }
+
+    private static void assertFruitHeight(GameTestHelper helper, String tree, BlockPos origin, BlockPos fruit) {
+        int height = fruit.getY() - origin.getY();
+        if (BARK_FRUIT.contains(tree)) {
+            helper.assertTrue(height >= 0, tree + ": harvestable bark must not be buried");
+        } else if (tree.equals("pinenut")) {
+            helper.assertTrue(height >= 2, tree + ": natural pine clearance must be preserved");
+        } else {
+            helper.assertTrue(height >= 1 && height <= 2,
+                    tree + ": fruit must be at block 2 or 3 above soil, actual=" + (height + 1));
+        }
     }
 
     private static JsonElement resource(String kind, String name) {

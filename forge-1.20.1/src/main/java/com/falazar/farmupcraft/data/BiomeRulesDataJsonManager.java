@@ -7,6 +7,7 @@ import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.database.DataBaseAccess;
 import com.falazar.farmupcraft.database.DataBaseManager;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.FUCTags;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.mojang.serialization.JsonOps;
@@ -18,6 +19,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimpleJsonResourceReloadListener;
 import net.minecraft.tags.TagKey;
+import net.minecraft.tags.BiomeTags;
 import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.biome.Biome;
@@ -73,23 +75,29 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
     public static void populateBiomeRulesInstances(ServerLevel level) {
         if (biomeRules.isEmpty()) return;
         BiomeRulesManager manager = BiomeRulesManager.get(level);
-        if(manager.hasRules()) return;
 
-        for (BiomeRulesData data : getBiomeRules().values()) {
+        for (var entry : getBiomeRules().entrySet().stream().sorted(Map.Entry.comparingByKey()).toList()) {
+            BiomeRulesData data = entry.getValue();
             TagKey<Biome> biomes = data.getBiome();
             if(biomes != null) {
                 level.registryAccess().registry(Registries.BIOME).ifPresent(reg -> {
-                    Iterable<Holder<Biome>> holders = reg.getTagOrEmpty(biomes);
+                    Iterable<Holder.Reference<Biome>> holders = reg.holders().toList();
                     Optional<TagKey<Biome>> biomeFilter = data.getBiomeFilter();
 
                     for (Holder<Biome> biomeHolder : holders) {
+                        boolean matches = biomeHolder.is(biomes);
+                        if (biomes.equals(FUCTags.BIOMES_O_PLENTY_OVERWORLD_TAG)) {
+                            matches = biomeHolder.unwrapKey().orElseThrow().location().getNamespace().equals("biomesoplenty")
+                                    && biomeHolder.is(BiomeTags.IS_OVERWORLD)
+                                    && !biomeHolder.is(BiomeTags.IS_NETHER) && !biomeHolder.is(BiomeTags.IS_END);
+                        }
                         //LOGGER.warn("Biome Pre" + biomeHolder);
                         // Apply the biome filter if it's present
                         boolean matchesFilter = biomeFilter
                                 .map(biomeHolder::is) // Check if the biome matches the filter
                                 .orElse(false); // If no filter is present, proceed with false
 
-                        if(!manager.containsBiome(biomeHolder) && !matchesFilter) {
+                        if(matches && !manager.containsBiome(biomeHolder) && !matchesFilter) {
                             //LOGGER.warn("Biome After" + biomeHolder);
                             manager.setBiomeRules(biomeHolder, new BiomeRulesInstance(data));
                         }
@@ -99,14 +107,12 @@ public class BiomeRulesDataJsonManager extends SimpleJsonResourceReloadListener 
         }
         LOGGER.info("Created a total of {} biomes with rules", manager.getBiomeKeys().size());
 
-        if(manager.hasItems()) return;
         for(Holder<Biome> biomes : manager.getBiomeKeys()){
             BiomeRulesInstance instance = manager.getBiomeRules(biomes);
-            ResourceKey<Biome> biomeRk = BiomeRegistryHolder.convertToID(biomes);
-            for(Item item : instance.getCropsWithRandomId(level, BiomeRegistryHolder.convertToID(biomeRk))) {
-                manager.setItemBiomeList(item, biomes);
-            }
+            if (instance.shouldSave()) instance.getCropsForBiome(level,
+                    biomes.unwrapKey().orElseThrow().location().toString());
         }
+        manager.rebuildItemIndex();
 
     }
 

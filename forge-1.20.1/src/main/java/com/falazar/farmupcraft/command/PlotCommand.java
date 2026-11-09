@@ -1,5 +1,7 @@
 package com.falazar.farmupcraft.command;
 
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+
 import com.falazar.farmupcraft.command.StructureCommand;
 import com.falazar.farmupcraft.currency.Coin;
 import com.falazar.farmupcraft.data.ChunkData;
@@ -50,7 +52,7 @@ public class PlotCommand {
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
     private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen",
             "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery", "library", "guardhouse",
-            "portal");
+            "portal", "road");
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "show"
@@ -64,6 +66,8 @@ public class PlotCommand {
                                 context.getSource(),
                                 StringArgumentType.getString(context, "biome"))));
         builder.then(infoBuilder);
+        builder.then(Commands.literal("info2").executes(c -> showPlotScreen(c.getSource())));
+        registerGuiActions(builder);
 
         // Define the "buy" sub-command
         LiteralArgumentBuilder<CommandSourceStack> buyBuilder = Commands.literal("buy")
@@ -82,6 +86,7 @@ public class PlotCommand {
                             builder2.suggest("library");
                             builder2.suggest("guardhouse");
                             builder2.suggest("portal");
+                            builder2.suggest("road");
                             return builder2.buildFuture();
                         })
                         .executes(context -> {
@@ -175,6 +180,156 @@ public class PlotCommand {
         pDispatcher.register(builder);
     }
 
+    private static void registerGuiActions(LiteralArgumentBuilder<CommandSourceStack> root) {
+        var gui = Commands.literal("gui");
+        for (String action : List.of("buy", "settype")) {
+            gui.then(Commands.literal(action)
+                    .then(Commands.argument("dimension", StringArgumentType.string())
+                    .then(Commands.argument("x", IntegerArgumentType.integer())
+                    .then(Commands.argument("z", IntegerArgumentType.integer())
+                    .then(Commands.argument("cost", IntegerArgumentType.integer(0))
+                    .then(Commands.argument("oldType", StringArgumentType.word())
+                    .then(Commands.argument("type", StringArgumentType.word())
+                            .executes(c -> applyGuiAction(c, action.equals("buy"))))))))));
+        }
+        root.then(gui);
+    }
+
+    public static int applyGuiAction(CommandContext<CommandSourceStack> context, boolean buy) {
+        var source = context.getSource();
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+        String target = StringArgumentType.getString(context, "type");
+        if (!VALID_PLOT_TYPES.contains(target)) {
+            source.sendFailure(Component.literal("Invalid plot type."));
+            return 0;
+        }
+        var pos = new ChunkPos(player.blockPosition());
+        var chunk = ModEvents.getChunkDataDatabase().getData(pos.toLong());
+        if (!source.getLevel().dimension().location().toString().equals(StringArgumentType.getString(context, "dimension"))
+                || pos.x != IntegerArgumentType.getInteger(context, "x")
+                || pos.z != IntegerArgumentType.getInteger(context, "z") || chunk == null
+                || !Objects.equals(chunk.getType(), StringArgumentType.getString(context, "oldType"))) {
+            source.sendFailure(Component.literal("The plot changed or you moved. Reopen /plot info2 before confirming."));
+            return 0;
+        }
+        var village = chunk.getVillageId() == null ? null
+                : ModEvents.getVillageDatabase(source.getLevel()).getData(chunk.getVillageId());
+        if (village == null) {
+            source.sendFailure(Component.literal("Village data not found for this plot."));
+            return 0;
+        }
+        int currentCost = player.isCreative() || !buy && target.equals(chunk.getType()) ? 0
+                : buy ? calculatePlotCost(village, target)
+                : com.falazar.farmupcraft.util.PlotView.typeChangeCost(calculatePlotCost(village, "plot"));
+        if (currentCost != IntegerArgumentType.getInteger(context, "cost")) {
+            source.sendFailure(Component.literal("The price changed. Reopen /plot info2 to confirm the new cost."));
+            return 0;
+        }
+        return buy ? buyPlot(source, target) : setPlotType(source, target);
+    }
+
+    public static com.falazar.farmupcraft.util.PlotView plotSnapshot(CommandSourceStack source, ServerPlayer player) {
+        var level = source.getLevel();
+        var pos = new ChunkPos(player.blockPosition());
+        var chunk = ModEvents.getChunkDataDatabase().getData(pos.toLong());
+        var village = chunk == null || chunk.getVillageId() == null ? null
+                : ModEvents.getVillageDatabase(level).getData(chunk.getVillageId());
+        var actor = ModEvents.getPlayerDatabase().getData(player.getUUID());
+        if (chunk != null && village == null) throw new IllegalArgumentException("Village data missing for claimed plot");
+        var entries = new ArrayList<com.falazar.farmupcraft.util.VillageView.Entry>();
+        int normal = com.falazar.farmupcraft.util.VillageView.NORMAL;
+        String type = chunk == null ? "wilderness" : chunk.getType();
+        entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Plot type", type, normal));
+        entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Plot abilities",
+                plotTypeDescriptions().getOrDefault(type, "No plot-specific effects."), normal));
+        if (chunk != null) {
+            if (!type.equals("plot") && !type.equals("village"))
+                entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Plot level",
+                    chunk.getPlotLevel() + " (max upgrade: " + (village == null ? 0 : Math.min(4, village.getLevel() / 2)) + ")", normal));
+            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Owner", getPlotOwnerDisplayName(level, chunk), normal));
+            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Visitors", formatVisitors(chunk.getVisitors()), normal));
+            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Protection height",
+                    "Y >= " + com.falazar.farmupcraft.ChunkManager.protectionMinY(chunk) + " (Creative bypass)", normal));
+        }
+        var biomes = getChunkBiomes(player.getOnPos(), level);
+        entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Biomes", biomes.isEmpty() ? "None found"
+                : biomes.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(e -> e.getKey() + " (" + e.getValue() + ")")
+                        .collect(java.util.stream.Collectors.joining(", ")), normal));
+        if (chunk != null) entries.addAll(specialPlotInfo(player, level, chunk, village));
+        boolean member = village != null && actor != null && village.getUUID().equals(actor.getHomeVillageUUID());
+        boolean canBuy = member && (player.isCreative() || village.getCoins() >= 0 && chunk.getOwnerUUID() == null
+                && (type.equals("village") || type.equals("plot")));
+        boolean canChange = member && player.getName().getString().equalsIgnoreCase(village.getFounder());
+        int cost = village == null || player.isCreative() ? 0 : calculatePlotCost(village, "plot");
+        return new com.falazar.farmupcraft.util.PlotView(new com.falazar.farmupcraft.util.VillageView(
+                "Chunk " + pos.x + ", " + pos.z + " | Y " + player.blockPosition().getY(), entries),
+                level.dimension().location().toString(), pos.x, pos.z, type, cost,
+                com.falazar.farmupcraft.util.PlotView.typeChangeCost(cost), canBuy, canChange, VALID_PLOT_TYPES);
+    }
+
+    public static int showPlotScreen(CommandSourceStack source) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("This command can only be used by a player."));
+            return 0;
+        }
+        try {
+            var view = plotSnapshot(source, player);
+            com.falazar.farmupcraft.database.message.EDBMessages.sendToPlayer(
+                    new com.falazar.farmupcraft.database.message.PlotViewPacket(view), player);
+            return 1;
+        } catch (IllegalArgumentException error) {
+            LOGGER.error("Cannot display plot information: " + error.getMessage(), error);
+            source.sendFailure(Component.literal("Cannot display plot information: invalid plot data. See log."));
+            return 0;
+        }
+    }
+
+    private static List<com.falazar.farmupcraft.util.VillageView.Entry> specialPlotInfo(Player player,
+            ServerLevel level, ChunkData chunk, VillageData village) {
+        int plotLevel = chunk.getPlotLevel();
+        int y = player.blockPosition().getY();
+        var entries = new ArrayList<com.falazar.farmupcraft.util.VillageView.Entry>();
+        if (chunk.getType().equalsIgnoreCase("farm")) {
+            var manager = com.falazar.farmupcraft.saveddata.BiomeRulesManager.get(level);
+            entries.addAll(com.falazar.farmupcraft.util.PlotSpecialInfo.farm(plotLevel,
+                    com.falazar.farmupcraft.CropsManager.harvestBonusChance(plotLevel),
+                    !player.isCreative() && ModEvents.getWorldData().isUseBiomeCropRules()
+                            && manager != null && manager.hasRules(),
+                    getCropsPlanted(player.blockPosition(), level), y));
+        } else if (chunk.getType().equalsIgnoreCase("nursery")) {
+            entries.addAll(com.falazar.farmupcraft.util.PlotSpecialInfo.nursery(
+                    com.falazar.farmupcraft.TreeManager.countFruitTrees(level, player.blockPosition())));
+        } else if (chunk.getType().equalsIgnoreCase("pasture")) {
+            String species = village.getAnimalType();
+            String grains = !village.hasAnimalGrainsAssigned() ? "Not assigned yet; assigned on first feed"
+                    : species.isBlank() ? "Species-specific village grains; no species selected"
+                    : village.getGrainsForAnimal(species).isEmpty() ? "No assigned grain restriction for " + species
+                    : String.join(" or ", village.getGrainsForAnimal(species).stream()
+                            .map(com.falazar.farmupcraft.util.AnimalGrainAssigner::displayName).toList());
+            if (species.equals("duck")) grains += "; fish also accepted";
+            entries.addAll(com.falazar.farmupcraft.util.PlotSpecialInfo.pasture(
+                    com.falazar.farmupcraft.AnimalsManager.countAnimalsInChunk(level, player.blockPosition()),
+                    com.falazar.farmupcraft.AnimalsManager.MAX_ANIMALS_PER_PASTURE,
+                    com.falazar.farmupcraft.AnimalsManager.pastureAnimalBreakdown(level, player.blockPosition()),
+                    com.falazar.farmupcraft.AnimalsManager.getExtraDropsForPastureLevel(plotLevel),
+                    com.falazar.farmupcraft.AnimalsManager.dyeSuccessChance(plotLevel), species, grains,
+                    com.falazar.farmupcraft.AnimalsManager.pastureAnimalTypes(level, player.blockPosition())));
+        }
+        if (!entries.isEmpty()) {
+            int max = Math.min(4, village.getLevel() / 2);
+            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Next upgrade",
+                    plotLevel < max ? "Level " + (plotLevel + 1) + ": "
+                            + (player.isCreative() ? 0 : calculatePlotCost(village, chunk.getType()))
+                            + " coins; /plot upgrade" : plotLevel >= 4 ? "At maximum plot level (4)"
+                            : "At village upgrade limit (" + max + "); level up village first",
+                    com.falazar.farmupcraft.util.VillageView.NORMAL));
+        }
+        return entries;
+    }
+
     public static int showPlotInfo(CommandContext<CommandSourceStack> context) {
         try {
             Entity nullableSummoner = context.getSource().getEntity();
@@ -208,6 +363,10 @@ public class PlotCommand {
             // Pull out plot info and owner and village.
             DataBase<UUID, VillageData> villageDataDB = ModEvents.getVillageDatabase(serverLevel);
             VillageData villageData = villageDataDB.getData(chunkData.getVillageId());
+            if (villageData == null) {
+                context.getSource().sendFailure(Component.literal("Village data not found for this plot."));
+                return 0;
+            }
             // village data is null in one chunk in vilalge.... not claimed properly or
             // whats?
 
@@ -274,21 +433,9 @@ public class PlotCommand {
                 response.append(Component.literal("No biomes found.\n").withStyle(ChatFormatting.GRAY));
             }
 
-            // If pasture plot show animal count.
-            if (chunkData.getType().equalsIgnoreCase("pasture")) {
-                int animalCount = com.falazar.farmupcraft.AnimalsManager.countAnimalsInChunk(serverLevel,
-                        playerSource.blockPosition());
-                response.append(Component.literal("Animals: " + animalCount + " / 30\n")
-                        .withStyle(ChatFormatting.GREEN));
-            }
-
-            // If farm plot show all crops planted.
-            if (chunkData.getType().equalsIgnoreCase("farm")) {
-                // Scan a Y range around the player to reliably find crops.
-                response.append(Component.literal("Crops Planted: ").withStyle(ChatFormatting.GOLD)
-                        .append(Component.literal(getCropsPlanted(playerSource.blockPosition(), serverLevel) + "\n")
-                                .withStyle(ChatFormatting.WHITE)));
-            }
+            for (var entry : specialPlotInfo(playerSource, serverLevel, chunkData, villageData))
+                response.append(Component.literal(entry.label() + ": ").withStyle(ChatFormatting.GOLD))
+                        .append(Component.literal(entry.value() + "\n").withStyle(style -> style.withColor(entry.color())));
 
             MutableComponent finalResponse = response;
 
@@ -832,7 +979,8 @@ public class PlotCommand {
                 }
             }
 
-            int cost = actor.isCreative() ? 0 : calculatePlotCost(village, "plot");
+            int cost = actor.isCreative() ? 0
+                    : com.falazar.farmupcraft.util.PlotView.typeChangeCost(calculatePlotCost(village, "plot"));
             if (!actor.isCreative() && actorData.getCoins() < cost) {
                 source.sendFailure(Component.literal("Player does not have enough money."));
                 source.sendFailure(Component.literal("Cost: " + cost));
@@ -1036,9 +1184,24 @@ public class PlotCommand {
      * special abilities.
      */
     public static int showPlotList(CommandSourceStack source) {
+        var types = plotTypeDescriptions();
+        source.sendSuccess(() -> Component.literal("=== Buyable Plot Types ===")
+                .withStyle(ChatFormatting.GOLD), false);
+        for (var entry : types.entrySet()) {
+            MutableComponent namePart = Component.literal(" " + entry.getKey()).withStyle(ChatFormatting.AQUA);
+            MutableComponent descPart = Component.literal(" — " + entry.getValue()).withStyle(ChatFormatting.GRAY);
+            source.sendSuccess(() -> namePart.copy().append(descPart), false);
+        }
+        source.sendSuccess(() -> Component.literal("Use /plot buy <type> to purchase.")
+                .withStyle(ChatFormatting.YELLOW), false);
+        return 1;
+    }
+
+    private static Map<String, String> plotTypeDescriptions() {
         // Ordered map of type → description.
         java.util.LinkedHashMap<String, String> types = new java.util.LinkedHashMap<>();
         types.put("plot", "Basic claimed land. Blocks griefing and unauthorized building by outsiders.");
+        types.put("road", "Road designation only. No special effects yet; normal plot rules apply.");
         types.put("farm", "Crop farming with biome-based planting rules. Supports plot levels for expanded crops.");
         types.put("nursery", "Tree and sapling growing area with nursery-specific growth support.");
         types.put("pasture", "Animal husbandry plot. Required to breed and house village livestock.");
@@ -1053,20 +1216,7 @@ public class PlotCommand {
         types.put("graveyard", "Burial and respawn area. Designates a sacred resting place within village bounds.");
         types.put("portal", "Hosts a Nether or End portal. Restricted — requires admin or creative to purchase.");
 
-        source.sendSuccess(() -> Component.literal("=== Buyable Plot Types ===")
-                .withStyle(ChatFormatting.GOLD), false);
-
-        for (var entry : types.entrySet()) {
-            MutableComponent namePart = Component.literal(" " + entry.getKey())
-                    .withStyle(ChatFormatting.AQUA);
-            MutableComponent descPart = Component.literal(" — " + entry.getValue())
-                    .withStyle(ChatFormatting.GRAY);
-            source.sendSuccess(() -> namePart.copy().append(descPart), false);
-        }
-
-        source.sendSuccess(() -> Component.literal("Use /plot buy <type> to purchase.")
-                .withStyle(ChatFormatting.YELLOW), false);
-        return 1;
+        return types;
     }
 
     public static int calculatePlotCost(VillageData villageData, String plotType) {

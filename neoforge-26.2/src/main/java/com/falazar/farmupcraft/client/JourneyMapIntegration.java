@@ -44,6 +44,23 @@ public class JourneyMapIntegration implements IClientPlugin {
         return jmAPI;
     }
 
+    public static boolean openMapAt(int x, int z) {
+        if (requireApi() == null) return false;
+        try {
+            Class<?> managerType = Class.forName("journeymap.client.ui.UIManager");
+            Object manager = managerType.getField("INSTANCE").get(null);
+            Object map = managerType.getMethod("getOrOpenFullscreenMap").invoke(manager);
+            map.getClass().getMethod("centerOn", double.class, double.class).invoke(map, (double) x, (double) z);
+            return true;
+        } catch (ReflectiveOperationException | LinkageError error) {
+            LOGGER.error("Cannot open JourneyMap at {}, {}", x, z, error);
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) player.sendSystemMessage(Component.literal(
+                    "Could not open JourneyMap. See the log for details.").withStyle(ChatFormatting.RED));
+            return false;
+        }
+    }
+
     public static List<Waypoint> getScanWaypoints() {
         return List.copyOf(scanWaypoints);
     }
@@ -65,10 +82,19 @@ public class JourneyMapIntegration implements IClientPlugin {
     }
 
     static void addWaypoint(AddJMWaypointPacket payload, IClientAPI api, WaypointCreator factory) {
+        addWaypoint(payload, api, factory, p -> openMapAt(p.x(), p.z()));
+    }
+
+    static void addWaypoint(AddJMWaypointPacket payload, IClientAPI api, WaypointCreator factory,
+                            Consumer<AddJMWaypointPacket> openMap) {
         try {
             api.addWaypoint(MOD_ID, createWaypoint(payload, factory));
+            if (payload.openMap()) openMap.accept(payload);
         } catch (RuntimeException error) {
             LOGGER.warn("Failed to add JourneyMap waypoint '{}'", payload.name(), error);
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) player.sendSystemMessage(Component.literal(
+                    "Could not add the JourneyMap waypoint. See the log for details.").withStyle(ChatFormatting.RED));
         }
     }
 
@@ -87,10 +113,19 @@ public class JourneyMapIntegration implements IClientPlugin {
         if (api == null) {
             return;
         }
-        scanWaypoints(payload, api, WaypointFactory::createWaypoint);
+        var level = net.minecraft.client.Minecraft.getInstance().level;
+        if (level == null) {
+            LOGGER.warn("Cannot show scan waypoints without a client world");
+            return;
+        }
+        scanWaypoints(payload, api, WaypointFactory::createWaypoint, level.dimension().identifier().toString());
     }
 
     static void scanWaypoints(ScanWaypointsPacket payload, IClientAPI api, WaypointCreator factory) {
+        scanWaypoints(payload, api, factory, "minecraft:overworld");
+    }
+
+    static void scanWaypoints(ScanWaypointsPacket payload, IClientAPI api, WaypointCreator factory, String dimension) {
         if (payload.action() == ScanWaypointsPacket.CLEAR) {
             removeScanWaypoints(api);
             return;
@@ -98,7 +133,7 @@ public class JourneyMapIntegration implements IClientPlugin {
         for (var entry : payload.entries()) {
             try {
                 Waypoint waypoint = factory.create(MOD_ID,
-                        new BlockPos(entry.x(), entry.y(), entry.z()), entry.name(), "minecraft:overworld", false);
+                        new BlockPos(entry.x(), entry.y(), entry.z()), entry.name(), dimension, false);
                 waypoint.setColor(entry.color());
                 api.addWaypoint(MOD_ID, waypoint);
                 addScanWaypoint(waypoint);

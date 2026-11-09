@@ -8,18 +8,24 @@ version = mod_version
 group = mod_group_id
 
 evaluationDependsOn(':common')
+def bareNeoForge = providers.gradleProperty('bareNeoForge').map { it.toBoolean() }.getOrElse(false)
 
 base {
     archivesName = "${mod_id}-neoforge-${minecraft_version}"
 }
 
 java.toolchain.languageVersion = JavaLanguageVersion.of(25)
+sourceSets.main.java.srcDir('../common/src/minecraft/java')
 
 sourceSets.main.resources {
     srcDir('src/generated/resources')
 }
 
 sourceSets {
+    bareTest {
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
+    }
     gameTest {
         compileClasspath += sourceSets.main.output
         runtimeClasspath += sourceSets.main.output
@@ -65,6 +71,8 @@ configurations {
     localRuntime
     runtimeClasspath.extendsFrom localRuntime
     gameTestImplementation.extendsFrom implementation
+    gameTestCompileOnly.extendsFrom compileOnly
+    bareTestImplementation.extendsFrom implementation
     gameTestRuntimeOnly.extendsFrom localRuntime
     networkTestImplementation.extendsFrom implementation
     networkTestCompileOnly.extendsFrom compileOnly
@@ -81,29 +89,48 @@ sourceSets.test.java.srcDir('src/networkTest/test')
 sourceSets.test.compileClasspath += sourceSets.networkTest.output
 sourceSets.test.runtimeClasspath += sourceSets.networkTest.output
 
+tasks.named('processGameTestResources', ProcessResources) {
+    if (!providers.gradleProperty('harvestWithEaseTestJar').isPresent()) {
+        exclude 'data/farmupcraft/test_instance/harvest_with_ease_*.json'
+    }
+}
+
 dependencies {
     implementation project(':common')
+    if (providers.gradleProperty('harvestWithEaseTestJar').isPresent()) {
+        gameTestRuntimeOnly files(providers.gradleProperty('harvestWithEaseTestJar').get())
+        gameTestRuntimeOnly files(providers.gradleProperty('harvestWithEaseCobwebTestJar').get())
+    }
     compileOnly "mezz.jei:jei-${minecraft_version}-common-api:${jei_version}"
     compileOnly "mezz.jei:jei-${minecraft_version}-neoforge-api:${jei_version}"
     compileOnly "info.journeymap:journeymap-api-neoforge:${journeymap_api_version}"
 
-    localRuntime "maven.modrinth:jei:${jei_modrinth_version}"
-    localRuntime "maven.modrinth:the-one-probe:${top_modrinth_version}"
-    localRuntime "maven.modrinth:journeymap:${journeymap_modrinth_version}"
-    localRuntime "maven.modrinth:villager-names-serilum:${villagernames_modrinth_version}"
-    localRuntime "maven.modrinth:collective:${collective_modrinth_version}"
+    if (!bareNeoForge) {
+        localRuntime "maven.modrinth:jei:${jei_modrinth_version}"
+        localRuntime "maven.modrinth:the-one-probe:${top_modrinth_version}"
+        localRuntime "maven.modrinth:journeymap:${journeymap_modrinth_version}"
+        localRuntime "maven.modrinth:villager-names-serilum:${villagernames_modrinth_version}"
+        localRuntime "maven.modrinth:collective:${collective_modrinth_version}"
+    }
 
     if (providers.gradleProperty('withPipez').map { it.toBoolean() }.getOrElse(false)) {
         localRuntime "maven.modrinth:pipez:${pipez_modrinth_version}"
     }
 
-    implementation "curse.maven:food-core-372534:${harvestcraft_foodcore_file}"
-    implementation "curse.maven:crops-361385:${harvestcraft_crops_file}"
-    implementation "curse.maven:food-extended-402231:${harvestcraft_foodextended_file}"
-    implementation "curse.maven:trees-365460:${harvestcraft_trees_file}"
-    implementation "maven.modrinth:HXF82T3G:${bop_modrinth_version}"
-    implementation "maven.modrinth:kkmrDlKT:${terrablender_modrinth_version}"
-    implementation "maven.modrinth:s3dmwKy5:${glitchcore_modrinth_version}"
+    def contentMods = [
+        "curse.maven:food-core-372534:${harvestcraft_foodcore_file}",
+        "curse.maven:crops-361385:${harvestcraft_crops_file}",
+        "curse.maven:food-extended-402231:${harvestcraft_foodextended_file}",
+        "curse.maven:trees-365460:${harvestcraft_trees_file}",
+        "maven.modrinth:HXF82T3G:${bop_modrinth_version}",
+        "maven.modrinth:kkmrDlKT:${terrablender_modrinth_version}",
+        "maven.modrinth:s3dmwKy5:${glitchcore_modrinth_version}"
+    ]
+    contentMods.each { dependency ->
+        compileOnly dependency
+        testImplementation dependency
+        if (!bareNeoForge) localRuntime dependency
+    }
 
     testImplementation platform('org.junit:junit-bom:5.11.4')
     testImplementation 'org.junit.jupiter:junit-jupiter'
@@ -118,6 +145,21 @@ neoForge {
     version = project.neo_version
 
     runs {
+        gemGameplayAcceptanceServer {
+            server()
+            sourceSet = sourceSets.gameTest
+            gameDirectory = layout.buildDirectory.dir('gem-gameplay-acceptance')
+            programArgument '--nogui'
+            systemProperty 'farmupcraft.gems.acceptance', 'true'
+            systemProperty 'farmupcraft.gems.acceptance.disabled', providers.gradleProperty('gemAcceptanceDisabled').getOrElse('false')
+        }
+        bareGameTestServer {
+            type = 'gameTestServer'
+            sourceSet = sourceSets.bareTest
+            gameDirectory = layout.buildDirectory.dir('bare-gameTest')
+            programArguments.addAll '--universe', 'world', '--tests', "${project.mod_id}:bare_*",
+                    '--report', layout.buildDirectory.file('bare-gameTest-results.xml').get().asFile.absolutePath
+        }
         client {
             client()
             systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
@@ -228,10 +270,14 @@ neoForge {
             sourceSet(sourceSets.networkTest)
             sourceSet(sourceSets.persistenceTest)
             sourceSet(sourceSets.visualTest)
+            if (bareNeoForge) {
+                sourceSet(sourceSets.bareTest)
+            }
         }
     }
 
     neoForge.addModdingDependenciesTo(sourceSets.gameTest)
+    neoForge.addModdingDependenciesTo(sourceSets.bareTest)
     neoForge.addModdingDependenciesTo(sourceSets.networkTest)
     neoForge.addModdingDependenciesTo(sourceSets.persistenceTest)
     neoForge.addModdingDependenciesTo(sourceSets.visualTest)

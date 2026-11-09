@@ -41,6 +41,7 @@ public final class ForgeEvents {
     private static final UUID NO_UUID = new UUID(0, 0);
     private static final int DIFFICULTY_WARN_INTERVAL = 6000;
     private static final String NO_CHORES_MSG = "You should make a chores list instead";
+    private static final java.util.Map<UUID, Long> PENDING_MARKET_REMINDERS = new java.util.HashMap<>();
     private static int difficultyWarnTick;
 
     private ForgeEvents() {
@@ -61,6 +62,9 @@ public final class ForgeEvents {
     }
 
     public static void initializeWorldDefaults(net.minecraft.server.MinecraftServer server) {
+        if (server.overworld() == null) {
+            return;
+        }
         try {
             if (com.falazar.farmupcraft.util.StartupDefaults.initializeWorld(
                     server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT), () -> {
@@ -82,7 +86,10 @@ public final class ForgeEvents {
             return;
         }
         var database = ModEvents.getPlayerDatabase(player.level());
+        player.sendSystemMessage(Component.literal(com.falazar.farmupcraft.util.PlayerOnboarding.MENU_REMINDER)
+                .withStyle(ChatFormatting.GOLD));
         boolean firstLogin = ensurePlayerRecord(database, player.getId(), player.getUUID());
+        VillageRoads.deliver(player);
         if (firstLogin) {
             player.sendSystemMessage(Component.literal(
                     "Welcome! Your village has daily upkeep based on its level and plots. Claim structures to earn income!")
@@ -113,6 +120,13 @@ public final class ForgeEvents {
         }
         FarmCraftCommand.refreshVillageChunksOverlay(player);
         sendDailyTaskSuggestions(player);
+        PENDING_MARKET_REMINDERS.put(player.getUUID(),
+                System.currentTimeMillis() + com.falazar.farmupcraft.util.PlayerOnboarding.MARKET_REMINDER_DELAY_MS);
+    }
+
+    @SubscribeEvent
+    public static void onLogoutEvent(PlayerEvent.PlayerLoggedOutEvent event) {
+        PENDING_MARKET_REMINDERS.remove(event.getEntity().getUUID());
     }
 
     static boolean ensurePlayerRecord(DataBase<UUID, PlayerData> database, int entityId, UUID playerId) {
@@ -133,17 +147,23 @@ public final class ForgeEvents {
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         var server = event.getServer();
-        if (server.overworld() == null || ++difficultyWarnTick < DIFFICULTY_WARN_INTERVAL) {
+        if (server.overworld() == null) {
+            return;
+        }
+        deliverDueMarketReminders(server);
+        if (++difficultyWarnTick < DIFFICULTY_WARN_INTERVAL) {
             return;
         }
         difficultyWarnTick = 0;
-        var players = server.getPlayerList().getPlayers();
+        var players = server.getPlayerList().getPlayers().stream()
+                .filter(player -> com.falazar.farmupcraft.util.DifficultyNoticePlayers.includes(player.getName().getString()))
+                .toList();
         if (players.size() != 1) {
             return;
         }
         ServerPlayer player = players.getFirst();
         Difficulty difficulty = player.level().getDifficulty();
-        if (difficulty != Difficulty.HARD) {
+        if (difficulty != Difficulty.HARD && !player.isCreative()) {
             player.sendSystemMessage(Component.literal("Warning: you are playing on "
                     + difficulty.getSerializedName().toUpperCase(java.util.Locale.ROOT) + " mode - consider switching to HARD!")
                     .withStyle(ChatFormatting.RED));
@@ -191,7 +211,27 @@ public final class ForgeEvents {
         return List.copyOf(tasks.subList(0, Math.min(4, tasks.size())));
     }
 
+    private static void deliverDueMarketReminders(net.minecraft.server.MinecraftServer server) {
+        if (PENDING_MARKET_REMINDERS.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        var iterator = PENDING_MARKET_REMINDERS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (now < entry.getValue()) continue;
+            iterator.remove();
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            if (player != null) {
+                String text = com.falazar.farmupcraft.util.PlayerOnboarding.marketReminder(
+                        player.level().getRandom().nextInt(com.falazar.farmupcraft.util.PlayerOnboarding.MARKET_REMINDERS.size()));
+                player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.GOLD)
+                        .withStyle(style -> style.withClickEvent(new net.minecraft.network.chat.ClickEvent.RunCommand("/market show"))));
+            }
+        }
+    }
+
     public static void resetCounters() {
         difficultyWarnTick = 0;
+        PENDING_MARKET_REMINDERS.clear();
+        com.falazar.farmupcraft.util.LanBotLauncher.stopAll();
     }
 }

@@ -1,0 +1,16 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:stone_ore_replaceables",
+    "#minecraft:deepslate_ore_replaceables",
+    "#minecraft:dirt",
+    "minecraft:sand",
+    "minecraft:red_sand",
+    "minecraft:gravel",
+    "minecraft:clay",
+    {
+      "id": "#forge:stone",
+      "required": false
+    }
+  ]
+}

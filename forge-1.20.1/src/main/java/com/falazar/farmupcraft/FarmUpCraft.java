@@ -47,6 +47,7 @@ public class FarmUpCraft {
             }
         }
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
+        GemContent.register(modEventBus);
         MinecraftForge.EVENT_BUS.addListener(this::commands);
         modEventBus.addListener(this::commonSetup);
         Registration.init();
@@ -119,6 +120,7 @@ public class FarmUpCraft {
         ZoneCommand.register(e.getDispatcher());
         AiCommand.register(e.getDispatcher());
         ScanCommand.register(e.getDispatcher());
+        BotCommand.register(e.getDispatcher());
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {

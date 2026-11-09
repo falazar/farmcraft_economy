@@ -67,11 +67,10 @@ public final class IslandScanManager {
     static final int GRID_STEP = 5;
     static final int EROSION_DIST = 2;
     static final int OCEAN_THRESHOLD = 1_000;
-    static final int MIN_FEATURE_SIZE = 10;
     static final int MAX_BODY_SIZE = 60_000;
     static final int MAX_RADIUS = 128 * 16;
     private static final int MAX_SNAPSHOTS = 1_024;
-    private static final int MAX_JOB_SAMPLES = 32_000_000;
+    private static final int MAX_JOB_SAMPLES = 4_096_000;
     private static final int MAX_TERRAIN_QUERIES = 128_000_000;
     private static final int[] DX = {1, -1, 0, 0};
     private static final int[] DZ = {0, 0, 1, -1};
@@ -148,6 +147,21 @@ public final class IslandScanManager {
                                       ServerPlayer player) {
         validatePosition(x, z);
         submit(level, feedback, player, job -> job.point(x, z));
+    }
+
+    public static void loadDisplayAsync(ServerLevel level) {
+        submit(level, message -> {
+            LOGGER.warn("Named scan area load: {}", message.getString());
+            for (var player : level.players()) player.sendSystemMessage(message);
+        }, null, job -> {
+            Path file = job.directory.resolve("findings.json");
+            JsonArray findings = Files.exists(file) ? read(file).getAsJsonArray() : new JsonArray();
+            boolean missingNames = java.util.stream.StreamSupport.stream(findings.spliterator(), false)
+                    .anyMatch(value -> !value.getAsJsonObject().has("name"));
+            NamedScanAreas.parse(findings);
+            if (missingNames) job.write("findings.json", findings);
+            job.deliver(() -> NamedScanAreas.publish(level, findings));
+        });
     }
 
     /** Cancel scans before queueing deletion, so an older job cannot recreate the cleared cache. */
@@ -418,17 +432,15 @@ public final class IslandScanManager {
                         largeNames.put(key, name);
                     }
                 }
-                return new Detection(null, detection.reason() + " '" + name + "'", detection.skippedBody());
+                return new Detection(null, detection.reason() + " '" + ScanFeatureRules.displayName(name) + "'", detection.skippedBody());
             }
             return detection;
         }
 
         void found(JsonObject result) {
             Component message = formatFeatureMessage(result);
-            ScanWaypointsPacket packet = waypoints(result, result.get("name").getAsString());
             deliver(() -> {
                 feedback.accept(message);
-                send(packet);
             });
         }
 
@@ -459,7 +471,7 @@ public final class IslandScanManager {
                     if (visited.contains(key)) {
                         cached++;
                         if (largeNames.containsKey(key)) {
-                            cachedNames.add(largeNames.get(key));
+                            cachedNames.add(ScanFeatureRules.displayName(largeNames.get(key)));
                         }
                         continue;
                     }
@@ -496,6 +508,7 @@ public final class IslandScanManager {
                     ? read(directory.resolve("findings.json")).getAsJsonArray() : new JsonArray(), findings);
             visited.addAll(processed);
             write("findings.json", merged);
+            deliver(() -> NamedScanAreas.publish(level, merged));
             JsonArray coordinates = new JsonArray();
             visited.forEach(key -> coordinates.add(coordinate(key)));
             JsonObject cache = new JsonObject();
@@ -534,7 +547,7 @@ public final class IslandScanManager {
             long key = pack(gx, gz);
             if (visited.contains(key)) {
                 feedback(Component.literal("Scan:" + id + " Grid point (" + gx + "," + gz + ") cached — part of "
-                        + largeNames.getOrDefault(key, "a previously scanned body")));
+                        + ScanFeatureRules.displayName(largeNames.getOrDefault(key, "a previously scanned body"))));
             } else {
                 feedback(Component.literal("Scan:" + id + " === scanPoint (" + x + "," + z
                         + ") grid=(" + gx + "," + gz + ") ==="));
@@ -548,12 +561,13 @@ public final class IslandScanManager {
                     Detection detection = detect(x, z);
                     if (detection.result() != null) {
                         found(detection.result());
+                        JsonArray merged = mergeFindings(Files.exists(directory.resolve("findings.json"))
+                                ? read(directory.resolve("findings.json")).getAsJsonArray() : new JsonArray(),
+                                List.of(detection.result()));
+                        write("findings.json", merged);
+                        deliver(() -> NamedScanAreas.publish(level, merged));
                     } else {
                         feedback(Component.literal("[Scan:" + id + "] " + detection.reason()));
-                        if (detection.skippedBody() != null) {
-                            ScanWaypointsPacket packet = waypoints(buildResult("large", detection.skippedBody()), "Large-" + id);
-                            deliver(() -> send(packet));
-                        }
                     }
                 }
             }
@@ -629,7 +643,7 @@ public final class IslandScanManager {
         if (unknown) {
             return new Detection(null, "Incomplete body: unloaded/no-surface boundary", null);
         }
-        if (body.size() < MIN_FEATURE_SIZE) {
+        if (!ScanFeatureRules.largeEnough(first.water() ? "lake" : "island", body.size())) {
             return new Detection(null, "Too small — " + body.size() + " blocks", null);
         }
         if (first.water()) {
@@ -712,7 +726,7 @@ public final class IslandScanManager {
                 : Style.EMPTY.withColor(TextColor.fromRgb(0xD2B48C));
         return Component.empty()
                 .append(Component.literal("Found " + type + " '").withStyle(style))
-                .append(Component.literal(result.get("name").getAsString()).withStyle(style.withBold(true)))
+                .append(Component.literal(ScanFeatureRules.displayName(result.get("name").getAsString())).withStyle(style.withBold(true)))
                 .append(Component.literal("' at ").withStyle(style))
                 .append(Component.literal(x + ", " + z).withStyle(style.withClickEvent(
                         new ClickEvent.RunCommand("/tp @s " + x + " ~ " + z))))
@@ -721,15 +735,9 @@ public final class IslandScanManager {
     }
 
     static ScanWaypointsPacket waypoints(JsonObject result, String name) {
-        JsonObject box = result.getAsJsonObject("bounding_box");
-        int minX = box.get("min_x").getAsInt(), maxX = box.get("max_x").getAsInt();
-        int minZ = box.get("min_z").getAsInt(), maxZ = box.get("max_z").getAsInt();
-        int color = ThreadLocalRandom.current().nextInt(0x1000000);
-        return new ScanWaypointsPacket(List.of(
-                new ScanWaypointsPacket.Entry(name + "-NW", minX, 64, minZ, color),
-                new ScanWaypointsPacket.Entry(name + "-NE", maxX, 64, minZ, color),
-                new ScanWaypointsPacket.Entry(name + "-SW", minX, 64, maxZ, color),
-                new ScanWaypointsPacket.Entry(name + "-SE", maxX, 64, maxZ, color)));
+        JsonObject center = result.getAsJsonObject("center");
+        return new ScanWaypointsPacket(List.of(new ScanWaypointsPacket.Entry(ScanFeatureRules.displayName(name),
+                center.get("x").getAsInt(), 64, center.get("z").getAsInt(), 0x55FFFF)));
     }
 
     static JsonArray mergeFindings(JsonArray existing, List<JsonObject> additions) {

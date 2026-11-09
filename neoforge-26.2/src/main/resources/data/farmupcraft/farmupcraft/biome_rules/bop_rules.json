@@ -1,4 +1,5 @@
 {
+  "neoforge:conditions": [{ "type": "neoforge:mod_loaded", "modid": "biomesoplenty" }],
   "biome": "farmupcraft:biomes_o_plenty_overworld_biomes",
   "crop_rules": {
     "type": "farmupcraft:tag_based_random_crop_rule",

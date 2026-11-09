@@ -17,6 +17,9 @@ public final class WaypointPayloadHandler {
     public static void handleAdd(AddJMWaypointPacket payload, IPayloadContext context) {
         if (available()) {
             JourneyMapIntegration.addWaypoint(payload);
+        } else {
+            context.player().sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "JourneyMap is not installed."));
         }
     }
 

@@ -43,6 +43,12 @@ public class ChunkManager {
     public static final CustomLogger LOGGER = new CustomLogger(ChunkManager.class.getSimpleName());
     public static final String VILLAGER_DEATH_WAYPOINT_TAG = "villager";
 
+    @SubscribeEvent
+    public static void clearDiscoveryCooldown(net.minecraftforge.event.server.ServerStoppedEvent event) {
+        STRUCTURE_DISCOVERY_COOLDOWN.clear();
+        PASTURE_ENTRY_COOLDOWN.clear();
+    }
+
     // ============================================================
     // LYCANITES MOB TUNING
     // Centralised place for spawn/drop rate adjustments.
@@ -81,6 +87,10 @@ public class ChunkManager {
      * description.
      */
     private static final java.util.Map<java.util.UUID, Long> VILLAGE_CENTER_SHOWN_AT = new java.util.HashMap<>();
+    private static final com.falazar.farmupcraft.util.StructureDiscoveryCooldown STRUCTURE_DISCOVERY_COOLDOWN =
+            new com.falazar.farmupcraft.util.StructureDiscoveryCooldown();
+    private static final com.falazar.farmupcraft.util.PastureEntryCooldown PASTURE_ENTRY_COOLDOWN =
+            new com.falazar.farmupcraft.util.PastureEntryCooldown();
     private static final long VILLAGE_CENTER_COOLDOWN_MS = 60 * 60 * 1000L; // 1 hour
 
     /**
@@ -110,6 +120,20 @@ public class ChunkManager {
 
     // Check anytime a player enters a new chunk.
     // Tell if they have entered a village or not.
+    private static void notifyPastureEntry(ServerPlayer player, ChunkPos chunk) {
+        var level = player.serverLevel();
+        var data = ModEvents.getChunkDataDatabase().getData(chunk.toLong());
+        if (data == null || !data.isActivePasture(player.blockPosition().getY())) return;
+        if (!PASTURE_ENTRY_COOLDOWN.shouldShow(player.getUUID(), level.dimension().location().toString(),
+                chunk.toLong(), System.nanoTime() / 1_000_000L)) return;
+        var pos = new BlockPos(chunk.getMinBlockX(), data.getBoughtY(), chunk.getMinBlockZ());
+        int count = AnimalsManager.countAnimalsInChunk(level, pos);
+        boolean full = count >= AnimalsManager.MAX_ANIMALS_PER_PASTURE;
+        player.sendSystemMessage(Component.literal("Pasture: " + count + "/"
+                + AnimalsManager.MAX_ANIMALS_PER_PASTURE + " animals" + (full ? " - FULL (at maximum)." : "."))
+                .withStyle(full ? ChatFormatting.RED : ChatFormatting.GREEN));
+    }
+
     @SubscribeEvent
     public static void onPlayerEnterChunk(EntityEvent.EnteringSection event) {
         try {
@@ -135,6 +159,8 @@ public class ChunkManager {
             // What is SectionPos object? Is this a chunk, plus y and others.
             SectionPos oldPos = event.getOldPos();
             SectionPos newPos = event.getNewPos();
+            if (!newPos.chunk().equals(oldPos.chunk()) && player instanceof ServerPlayer serverPlayer)
+                notifyPastureEntry(serverPlayer, newPos.chunk());
             // Log for debugging help.
             // LOGGER.info("DEBUG: onPlayerEnterChunk triggered at position " +
             // pos.toShortString() + " from old position " + oldPos.toShortString() + " to
@@ -258,18 +284,21 @@ public class ChunkManager {
                     continue;
                 }
 
-                // Check if this structure is in the current section using SectionPos comparison
-                SectionPos structureSection = SectionPos.of(structureData.getCenterPos());
-                if (!structureSection.equals(sectionPos)) {
+                if (!structureData.intersectsSection(sectionPos)) {
                     continue;
                 }
 
                 // Send message to player
                 String claimedStatus = structureData.isOnClaimedPlot() ? " (claimed)" : "";
                 String visitedStatus = structureData.wasVisited() ? " (visited)" : " (new!)";
-                player.displayClientMessage(
+                if (STRUCTURE_DISCOVERY_COOLDOWN.shouldShow(player.getUUID(),
+                        serverLevel.dimension().location().toString(), structureId,
+                        enteredChunkData != null && enteredChunkData.getVillageId() != null,
+                        System.nanoTime() / 1_000_000L)) {
+                    player.displayClientMessage(
                         Component.literal("You discovered: " + structureData.getName() + claimedStatus + visitedStatus),
                         false);
+                }
 
                 // Mark as visited if not already (but not in creative mode)
                 if (!structureData.wasVisited() && !player.isCreative()) {
@@ -339,6 +368,27 @@ public class ChunkManager {
 
     private static final int DEFAULT_PLOT_PROTECTION_MIN_Y = 56;
 
+    public static int protectionMinY(ChunkData data) {
+        return data.getBoughtY() > 0 ? data.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+    }
+
+    public static boolean isMarketSign(Level level, BlockPos pos) {
+        if (!(level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.SignBlockEntity sign)) {
+            return false;
+        }
+        for (boolean front : new boolean[]{true, false}) {
+            var signText = sign.getText(front);
+            var lines = new java.util.ArrayList<String>(4);
+            for (int i = 0; i < 4; i++) {
+                lines.add(signText.getMessage(i, false).getString());
+            }
+            if (com.falazar.farmupcraft.util.MarketSignRules.isMarketSignSide(lines)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // Prevent non-owners from opening doors, trapdoors, and chests in owned house
     // plots.
     @SubscribeEvent
@@ -351,6 +401,16 @@ public class ChunkManager {
             return;
 
         BlockPos pos = event.getPos();
+        if (event.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND
+                && !player.isShiftKeyDown()
+                && player instanceof ServerPlayer serverPlayer
+                && isMarketSign(event.getLevel(), pos)) {
+            event.setCancellationResult(net.minecraft.world.InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            com.falazar.farmupcraft.command.MarketCommand.showMarketScreen(
+                    serverPlayer.createCommandSourceStack(), "general", 10);
+            return;
+        }
 
         ChunkPos chunkPos = new ChunkPos(pos);
         DataBase<Long, ChunkData> dataBase = ModEvents.getChunkDataDatabase();
@@ -377,7 +437,7 @@ public class ChunkManager {
             return;
 
         // Only check at/above the stored purchase Y to avoid underground interference.
-        int protectionMinY = chunkData.getBoughtY() > 0 ? chunkData.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+        int protectionMinY = protectionMinY(chunkData);
         if (pos.getY() < protectionMinY)
             return;
 
@@ -469,7 +529,7 @@ public class ChunkManager {
         if (chunkData == null)
             return;
 
-        int protectionMinY = chunkData.getBoughtY() > 0 ? chunkData.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+        int protectionMinY = protectionMinY(chunkData);
         if (pos.getY() < protectionMinY)
             return;
 
@@ -509,7 +569,7 @@ public class ChunkManager {
         if (chunkData == null)
             return;
 
-        int protectionMinY = chunkData.getBoughtY() > 0 ? chunkData.getBoughtY() : DEFAULT_PLOT_PROTECTION_MIN_Y;
+        int protectionMinY = protectionMinY(chunkData);
         if (pos.getY() < protectionMinY)
             return;
 

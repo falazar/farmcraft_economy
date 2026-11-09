@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:plot_special_info",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 40
+}

@@ -11,6 +11,7 @@ import com.falazar.farmupcraft.saveddata.BiomeRulesInstance;
 import com.falazar.farmupcraft.saveddata.BiomeRulesManager;
 import com.falazar.farmupcraft.util.AsyncLocator;
 import com.falazar.farmupcraft.util.CustomLogger;
+import com.falazar.farmupcraft.util.CropHarvestRules;
 import com.falazar.farmupcraft.util.FUCTags;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
@@ -49,6 +50,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.block.CropGrowEvent;
+import net.neoforged.neoforge.event.level.block.BreakBlockEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent;
 
@@ -58,6 +60,56 @@ import java.util.*;
 public final class CropsManager {
     public static final CustomLogger LOGGER = new CustomLogger(CropsManager.class.getSimpleName());
     private static final ThreadLocal<Player> FADING_REGENERATION = new ThreadLocal<>();
+
+    public static int showPlantableInventory(net.minecraft.commands.CommandSourceStack source, BlockPos pos) {
+        var player = source.getPlayer();
+        var level = source.getLevel();
+        if (player == null || !level.hasChunkAt(pos) || player.blockPosition().distSqr(pos) > 64
+                || !level.getBlockState(pos).is(FUCTags.FARMLAND)) {
+            source.sendFailure(Component.literal("Target nearby farmland to list plantable inventory crops."));
+            return 0;
+        }
+        var counts = plantableInventory(player, pos, level);
+        source.sendSuccess(() -> Component.literal("Inventory crops plantable at " + pos.toShortString() + ":")
+                .withStyle(ChatFormatting.GREEN), false);
+        counts.entrySet().stream().sorted(Comparator.comparing(e -> e.getKey().getDefaultInstance().getHoverName().getString()))
+                .forEach(entry -> source.sendSuccess(() -> Component.literal(" - ")
+                        .append(entry.getKey().getDefaultInstance().getHoverName())
+                        .append(Component.literal(" (" + entry.getValue() + ")")), false));
+        if (counts.isEmpty()) source.sendSuccess(() -> Component.literal("No matching crops in your inventory."), false);
+        return 1;
+    }
+
+    static Map<Item, Integer> plantableInventory(Player player, BlockPos pos, ServerLevel level) {
+        var manager = BiomeRulesManager.get(level);
+        var plot = ChunkManager.getPlot(pos, level);
+        boolean filter = !player.isCreative() && ModEvents.getWorldData(level).isUseBiomeCropRules()
+                && manager.hasRules();
+        var biomes = filter && plot != null && plot.getPlotLevel() >= 3
+                ? getDistinctChunkBiomes(pos, level) : Set.of(level.getBiome(pos));
+        Map<Item, Integer> counts = new LinkedHashMap<>();
+        var inventory = new ArrayList<>(player.getInventory().getNonEquipmentItems());
+        inventory.add(player.getInventory().getItem(net.minecraft.world.entity.player.Inventory.SLOT_OFFHAND));
+        for (var stack : inventory) {
+            if (stack.isEmpty() || !isFarmlandPlantingItem(stack.getItem())) continue;
+            boolean governed = stack.is(FUCTags.MODDED_CROPS) || stack.is(FUCTags.VANILLA_CROPS) || stack.is(FUCTags.MODDED_SEEDS);
+            if (filter && governed && !isCropAllowedInBiomes(manager, stack, biomes)) continue;
+            counts.merge(stack.getItem(), stack.getCount(), Integer::sum);
+        }
+        return counts;
+    }
+
+    private static boolean isFarmlandPlantingItem(Item item) {
+        if (item instanceof net.minecraft.world.item.BlockItem blockItem
+                && (blockItem.getBlock() instanceof CropBlock
+                || blockItem.getBlock() instanceof net.minecraft.world.level.block.StemBlock
+                || blockItem.getBlock() instanceof net.minecraft.world.level.block.PitcherCropBlock)) return true;
+        var id = BuiltInRegistries.ITEM.getKey(item);
+        if (!id.getNamespace().equals("pamhc2crops") || !id.getPath().endsWith("item")) return false;
+        var seed = BuiltInRegistries.ITEM.getValue(Identifier.fromNamespaceAndPath(id.getNamespace(),
+                id.getPath().substring(0, id.getPath().length() - 4) + "seeditem"));
+        return seed instanceof net.minecraft.world.item.BlockItem blockItem && blockItem.getBlock() instanceof CropBlock;
+    }
 
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
@@ -130,9 +182,47 @@ public final class CropsManager {
         }
     }
 
+    // Harvest With Ease harvests and cancels at HIGH; roll before it changes the crop.
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void onRightClickHarvestFailure(PlayerInteractEvent.RightClickBlock event) {
+        if (event.isCanceled() || event.getItemStack().is(Items.BONE_MEAL)
+                || !(event.getLevel() instanceof ServerLevel level)) return;
+        if (failCropHarvest(level, event.getPos(), event.getEntity())) {
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onBreakHarvestFailure(BreakBlockEvent event) {
+        if (event.isCanceled() || event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent
+                || !(event.getLevel() instanceof ServerLevel level)) return;
+        if (failCropHarvest(level, event.getPos(), event.getPlayer())) {
+            event.setNotifyClient(true);
+            event.setCanceled(true);
+        }
+    }
+
+    private static boolean failCropHarvest(ServerLevel level, BlockPos pos, Player player) {
+        if (player == null || player.isCreative()) return false;
+        var state = level.getBlockState(pos);
+        if (!(state.getBlock() instanceof CropBlock crop) || !crop.isMaxAge(state)) return false;
+        ChunkData plot = ChunkManager.getPlot(pos, level);
+        if (plot == null || !"farm".equalsIgnoreCase(plot.getType())) return false;
+        int chance = CropHarvestRules.failureChance(plot.getPlotLevel());
+        if (chance == 0 || level.getRandom().nextInt(100) >= chance) return false;
+        level.setBlock(pos, crop.getStateForAge(0), 3);
+        player.sendOverlayMessage(Component.literal("Harvest failed - the crop must regrow.")
+                .withStyle(ChatFormatting.YELLOW));
+        if (player instanceof ServerPlayer serverPlayer) {
+            serverPlayer.connection.send(new ClientboundBlockUpdatePacket(level, pos));
+        }
+        return true;
+    }
+
     @SubscribeEvent
     public static void onRightClickHarvestCrops(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getLevel() instanceof ServerLevel level) || event.getHand() != InteractionHand.MAIN_HAND
+        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel level) || event.getHand() != InteractionHand.MAIN_HAND
                 || event.getEntity().isCreative() || event.getItemStack().is(Items.BONE_MEAL)) return;
         BlockPos pos = event.getPos();
         var state = level.getBlockState(pos);
@@ -148,7 +238,7 @@ public final class CropsManager {
         }
     }
 
-    static int harvestBonusChance(int plotLevel) {
+    public static int harvestBonusChance(int plotLevel) {
         return plotLevel <= 1 ? 0 : (plotLevel - 1) * 20;
     }
 
@@ -365,6 +455,11 @@ public final class CropsManager {
                     || !(mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)) return;
             BlockPos pos = hit.getBlockPos();
             var state = mc.level.getBlockState(pos);
+            if (state.is(FUCTags.FARMLAND) && mc.gui.screen() == null && mc.getConnection() != null) {
+                mc.getConnection().sendCommand("show plantable " + pos.getX() + " " + pos.getY() + " " + pos.getZ());
+                event.setCanceled(true);
+                return;
+            }
             ItemStack seed = state.getCloneItemStack(pos, mc.level, false, mc.player);
             if (seed.isEmpty() || !seed.is(FUCTags.VANILLA_AND_MODDED_CROPS)) return;
             Item harvest = harvestItem(BuiltInRegistries.BLOCK.getKey(state.getBlock()));

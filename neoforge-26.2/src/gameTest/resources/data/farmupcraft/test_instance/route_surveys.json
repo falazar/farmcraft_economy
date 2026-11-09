@@ -1,0 +1,7 @@
+{
+  "type": "minecraft:function",
+  "function": "farmupcraft:route_surveys",
+  "environment": "minecraft:default",
+  "structure": "minecraft:empty",
+  "max_ticks": 400
+}

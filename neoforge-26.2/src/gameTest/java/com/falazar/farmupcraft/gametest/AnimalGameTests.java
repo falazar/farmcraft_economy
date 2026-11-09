@@ -81,11 +81,11 @@ public final class AnimalGameTests {
                     plot.player.interactOn(animal, InteractionHand.MAIN_HAND, Vec3.ZERO);
                     assertBreedingDenied(helper, plot, animal, id + " outside pasture", 8);
 
-                    chunks.putData(plot.key, new ChunkData("pasture", -1, UUID.randomUUID()));
+                    chunks.putData(plot.key, new ChunkData("pasture", -1, UUID.randomUUID(), null, List.of(), plot.pos.getY()));
                     plot.player.interactOn(animal, InteractionHand.MAIN_HAND, Vec3.ZERO);
                     assertBreedingDenied(helper, plot, animal, id + " in another village", 8);
 
-                    chunks.putData(plot.key, new ChunkData("pasture", -1, villageId));
+                    chunks.putData(plot.key, new ChunkData("pasture", -1, villageId, null, List.of(), plot.pos.getY()));
                     village.setAnimalType(category.equals("duck") ? "sheep" : "chicken");
                     plot.player.interactOn(animal, InteractionHand.MAIN_HAND, Vec3.ZERO);
                     assertBreedingDenied(helper, plot, animal, id + " wrong village species", 8);
@@ -166,7 +166,7 @@ public final class AnimalGameTests {
         long key = ChunkPos.pack(cow.blockPosition());
         ChunkData previous = database.getData(key);
         if (pasture) {
-            database.putData(key, new ChunkData("pasture", -1, new UUID(0, 0)));
+            database.putData(key, new ChunkData("pasture", -1, new UUID(0, 0), null, List.of(), cow.blockPosition().getY()));
         } else {
             database.removeDataBatch(List.of(key));
         }

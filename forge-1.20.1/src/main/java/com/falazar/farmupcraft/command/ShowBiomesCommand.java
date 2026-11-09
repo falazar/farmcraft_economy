@@ -61,6 +61,10 @@ public class ShowBiomesCommand {
                                         IntegerArgumentType.getInteger(c, "radius")))))
                 .requires(s -> s.hasPermission(2)); // Adjust permission as needed
         builder.then(Commands.literal("plotcrops").executes(c -> showPlotCrops(c.getSource())));
+        builder.then(Commands.literal("plantable")
+                .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
+                        .executes(c -> com.falazar.farmupcraft.CropsManager.showPlantableInventory(c.getSource(),
+                                net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(c, "pos")))));
         // Add the "biomes" sub-command to the "show" command
         builder.then(biomesBuilder);
 
@@ -69,7 +73,8 @@ public class ShowBiomesCommand {
         LiteralArgumentBuilder<CommandSourceStack> cropbiomesBuilder = Commands.literal("cropbiomes")
                 .then(Commands.argument("crop", StringArgumentType.greedyString())
                         .suggests((context, suggestions) -> SharedSuggestionProvider.suggest(
-                                cropAliases(context.getSource()).keySet(), suggestions))
+                                cropAliases(context.getSource()).keySet(),
+                                suggestions.createOffset(suggestions.getStart() + suggestions.getRemaining().lastIndexOf(' ') + 1)))
                         .executes(c -> {
                             // Handle the cropbiomes command here
                             String cropName = StringArgumentType.getString(c, "crop");
@@ -165,6 +170,17 @@ public class ShowBiomesCommand {
 
     // Given a crop name show all biomes you can plant this in.
     public static void showCropBiomes(CommandSourceStack source, String cropName) {
+        List<String> crops;
+        try {
+            crops = com.falazar.farmupcraft.util.CropBiomeQuery.crops(cropName);
+        } catch (IllegalArgumentException error) {
+            source.sendFailure(Component.literal(error.getMessage()));
+            return;
+        }
+        if (crops.size() > 1) {
+            showSharedCropBiomes(source, crops);
+            return;
+        }
         // Implement your logic for showing crop biomes here
         Player playerSource = source.getPlayer();
 
@@ -223,6 +239,45 @@ public class ShowBiomesCommand {
                 .append(Component.literal("").withStyle(ChatFormatting.WHITE).append(biomesListShow));
 
         playerSource.displayClientMessage(component, false);
+    }
+
+    private static void showSharedCropBiomes(CommandSourceStack source, List<String> crops) {
+        var manager = BiomeRulesManager.get(source.getLevel());
+        if (manager == null || !manager.hasRules() || !manager.hasItems()) {
+            source.sendFailure(Component.literal("No biome crop rules are configured."));
+            return;
+        }
+        Set<ResourceLocation> shared;
+        try {
+            var aliases = cropAliases(source);
+            shared = com.falazar.farmupcraft.util.CropBiomeQuery.shared(crops, crop -> {
+                String resolved = aliases.getOrDefault(crop, crop);
+                ResourceLocation id = ResourceLocation.tryParse(resolved.contains(":") ? resolved
+                        : crop.equals("wheat") ? "minecraft:wheat_seeds"
+                        : crop.equals("beetroot") ? "minecraft:beetroot_seeds" : "pamhc2crops:" + crop + "item");
+                Item item = id == null ? null : ForgeRegistries.ITEMS.getValue(id);
+                if (item == null || item == net.minecraft.world.item.Items.AIR) {
+                    id = ResourceLocation.tryParse("minecraft:" + crop);
+                    item = id == null ? null : ForgeRegistries.ITEMS.getValue(id);
+                }
+                if (item == null || item == net.minecraft.world.item.Items.AIR)
+                    throw new IllegalArgumentException("Crop not found: " + crop);
+                return manager.getBiomesForItem(item).stream().flatMap(b -> b.unwrapKey().stream())
+                        .map(key -> key.location()).collect(java.util.stream.Collectors.toSet());
+            });
+        } catch (IllegalArgumentException error) {
+            source.sendFailure(Component.literal(error.getMessage()));
+            return;
+        }
+        var villageBiomes = getPlayerVillageBiomeSet(source.getPlayer());
+        Component biomes = shared.stream()
+                .map(id -> Component.translatable(com.falazar.farmupcraft.CropsManager.getBiomeLangKey(id))
+                        .withStyle(villageBiomes.contains(id.toString()) ? ChatFormatting.GREEN : ChatFormatting.WHITE))
+                .sorted(java.util.Comparator.comparing(Component::getString))
+                .reduce((first, second) -> first.append(", ").append(second))
+                .orElse(Component.literal("No shared biomes"));
+        source.sendSuccess(() -> Component.literal("§bBiomes you can plant " + String.join(", ", crops)
+                + " together in: ").append(biomes), false);
     }
 
     // Returns the set of biome resource-location strings (e.g. "minecraft:plains")

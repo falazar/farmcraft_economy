@@ -42,9 +42,10 @@ class IslandScanManagerTest {
     @Test
     void lakesRespectMinimumOceanAndRiverFilters() {
         assertNull(detect(rectangle(0, 0, 3, 3, true), 0, 0).result());
-        var minimum = detect(rectangle(0, 0, 2, 5, true), 0, 0);
+        assertNull(detect(rectangle(0, 0, 7, 7, true), 0, 0).result());
+        var minimum = detect(rectangle(0, 0, 5, 10, true), 0, 0);
         assertEquals("lake", minimum.result().get("type").getAsString());
-        assertEquals(10, minimum.result().get("block_count").getAsInt());
+        assertEquals(50, minimum.result().get("block_count").getAsInt());
         assertEquals(1_000, detect(rectangle(0, 0, 25, 40, true), 0, 0)
                 .result().get("block_count").getAsInt());
         var ocean = detect(rectangle(0, 0, 7, 143, true), 0, 0);
@@ -62,7 +63,8 @@ class IslandScanManagerTest {
 
     @Test
     void islandsIncludeCoastalOnlyAndInteriorBodiesButNeverUnloadedBoundaryFragments() {
-        assertEquals("island", detect(rectangle(0, 0, 2, 5, false), 0, 0)
+        assertNull(detect(rectangle(0, 0, 3, 13, false), 0, 0).result());
+        assertEquals("island", detect(rectangle(0, 0, 2, 20, false), 0, 0)
                 .result().get("type").getAsString());
         assertEquals(49, detect(rectangle(-3, -3, 7, 7, false), 0, 0)
                 .result().get("block_count").getAsInt());
@@ -81,12 +83,12 @@ class IslandScanManagerTest {
 
     @Test
     void cachedSeedsCannotCutARealBodyIntoFalseSmallFeaturesAndFillIsBounded() {
-        var terrain = rectangle(0, 0, 5, 5, true);
+        var terrain = rectangle(0, 0, 5, 10, true);
         Set<Long> oldCache = Set.of(IslandScanManager.pack(1, 0), IslandScanManager.pack(0, 1));
         Set<Long> newlyVisited = new HashSet<>();
         var lake = IslandScanManager.detectBody(terrain, 0, 0, oldCache, newlyVisited);
-        assertEquals(25, lake.result().get("block_count").getAsInt());
-        assertEquals(25, newlyVisited.size());
+        assertEquals(50, lake.result().get("block_count").getAsInt());
+        assertEquals(50, newlyVisited.size());
         assertNull(IslandScanManager.detectBody(terrain, 0, 0, oldCache, newlyVisited).result());
 
         Set<Long> mainlandVisited = new HashSet<>();
@@ -114,8 +116,10 @@ class IslandScanManagerTest {
     }
 
     @Test
-    void resultsPreserveSchemaCentersDeduplicationNamesAndFourCornerWaypoints() {
-        JsonObject result = detect(rectangle(-10, -20, 3, 4, true), -10, -20).result();
+    void resultsPreserveSchemaCentersDeduplicationNamesAndCenterWaypoint() {
+        JsonObject result = IslandScanManager.buildResult("lake", Set.of(
+                IslandScanManager.pack(-10, -20), IslandScanManager.pack(-8, -17)));
+        result.addProperty("block_count", 12);
         assertEquals(-9, result.getAsJsonObject("center").get("x").getAsInt());
         assertEquals(-18, result.getAsJsonObject("center").get("z").getAsInt());
         assertEquals(12, result.get("block_count").getAsInt());
@@ -130,7 +134,7 @@ class IslandScanManagerTest {
         old.add(result.deepCopy());
         result.addProperty("name", "Mist-12");
         var message = IslandScanManager.formatFeatureMessage(result);
-        assertTrue(message.getString().contains("Found lake 'Mist-12' at -9, -18"));
+        assertTrue(message.getString().contains("Found lake 'Mist' at -9, -18"));
         var teleport = assertInstanceOf(ClickEvent.RunCommand.class,
                 message.getSiblings().get(3).getStyle().getClickEvent());
         assertEquals("/tp @s -9 ~ -18", teleport.command());
@@ -144,10 +148,10 @@ class IslandScanManagerTest {
 
         ScanWaypointsPacket packet = IslandScanManager.waypoints(result, "Mist-12");
         assertEquals(ScanWaypointsPacket.ADD, packet.action());
-        assertEquals(List.of("Mist-12-NW", "Mist-12-NE", "Mist-12-SW", "Mist-12-SE"),
+        assertEquals(List.of("Mist"),
                 packet.entries().stream().map(ScanWaypointsPacket.Entry::name).toList());
-        assertEquals(List.of(-10, -8, -10, -8), packet.entries().stream().map(ScanWaypointsPacket.Entry::x).toList());
-        assertEquals(List.of(-20, -20, -17, -17), packet.entries().stream().map(ScanWaypointsPacket.Entry::z).toList());
+        assertEquals(List.of(-9), packet.entries().stream().map(ScanWaypointsPacket.Entry::x).toList());
+        assertEquals(List.of(-18), packet.entries().stream().map(ScanWaypointsPacket.Entry::z).toList());
         assertTrue(packet.entries().stream().allMatch(entry -> entry.y() == 64));
         assertEquals(1, packet.entries().stream().map(ScanWaypointsPacket.Entry::color).distinct().count());
         assertThrows(IllegalArgumentException.class, () -> IslandScanManager.buildResult("lake", Set.of()));

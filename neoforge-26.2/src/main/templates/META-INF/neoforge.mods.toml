@@ -24,39 +24,38 @@ versionRange="[${neo_version},26.3)"
 ordering="AFTER"
 side="BOTH"
 
-# The supported content bundle is required on both ends of a connection.
-# TreeManager links PamFruitBlock directly, and crop block tags use required IDs.
+# Content integrations are optional; when present their supported versions still apply.
 [[dependencies.${mod_id}]]
 modId="pamhc2foodcore"
-type="required"
+type="optional"
 versionRange="[1.0.0]"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="pamhc2crops"
-type="required"
+type="optional"
 versionRange="[1.0.0]"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="pamhc2foodextended"
-type="required"
+type="optional"
 versionRange="[1.0.0]"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="pamhc2trees"
-type="required"
+type="optional"
 versionRange="[1.0.0]"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="biomesoplenty"
-type="required"
+type="optional"
 versionRange="[26.2.0.0.28,26.3)"
 ordering="AFTER"
 side="BOTH"
@@ -65,14 +64,14 @@ side="BOTH"
 # in the pinned Biomes O' Plenty jar.
 [[dependencies.${mod_id}]]
 modId="terrablender"
-type="required"
+type="optional"
 versionRange="[26.2.0.0.2,26.3)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="glitchcore"
-type="required"
+type="optional"
 versionRange="[26.2.0.0.0,26.3)"
 ordering="AFTER"
 side="BOTH"

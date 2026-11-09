@@ -44,6 +44,23 @@ class JourneyMapWaypointsTest {
     }
 
     @Test
+    void structureMapOpensOnlyAfterTheMarkerIsAddedAndOrdinaryWaypointsDoNotOpen() {
+        var fixture = new Fixture();
+        var structure = new AddJMWaypointPacket(120, 70, -300, "Ruin",
+                "minecraft:overworld", true, 0x00FF00, true);
+        var opened = new ArrayList<AddJMWaypointPacket>();
+        JourneyMapIntegration.addWaypoint(structure, fixture.api, fixture, payload -> {
+            assertEquals(1, fixture.added.size(), "Map must open after its waypoint has been added");
+            assertEquals(new BlockPos(120, 70, -300), fixture.added.getFirst().getBlockPos());
+            opened.add(payload);
+        });
+        assertEquals(List.of(structure), opened);
+        JourneyMapIntegration.addWaypoint(new AddJMWaypointPacket(0, 64, 0, "Ordinary", "minecraft:overworld"),
+                fixture.api, fixture, opened::add);
+        assertEquals(List.of(structure), opened);
+    }
+
+    @Test
     void defaultAddRemainsPersistentAndGold() {
         var fixture = new Fixture();
         Waypoint waypoint = JourneyMapIntegration.createWaypoint(
@@ -148,6 +165,15 @@ class JourneyMapWaypointsTest {
         JourneyMapIntegration.loggedOut();
         assertEquals(1, fixture.removed.size());
         assertTrue(JourneyMapIntegration.getScanWaypoints().isEmpty());
+    }
+
+    @Test
+    void scanMarkersUseTheirCurrentDimensionRatherThanOverworld() {
+        var fixture = new Fixture();
+        JourneyMapIntegration.scanWaypoints(new ScanWaypointsPacket(List.of(
+                new ScanWaypointsPacket.Entry("Mist Lake", 5, 70, -8, 1))),
+                fixture.api, fixture, "minecraft:the_nether");
+        assertEquals("minecraft:the_nether", fixture.added.getFirst().getPrimaryDimension());
     }
 
     private static final class Fixture implements JourneyMapIntegration.WaypointCreator {

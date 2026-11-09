@@ -69,6 +69,9 @@ public class ForgeEvents {
     private static final String NO_CHORES_MSG = "You should make a chores list instead";
 
     public static void initializeWorldDefaults(net.minecraft.server.MinecraftServer server) {
+        if (server.overworld() == null) {
+            return;
+        }
         try {
             if (com.falazar.farmupcraft.util.StartupDefaults.initializeWorld(
                     server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT), () -> {
@@ -85,6 +88,7 @@ public class ForgeEvents {
     }
     // 5 minutes at 20 TPS
     private static final int DIFFICULTY_WARN_INTERVAL = 6000;
+    private static final java.util.Map<UUID, Long> PENDING_MARKET_REMINDERS = new java.util.HashMap<>();
     private static int difficultyWarnTick = 0;
 
     /**
@@ -140,7 +144,28 @@ public class ForgeEvents {
         CropBlockDataJsonManager.clearEntries();
         CropItemDataJsonManager.clearEntries();
         BiomeRulesDataJsonManager.clearEntries();
+        PENDING_MARKET_REMINDERS.clear();
+        com.falazar.farmupcraft.util.LanBotLauncher.stopAll();
 
+    }
+
+    private static void deliverDueMarketReminders(net.minecraft.server.MinecraftServer server) {
+        if (PENDING_MARKET_REMINDERS.isEmpty()) return;
+        long now = System.currentTimeMillis();
+        var iterator = PENDING_MARKET_REMINDERS.entrySet().iterator();
+        while (iterator.hasNext()) {
+            var entry = iterator.next();
+            if (now < entry.getValue()) continue;
+            iterator.remove();
+            ServerPlayer player = server.getPlayerList().getPlayer(entry.getKey());
+            if (player != null) {
+                String text = com.falazar.farmupcraft.util.PlayerOnboarding.marketReminder(
+                        player.level().getRandom().nextInt(com.falazar.farmupcraft.util.PlayerOnboarding.MARKET_REMINDERS.size()));
+                player.sendSystemMessage(Component.literal(text).withStyle(ChatFormatting.GOLD)
+                        .withStyle(style -> style.withClickEvent(new net.minecraft.network.chat.ClickEvent(
+                                net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND, "/market show"))));
+            }
+        }
     }
 
     @SubscribeEvent
@@ -208,6 +233,9 @@ public class ForgeEvents {
             }
 
             ServerPlayer serverPlayer = (ServerPlayer) event.getEntity();
+            VillageRoads.deliver(serverPlayer);
+            serverPlayer.sendSystemMessage(Component.literal(com.falazar.farmupcraft.util.PlayerOnboarding.MENU_REMINDER)
+                    .withStyle(ChatFormatting.GOLD));
             PlayerData welcomeData = playerDatabase.getData(uuid);
             FarmCraftCommand.refreshVillageChunksOverlay(serverPlayer);
             var today = java.time.LocalDate.now();
@@ -254,7 +282,14 @@ public class ForgeEvents {
 
             // Suggest daily tasks from Rimfog/TODO.md, shuffled with a per-day seed.
             sendDailyTaskSuggestions(serverPlayer);
+            PENDING_MARKET_REMINDERS.put(uuid,
+                    System.currentTimeMillis() + com.falazar.farmupcraft.util.PlayerOnboarding.MARKET_REMINDER_DELAY_MS);
         }
+    }
+
+    @SubscribeEvent
+    public static void onLogoutEvent(PlayerEvent.PlayerLoggedOutEvent event) {
+        PENDING_MARKET_REMINDERS.remove(event.getEntity().getUUID());
     }
 
     /**
@@ -265,21 +300,26 @@ public class ForgeEvents {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END)
             return;
+        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
+        if (server != null) {
+            deliverDueMarketReminders(server);
+        }
         difficultyWarnTick++;
         if (difficultyWarnTick < DIFFICULTY_WARN_INTERVAL)
             return;
         difficultyWarnTick = 0;
 
-        var server = net.minecraftforge.server.ServerLifecycleHooks.getCurrentServer();
         if (server == null)
             return;
-        var players = server.getPlayerList().getPlayers();
+        var players = server.getPlayerList().getPlayers().stream()
+                .filter(player -> com.falazar.farmupcraft.util.DifficultyNoticePlayers.includes(player.getName().getString()))
+                .toList();
         if (players.size() != 1)
             return;
 
         ServerPlayer player = players.get(0);
         Difficulty diff = player.getCommandSenderWorld().getDifficulty();
-        if (diff != Difficulty.HARD) {
+        if (diff != Difficulty.HARD && !player.isCreative()) {
             player.sendSystemMessage(
                     Component
                             .literal("⚠ You are playing on " + diff.getKey().toUpperCase()

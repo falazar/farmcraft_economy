@@ -50,7 +50,7 @@ import java.util.UUID;
 public class AnimalsManager {
     public static final CustomLogger LOGGER = new CustomLogger(AnimalsManager.class.getSimpleName());
 
-    private static final int MAX_ANIMALS_PER_PASTURE = 30;
+    public static final int MAX_ANIMALS_PER_PASTURE = 30;
     private static final String NBT_LAST_MILKED = "farmupcraft_last_milked";
     private static final String NBT_LAST_BRED = "farmupcraft_last_bred";
     private static final String NBT_LAST_SHEARED_TICK = "farmupcraft_last_sheared_tick";
@@ -67,14 +67,14 @@ public class AnimalsManager {
             return;
         }
         String plotType = ChunkManager.getPlotType(sheep.blockPosition(), level);
-        if (!canShearInPlot(plotType)) {
+        if (!canShearInPlot(plotType) || isOutsidePastureRange(sheep.blockPosition(), level)) {
             cancelWithError(event, player, "Sheep can only be sheared in a pasture plot or the wilderness.");
             return;
         }
         long gameTime = level.getGameTime();
         sheep.getPersistentData().putLong(NBT_LAST_SHEARED_TICK, gameTime);
         ChunkData chunk = ChunkManager.getPlot(sheep.blockPosition(), level);
-        int pastureLevel = chunk == null ? 1 : chunk.getPlotLevel();
+        int pastureLevel = chunk != null && chunk.isActivePasture(sheep.blockPosition().getY()) ? chunk.getPlotLevel() : 1;
         int extraWool = getExtraDropsForPastureLevel(pastureLevel);
         if (extraWool > 0) {
             sheep.spawnAtLocation(level, new ItemStack(getWoolItemForColor(sheep.getColor()), extraWool));
@@ -97,7 +97,8 @@ public class AnimalsManager {
             return;
         }
         ChunkData chunk = ChunkManager.getPlot(sheep.blockPosition(), level);
-        int pastureLevel = chunk == null ? 1 : chunk.getPlotLevel();
+        if (isOutsidePastureRange(sheep.blockPosition(), level)) return;
+        int pastureLevel = chunk != null && chunk.isActivePasture(sheep.blockPosition().getY()) ? chunk.getPlotLevel() : 1;
         int successChance = dyeSuccessChance(pastureLevel);
         if (level.getRandom().nextInt(100) >= successChance) {
             event.setCanceled(true);
@@ -117,6 +118,7 @@ public class AnimalsManager {
                 || !sheep.getPersistentData().contains(NBT_LAST_SHEARED_TICK)) {
             return;
         }
+        if (isOutsidePastureRange(sheep.blockPosition(), sheep.level())) return;
         long lastShearedTick = sheep.getPersistentData().getLongOr(NBT_LAST_SHEARED_TICK, 0L);
         if (woolRegrowthBlocked(sheep.level().getGameTime(), lastShearedTick)) {
             sheep.setSheared(true);
@@ -136,8 +138,8 @@ public class AnimalsManager {
                     || cow.isBaby() || !player.getItemInHand(event.getHand()).is(Items.BUCKET)) {
                 return;
             }
-            if (!"pasture".equals(ChunkManager.getPlotType(cow.blockPosition(), event.getLevel()))) {
-                cancelMilkingWithSync(event, player, "Cows can only be milked in a pasture plot.");
+            if (!isActivePasture(event.getLevel(), cow.blockPosition())) {
+                cancelMilkingWithSync(event, player, "Cows can only be milked within a pasture's purchase-height range (+/-6 blocks).");
                 return;
             }
             String today = LocalDate.now().toString();
@@ -218,20 +220,45 @@ public class AnimalsManager {
                 || AnimalGrainAssigner.GRAIN_POOL.contains(BuiltInRegistries.ITEM.getKey(stack.getItem()).toString());
     }
 
-    /** Counts animals in the legacy five-block-high pasture band, not the entire vertical chunk. */
+    public static boolean isActivePasture(Level level, BlockPos pos) {
+        ChunkData chunk = ChunkManager.getPlot(pos, level);
+        return chunk != null && chunk.isActivePasture(pos.getY());
+    }
+
+    private static boolean isOutsidePastureRange(BlockPos pos, Level level) {
+        ChunkData chunk = ChunkManager.getPlot(pos, level);
+        return chunk != null && "pasture".equalsIgnoreCase(chunk.getType()) && !chunk.isActivePasture(pos.getY());
+    }
+
     public static int countAnimalsInChunk(Level level, BlockPos pos) {
-        return level.getEntitiesOfClass(Animal.class, pastureCountingBox(pos, level.getMinY(), level.getMaxY())).size();
+        return pastureAnimals(level, pos).size();
+    }
+
+    public static String pastureAnimalBreakdown(Level level, BlockPos pos) {
+        var counts = new java.util.TreeMap<String, Integer>();
+        for (var animal : pastureAnimals(level, pos))
+            counts.merge(animal.getType().getDescription().getString(), 1, Integer::sum);
+        return counts.entrySet().stream().map(e -> e.getKey() + ": " + e.getValue())
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    public static java.util.Set<String> pastureAnimalTypes(Level level, BlockPos pos) {
+        return pastureAnimals(level, pos).stream()
+                .map(animal -> net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE
+                        .getKey(animal.getType()).getPath())
+                .collect(java.util.stream.Collectors.toSet());
     }
 
     public static boolean addEggHatchling(Level level, net.minecraft.world.entity.Entity hatchling) {
-        return "pasture".equals(ChunkManager.getPlotType(hatchling.blockPosition(), level))
+        return isActivePasture(level, hatchling.blockPosition())
                 && countAnimalsInChunk(level, hatchling.blockPosition()) < MAX_ANIMALS_PER_PASTURE
                 && level.addFreshEntity(hatchling);
     }
 
     public static int eggLayingTime(Animal animal, int remaining) {
         if (!animal.level().isClientSide() && remaining <= 1
-                && !canShearInPlot(ChunkManager.getPlotType(animal.blockPosition(), animal.level()))) {
+                && (!canShearInPlot(ChunkManager.getPlotType(animal.blockPosition(), animal.level()))
+                    || isOutsidePastureRange(animal.blockPosition(), animal.level()))) {
             // aiStep decrements once after this check; keep the normal laying interval.
             return animal.getRandom().nextInt(6000) + 6001;
         }
@@ -241,7 +268,7 @@ public class AnimalsManager {
     public static void warnFullPastureEgg(net.minecraft.world.entity.projectile.Projectile egg) {
         Level level = egg.level();
         if (level.isClientSide() || !(egg.getOwner() instanceof Player player)
-                || !"pasture".equals(ChunkManager.getPlotType(egg.blockPosition(), level))) {
+                || !isActivePasture(level, egg.blockPosition())) {
             return;
         }
         int count = countAnimalsInChunk(level, egg.blockPosition());
@@ -251,17 +278,28 @@ public class AnimalsManager {
         }
     }
 
-    static AABB pastureCountingBox(BlockPos pos, int minY, int maxY) {
-        ChunkPos chunk = ChunkPos.containing(pos);
-        return new AABB(chunk.getMinBlockX(), Math.max(minY, pos.getY() - 2), chunk.getMinBlockZ(),
-                chunk.getMaxBlockX() + 1, Math.min(maxY + 1, pos.getY() + 3), chunk.getMaxBlockZ() + 1);
+    private static List<Animal> pastureAnimals(Level level, BlockPos pos) {
+        ChunkData data = ChunkManager.getPlot(pos, level);
+        if (data == null || !"pasture".equalsIgnoreCase(data.getType())) return List.of();
+        var chunk = ChunkPos.containing(pos);
+        return level.getEntitiesOfClass(Animal.class,
+                pastureCountingBox(pos.atY(data.getBoughtY()), level.getMinY(), level.getMaxY()),
+                animal -> data.isActivePasture(animal.blockPosition().getY())
+                        && ChunkPos.containing(animal.blockPosition()).equals(chunk));
+    }
+
+    static AABB pastureCountingBox(BlockPos base, int minY, int maxY) {
+        int radius = com.falazar.farmupcraft.util.PastureRange.RADIUS;
+        ChunkPos chunk = ChunkPos.containing(base);
+        return new AABB(chunk.getMinBlockX(), Math.max(minY, base.getY() - radius), chunk.getMinBlockZ(),
+                chunk.getMaxBlockX() + 1, Math.min(maxY + 1, base.getY() + radius + 1), chunk.getMaxBlockZ() + 1);
     }
 
     private static boolean enforcePastureBreedingRules(PlayerInteractEvent.EntityInteract event, Player player,
                                                        Animal animal, ItemStack usedStack) {
         Level level = event.getLevel();
-        if (!"pasture".equals(ChunkManager.getPlotType(animal.blockPosition(), level))) {
-            return cancelWithError(event, player, "Animals can only be bred in a pasture plot.");
+        if (!isActivePasture(level, animal.blockPosition())) {
+            return cancelWithError(event, player, "Animals can only be bred within a pasture's purchase-height range (+/-6 blocks).");
         }
         PlayerData playerData = ModEvents.getPlayerDatabase(level).getData(player.getUUID());
         if (playerData == null || playerData.getHomeVillageUUID() == null) {
@@ -331,7 +369,7 @@ public class AnimalsManager {
         return plotType.isEmpty() || "pasture".equals(plotType);
     }
 
-    static int dyeSuccessChance(int pastureLevel) {
+    public static int dyeSuccessChance(int pastureLevel) {
         return (int) Math.min(100L, 20L + ((long) pastureLevel - 1) * 20L);
     }
 
@@ -390,7 +428,7 @@ public class AnimalsManager {
         }
 
         private boolean alreadyBredToday() {
-            return animal.isInLove() || LocalDate.now().toString()
+            return animal.isInLove() || !isOutsidePastureRange(animal.blockPosition(), animal.level()) && LocalDate.now().toString()
                     .equals(animal.getPersistentData().getStringOr(NBT_LAST_BRED, ""));
         }
 
@@ -423,7 +461,7 @@ public class AnimalsManager {
         if (event.getEntity().level().isClientSide() || !(event.getEntity() instanceof Animal animal)
                 || ("unknown".equals(getAnimalSpeciesName(animal)) && !isPastureAnimal(animal.getClass()))) return;
         Level level = animal.level();
-        if (!"pasture".equals(ChunkManager.getPlotType(animal.blockPosition(), level))) return;
+        if (!isActivePasture(level, animal.blockPosition())) return;
         ChunkData chunk = ChunkManager.getPlot(animal.blockPosition(), level);
         if (chunk == null) return;
         int extra = getExtraDropsForPastureLevel(chunk.getPlotLevel());

@@ -494,7 +494,25 @@ public class StructureManager {
             List<BlockPos> chestPositions, DataBase<Long, GameStructureData> db) {
         if (chestPositions.isEmpty() || structure.wasVisited() || structure.hasSpecialChest())
             return false;
-        BlockPos pos = chestPositions.get(TRAP_RNG.nextInt(chestPositions.size())).immutable();
+        var center = structure.getCenterPos();
+        var candidates = chestPositions.stream().filter(p -> world.isLoaded(p)
+                && world.getBlockEntity(p) instanceof Container)
+                .map(p -> new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(p.getX(), p.getY(), p.getZ())).toList();
+        var chosen = com.falazar.farmupcraft.util.NoteChestPlacement.choose(candidates,
+                new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(center.getX(), center.getY(), center.getZ()), TRAP_RNG);
+        if (chosen == null) {
+            LOGGER.warn("setupSpecialChest: no loaded usable chest for {}", structure.getName());
+            return false;
+        }
+        BlockPos pos = new BlockPos(chosen.x(), chosen.y(), chosen.z());
+        if (pos.distSqr(center) > 64) {
+            BlockPos central = placeChestAtStructureCenter(structure, world, 64);
+            if (central != null) {
+                pos = central;
+                structure.setTotalChestCount(structure.getTotalChestCount() + 1);
+            }
+        }
+        final BlockPos notePos = pos;
         BlockEntity original = world.getBlockEntity(pos);
         if (!(original instanceof Container)) {
             LOGGER.warn("setupSpecialChest: block entity at {} is not a Container", pos);
@@ -519,7 +537,9 @@ public class StructureManager {
         AIManager.generateChestThreatNote(name).orTimeout(30, TimeUnit.SECONDS).whenComplete((text, error) -> {
             boolean failed = isFailedNote(text, error);
             String trimmed = text == null ? "" : text.trim();
-            String[] fallback = failed ? FALLBACK_NOTES[TRAP_RNG.nextInt(FALLBACK_NOTES.length)] : null;
+            String[] fallback = failed ? (TRAP_RNG.nextBoolean()
+                    ? com.falazar.farmupcraft.util.StructureNoteFlavor.fallback(TRAP_RNG)
+                    : FALLBACK_NOTES[TRAP_RNG.nextInt(FALLBACK_NOTES.length)]) : null;
             String title = failed ? fallback[0] : "A Strange Note";
             String body = failed ? fallback[1] : trimmed;
             if (failed)
@@ -535,7 +555,7 @@ public class StructureManager {
                 debug(world, failed ? "[DEBUG] AI chest note FAILED for " + name + " — using fallback"
                         : "[DEBUG] Chest note OK for " + name + " — using AI text",
                         failed ? ChatFormatting.RED : ChatFormatting.GREEN);
-                writeNote(world, pos, original, generation, title, body);
+                writeNote(world, notePos, original, generation, title, body);
             });
         });
         return true;
@@ -576,7 +596,12 @@ public class StructureManager {
             LOGGER.warn("setupSpecialChest: chest at {} gone by the time note was ready", pos);
             return;
         }
-        container.setItem(0, createNoteBook(title, body));
+        int slot = com.falazar.farmupcraft.gems.GemWorld.threatNoteSlot(current, container);
+        if (slot < 0) {
+            LOGGER.warn("New special chest at {} filled before threat note arrived; preserving player contents", pos);
+            return;
+        }
+        container.setItem(slot, createNoteBook(title, body));
         current.setChanged();
         world.blockEntityChanged(pos);
         LOGGER.info("setupSpecialChest: book written in chest at {}", pos);
@@ -616,28 +641,55 @@ public class StructureManager {
             { "Quiet Threat", "The shadows here keep records better than scribes. They already archived your face." }
     };
 
-    private static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world) {
+    static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world) {
+        return placeChestAtStructureCenter(sd, world, Long.MAX_VALUE);
+    }
+
+    private static BlockPos placeChestAtStructureCenter(GameStructureData sd, ServerLevel world, long maxDistanceSquared) {
         BlockPos center = sd.getCenterPos();
-        int top = sd.hasBoundingBox() ? sd.getMaxPos().getY() + 2 : center.getY() + 10;
-        int bottom = sd.hasBoundingBox() ? sd.getMinPos().getY() : Math.max(center.getY() - 20, 0);
-        for (int dx = -5; dx <= 5; dx++) {
-            for (int dz = -5; dz <= 5; dz++) {
+        int top = Math.min(world.getMaxY() - 1, sd.hasBoundingBox() ? sd.getMaxPos().getY() : center.getY() + 10);
+        int bottom = Math.max(world.getMinY() + 1, sd.hasBoundingBox() ? sd.getMinPos().getY() : center.getY() - 20);
+        var candidates = new ArrayList<com.falazar.farmupcraft.util.NoteChestPlacement.Spot>();
+        for (int dx = -16; dx <= 16; dx++) {
+            for (int dz = -16; dz <= 16; dz++) {
+                int x = center.getX() + dx, z = center.getZ() + dz;
+                if (sd.hasBoundingBox() && (x < sd.getMinPos().getX() || x > sd.getMaxPos().getX()
+                        || z < sd.getMinPos().getZ() || z > sd.getMaxPos().getZ())) continue;
                 for (int y = top; y >= bottom; y--) {
-                    BlockPos pos = new BlockPos(center.getX() + dx, y, center.getZ() + dz);
-                    if (!world.isLoaded(pos))
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (pos.distSqr(center) > maxDistanceSquared || !world.isLoaded(pos))
                         continue;
                     BlockState below = world.getBlockState(pos.below());
                     BlockState at = world.getBlockState(pos);
                     BlockState above = world.getBlockState(pos.above());
-                    if (below.isSolidRender() && (at.isAir() || at.canBeReplaced())
-                            && (above.isAir() || above.canBeReplaced())) {
-                        world.setBlock(pos, Blocks.CHEST.defaultBlockState(), Block.UPDATE_ALL);
-                        return pos;
+                    if (below.isSolidRender() && at.isAir() && above.isAir()) {
+                        boolean accessible = false, adjacentChest = false;
+                        for (var direction : net.minecraft.core.Direction.Plane.HORIZONTAL) {
+                            var access = pos.relative(direction);
+                            if (!world.isLoaded(access)) continue;
+                            adjacentChest |= world.getBlockState(access).is(Blocks.CHEST);
+                            if (world.getBlockState(access).isAir()
+                                    && world.getBlockState(access.above()).isAir()
+                                    && world.getBlockState(access.below()).isSolidRender()) {
+                                accessible = true;
+                            }
+                        }
+                        if (accessible && !adjacentChest)
+                            candidates.add(new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(x, y, z));
                     }
                 }
             }
         }
-        return null;
+        var chosen = com.falazar.farmupcraft.util.NoteChestPlacement.choose(candidates,
+                new com.falazar.farmupcraft.util.NoteChestPlacement.Spot(center.getX(), center.getY(), center.getZ()), TRAP_RNG);
+        if (chosen == null) return null;
+        var pos = new BlockPos(chosen.x(), chosen.y(), chosen.z());
+        if (!world.setBlock(pos, Blocks.CHEST.defaultBlockState(), Block.UPDATE_ALL)) {
+            LOGGER.warn("Could not place central note chest at {}", pos);
+            return null;
+        }
+        com.falazar.farmupcraft.gems.GemWorld.newRuinChest(world, pos, sd.getId());
+        return pos;
     }
 
     public static BlockPos findRandomSpawnPos(ServerLevel level, BlockPos center, int radius, int attempts) {

@@ -39,6 +39,28 @@ public class JourneyMapIntegration implements IClientPlugin {
         return jmAPI;
     }
 
+    public static boolean openMapAt(int x, int z) {
+        if (jmAPI == null) {
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "JourneyMap is not ready."));
+            return false;
+        }
+        try {
+            Class<?> managerType = Class.forName("journeymap.client.ui.UIManager");
+            Object manager = managerType.getField("INSTANCE").get(null);
+            Object map = managerType.getMethod("openFullscreenMap").invoke(manager);
+            map.getClass().getMethod("centerOn", double.class, double.class).invoke(map, (double) x, (double) z);
+            return true;
+        } catch (ReflectiveOperationException | LinkageError error) {
+            FarmUpCraft.LOGGER.error("Cannot open JourneyMap at {}, {}", x, z, error);
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player != null) player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    "Could not open JourneyMap. See the log for details."));
+            return false;
+        }
+    }
+
     public static List<Waypoint> getScanWaypoints() {
         return scanWaypoints;
     }

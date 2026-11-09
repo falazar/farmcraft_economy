@@ -65,7 +65,7 @@ public class ScanCommand {
         ServerPlayer player = entity instanceof ServerPlayer sp ? sp : null;
         String msg = player != null
                 ? IslandScanManager.clearCache(source.getLevel(), player)
-                : IslandScanManager.clearCache();
+                : IslandScanManager.clearCache(source.getLevel());
         source.sendSuccess(() -> Component.literal("[Scan] " + msg), false);
         return 1;
     }

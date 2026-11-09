@@ -5,10 +5,9 @@ import com.falazar.farmupcraft.client.JourneyMapIntegration;
 import journeymap.client.api.IClientAPI;
 import journeymap.client.api.display.Waypoint;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.registries.Registries;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
@@ -20,7 +19,7 @@ import java.util.function.Supplier;
 
 /**
  * Server → Client packet for scan waypoints.
- * action=ADD: shows 4 corner waypoints for a found feature.
+ * action=ADD: shows center waypoints for discoveries in the current dimension.
  * action=CLEAR: removes all previously shown scan waypoints.
  */
 public class ScanWaypointsPacket {
@@ -93,8 +92,9 @@ public class ScanWaypointsPacket {
             return;
         }
 
-        ResourceKey<Level> dim = ResourceKey.create(
-                Registries.DIMENSION, new ResourceLocation("minecraft:overworld"));
+        var level = Minecraft.getInstance().level;
+        if (level == null) return;
+        ResourceKey<Level> dim = level.dimension();
         for (Entry e : msg.entries) {
             Waypoint wp = new Waypoint(FarmUpCraft.MODID, e.name(), dim, new BlockPos(e.x(), e.y(), e.z()));
             wp.setColor(e.color());

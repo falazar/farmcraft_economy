@@ -27,7 +27,6 @@ public class EDBMessages {
                 .simpleChannel();
 
         INSTANCE = net;
-
         net.messageBuilder(DataBaseEntryS2C.class, id(), NetworkDirection.PLAY_TO_CLIENT)
                 .decoder(DataBaseEntryS2C::new)
                 .encoder(DataBaseEntryS2C::toBytes)
@@ -80,6 +79,46 @@ public class EDBMessages {
                 .decoder(RemoveModWaypointsPacket::new)
                 .encoder(RemoveModWaypointsPacket::toBytes)
                 .consumerMainThread(RemoveModWaypointsPacket::handle)
+                .add();
+
+        net.messageBuilder(MarketViewPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(MarketViewPacket::new)
+                .encoder(MarketViewPacket::toBytes)
+                .consumerMainThread(MarketViewPacket::handle)
+                .add();
+
+        net.messageBuilder(VillageViewPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(VillageViewPacket::new)
+                .encoder(VillageViewPacket::toBytes)
+                .consumerMainThread(VillageViewPacket::handle)
+                .add();
+
+        net.messageBuilder(VillageStructuresViewPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(VillageStructuresViewPacket::new)
+                .encoder(VillageStructuresViewPacket::toBytes)
+                .consumerMainThread(VillageStructuresViewPacket::handle)
+                .add();
+        net.messageBuilder(PlotViewPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(PlotViewPacket::new)
+                .encoder(PlotViewPacket::toBytes)
+                .consumerMainThread(PlotViewPacket::handle)
+                .add();
+        net.messageBuilder(VillageListViewPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(VillageListViewPacket::new)
+                .encoder(VillageListViewPacket::toBytes)
+                .consumerMainThread(VillageListViewPacket::handle)
+                .add();
+
+        net.messageBuilder(MarketSaleReceiptPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(MarketSaleReceiptPacket::new)
+                .encoder(MarketSaleReceiptPacket::toBytes)
+                .consumerMainThread(MarketSaleReceiptPacket::handle)
+                .add();
+
+        net.messageBuilder(BuildPreviewPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(BuildPreviewPacket::new)
+                .encoder(BuildPreviewPacket::toBytes)
+                .consumerMainThread(BuildPreviewPacket::handle)
                 .add();
 
         // net.registerMessage(id(), DataBaseEntryS2CO.class,

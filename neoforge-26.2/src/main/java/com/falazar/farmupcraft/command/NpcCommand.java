@@ -452,26 +452,47 @@ public final class NpcCommand {
         var villagers = VillageCommand.getVillagersList(player.blockPosition(), player.level(), 10).stream()
                 .filter(Villager.class::isInstance).map(Villager.class::cast).toList();
         if (villagers.isEmpty()) return fail(source, "No villagers found nearby.");
+        queueMissingProfiles(source, village, villagers, false);
+        return 1;
+    }
+
+    public static int initVillageProfiles(CommandSourceStack source, VillageData village) {
+        var level = source.getLevel();
+        var center = village.getPosition().getWorldPosition();
+        int radius = ((4 + village.getLevel()) * 2 + 1) * 16;
+        var bounds = new net.minecraft.world.phys.AABB(center.getX() - radius, level.getMinY(), center.getZ() - radius,
+                center.getX() + radius, level.getMaxY() + 1, center.getZ() + radius);
+        var villagers = level.getEntitiesOfClass(Villager.class, bounds, villager -> {
+            var chunk = ModEvents.getChunkDataDatabase(level).getData(
+                    net.minecraft.world.level.ChunkPos.pack(villager.blockPosition()));
+            return chunk != null && village.getUUID().equals(chunk.getVillageId());
+        });
+        return queueMissingProfiles(source, village, villagers, true);
+    }
+
+    private static int queueMissingProfiles(CommandSourceStack source, VillageData village,
+                                           List<Villager> villagers, boolean automatic) {
         var names = villagers.stream().map(v -> v.getName().getString()).toList();
-        var biomes = biomeNames(village, player.level());
-        var structures = new ArrayList<>(structureNames(village, player.level()));
+        var biomes = biomeNames(village, source.getLevel());
+        var structures = new ArrayList<>(structureNames(village, source.getLevel()));
         Collections.shuffle(structures);
         int queued = 0;
         Jobs jobs = jobs(source.getServer());
+        long initialDelay = automatic ? Math.max(1, jobs.requests.size()) * 60L : 0;
         for (Villager villager : villagers) {
-            if (NpcDataLoader.hasProfile(player.level(), villager.getName().getString(), villager.getUUID())) {
-                success(source, "[NPC] Skipped " + villager.getName().getString() + " — profile already exists.");
+            if (NpcDataLoader.hasProfile(source.getLevel(), villager.getName().getString(), villager.getUUID())) {
+                if (!automatic) success(source, "[NPC] Skipped " + villager.getName().getString() + " — profile already exists.");
                 continue;
             }
             if (jobs.requests.containsKey(villager.getUUID())) continue;
             ProfileRequest request = request(villager, village, names, biomes,
                     structures.isEmpty() ? null : structures.get(queued % structures.size()), false);
-            schedule(source, jobs, request, queued * 60L);
+            schedule(source, jobs, request, initialDelay + queued * 60L);
             queued++;
         }
-        success(source, queued == 0 ? "All nearby villagers already have profiles or pending requests."
+        if (!automatic || queued > 0) success(source, queued == 0 ? "All nearby villagers already have profiles or pending requests."
                 : "Queued AI profile generation for " + queued + " villager(s). Profiles will appear as each finishes.");
-        return 1;
+        return queued;
     }
 
     public static int redoProfile(CommandSourceStack source, String name) {
@@ -671,7 +692,7 @@ public final class NpcCommand {
             RequestContext context = jobs.requests.get(r.uuid());
             return context != null && context.request == r;
         });
-        for (var future : jobs.futures) future.cancel(false);
+        for (var future : List.copyOf(jobs.futures)) future.cancel(false);
         jobs.futures.clear();
         jobs.requests.clear();
         jobs.generating.clear();

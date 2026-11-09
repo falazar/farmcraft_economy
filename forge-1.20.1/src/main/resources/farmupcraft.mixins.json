@@ -5,6 +5,10 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "farmupcraft.refmap.json",
   "mixins": [
+    "GemGenerationMixin",
+    "LeafDecayDropsMixin",
+    "BundleCarryMenuMixin",
+    "BuildCloneFilterMixin",
     "EggLayingMixin",
     "DuckEggLayingMixin",
     "EggPastureMixin",
@@ -13,7 +17,10 @@
     "ButterflyPollinationMixin",
     "HarvestCraftProducePlantingMixin",
     "EnchantmentMenuMixin",
-    "VillagerSleepMixin"
+    "VillagerSleepMixin",
+    "VillagerLadderMixin",
+    "NpcConversationMixin",
+    "VillagerConversationBrainMixin"
   ],
   "client": [
     "client.LevelRendererMixin",
