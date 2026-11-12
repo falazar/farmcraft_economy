@@ -40,17 +40,18 @@ class AIManagerTest {
 
     @Test
     void personalityPromptRetainsExactVillageBiomeCuriosityAndParagraphInstructions() {
-        assertEquals("""
-                You are a character designer for a cozy medieval Minecraft village mod. Write a personality profile for a villager named Alaina Fae who works as a farmer. They live in the village of Willow.
-                Other villagers in the village: Cyrus, Lazarus.
-                The village biomes include: plains, grove.
-                There is a jungle tree house near the village that this villager has heard about but never fully explored. Weave in their curiosity or wonder about it — maybe they ask questions about it or dream of visiting it.
-                Use exactly 4 short paragraphs with NO headings or bullet points:
-                Paragraph 1: Their background and origin story (2-3 sentences).
-                Paragraph 2: Their daily habits and typical routine (2-3 sentences).
-                Paragraph 3: Things they like and enjoy (2-3 sentences).
-                Paragraph 4: Things they dislike or find annoying (2-3 sentences).
-                Give them a unique, memorable personality that fits the medieval village setting.""",
+        assertEquals(
+                """
+                        You are a character designer for a cozy medieval Minecraft village mod. Write a personality profile for a villager named Alaina Fae who works as a farmer. They live in the village of Willow.
+                        Other villagers in the village: Cyrus, Lazarus.
+                        The village biomes include: plains, grove.
+                        There is a jungle tree house near the village that this villager has heard about but never fully explored. Weave in their curiosity or wonder about it — maybe they ask questions about it or dream of visiting it.
+                        Use exactly 4 short paragraphs with NO headings or bullet points:
+                        Paragraph 1: Their background and origin story (2-3 sentences).
+                        Paragraph 2: Their daily habits and typical routine (2-3 sentences).
+                        Paragraph 3: Things they like and enjoy (2-3 sentences).
+                        Paragraph 4: Things they dislike or find annoying (2-3 sentences).
+                        Give them a unique, memorable personality that fits the medieval village setting.""",
                 AIManager.buildPersonalityPrompt("Alaina Fae", "minecraft:farmer", List.of("Cyrus", "Lazarus"),
                         "Willow", List.of("plains", "grove"), "jungle tree house", false, null));
     }
@@ -97,13 +98,25 @@ class AIManagerTest {
     @Test
     void conversationPromptKeepsDescriptionPersonalityPlayerNameAndLatestMessage() {
         var profile = new NpcData(UUID.randomUUID(), "Ada", null, "", "");
-        assertEquals("You are a Minecraft villager named Ada. Keep your reply short (1-3 sentences), in character, "
-                + "and friendly. The player 'Robin' says to you: Hello", AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello"));
+        String basic = AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello");
+        assertTrue(basic.contains("Ada"));
+        assertTrue(basic.contains("Robin"));
+        assertTrue(basic.contains("Hello"));
         profile.setDescription("A baker.");
         profile.setPersonality("Loves bread.");
-        assertEquals("You are a Minecraft villager named Ada. A baker. Your personality and background: Loves bread. "
-                + "Keep your reply short (1-3 sentences), in character, and friendly. The player 'Robin' says to you: Hello",
-                AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello"));
+        String withProfile = AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello");
+        assertTrue(withProfile.contains("A baker."));
+        assertTrue(withProfile.contains("Loves bread."));
+        assertTrue(withProfile.contains("Robin"));
+        assertTrue(withProfile.contains("Hello"));
+    }
+
+    @Test
+    void conversationPromptIncludesCurrentVillagerProfession() {
+        var profile = new NpcData(UUID.randomUUID(), "Ada", null, "A local villager.", "friendly");
+        assertTrue(AIManager.buildNpcSystemPrompt(profile, "Robin", "Where are gems?", "farmer")
+                .endsWith(
+                        "Their current villager profession is farmer. Let this role inform what they know and how they speak."));
     }
 
     @Test

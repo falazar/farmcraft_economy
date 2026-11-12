@@ -12,36 +12,68 @@ class RouteSurveyTest {
         final Map<Point, Set<String>> ruins = new HashMap<>();
         final Map<Point, Set<String>> claims = new HashMap<>();
         final Set<String> issues = new HashSet<>();
+
         void line(int x0, int x1, int z) {
-            for (int x = x0; x <= x1; x++) add(new Point(x, 64, z));
+            for (int x = x0; x <= x1; x++)
+                add(new Point(x, 64, z));
         }
+
         void add(Point p) {
             edges.computeIfAbsent(p, k -> new ArrayList<>());
-            for (int[] d : new int[][]{{1,0},{-1,0},{0,1},{0,-1}}) {
+            for (int[] d : new int[][] { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) {
                 Point n = p.offset(d[0], 0, d[1]);
-                if (edges.containsKey(n)) link(p, n);
+                if (edges.containsKey(n))
+                    link(p, n);
             }
         }
+
         void link(Point a, Point b) {
             edges.get(a).add(new Link(b, a.distance(b)));
             edges.get(b).add(new Link(a, a.distance(b)));
         }
-        @Override public Iterator<Point> seeds() { return seeds.iterator(); }
-        @Override public List<Link> neighbors(Point p) { return edges.getOrDefault(p, List.of()); }
-        @Override public boolean inside(Point p) { return p.x() < 16; }
-        @Override public Set<String> claims(Point p) { return claims.getOrDefault(p, Set.of()); }
-        @Override public Set<String> ruins(Point p) { return ruins.getOrDefault(p, Set.of()); }
-        @Override public Set<String> issues() { return issues; }
+
+        @Override
+        public Iterator<Point> seeds() {
+            return seeds.iterator();
+        }
+
+        @Override
+        public List<Link> neighbors(Point p) {
+            return edges.getOrDefault(p, List.of());
+        }
+
+        @Override
+        public boolean inside(Point p) {
+            return p.x() < 16;
+        }
+
+        @Override
+        public Set<String> claims(Point p) {
+            return claims.getOrDefault(p, Set.of());
+        }
+
+        @Override
+        public Set<String> ruins(Point p) {
+            return ruins.getOrDefault(p, Set.of());
+        }
+
+        @Override
+        public Set<String> issues() {
+            return issues;
+        }
+
         Result run(Kind kind) {
             var scan = new RouteSurvey(this, kind, "village/dimension");
             int calls = 0;
-            while (!scan.advance(7)) assertTrue(++calls < 100_000);
+            while (!scan.advance(7))
+                assertTrue(++calls < 100_000);
             return scan.result();
         }
     }
 
-    @Test void exactMinimumAndEntryThreshold() {
-        for (int distance : new int[]{4, 5, 47, 48, 49}) {
+    @Test
+    void exactMinimumAndEntryThreshold() {
+        for (int distance : new int[] { 4, 5, 47, 48, 49 }) {
             World w = new World();
             w.line(0, distance, 0);
             w.seeds.add(new Point(15 > distance ? 0 : 15, 64, 0));
@@ -50,10 +82,12 @@ class RouteSurveyTest {
         }
     }
 
-    @Test void shortSegmentsSurviveJunctionAndRuinSplitsAndIdsStayStable() {
+    @Test
+    void shortSegmentsSurviveJunctionAndRuinSplitsAndIdsStayStable() {
         World w = new World();
         w.line(0, 100, 0);
-        for (int z = 1; z <= 12; z++) w.add(new Point(60, 64, z));
+        for (int z = 1; z <= 12; z++)
+            w.add(new Point(60, 64, z));
         w.ruins.put(new Point(80, 64, 0), Set.of("surface-ruin"));
         w.claims.put(new Point(95, 64, 0), Set.of("other-village"));
         w.seeds.add(new Point(15, 64, 0));
@@ -66,10 +100,12 @@ class RouteSurveyTest {
         assertEquals(first, second);
     }
 
-    @Test void shortSpursAndClaimTransitionsAreWrappedIntoOneDistinctRoad() {
+    @Test
+    void shortSpursAndClaimTransitionsAreWrappedIntoOneDistinctRoad() {
         World w = new World();
         w.line(0, 80, 0);
-        // A 2-block side spur at x=40 and plot/claim transitions at x=20 and x=50 must not split the road.
+        // A 2-block side spur at x=40 and plot/claim transitions at x=20 and x=50 must
+        // not split the road.
         w.add(new Point(40, 64, 1));
         w.add(new Point(40, 64, 2));
         w.claims.put(new Point(20, 64, 0), Set.of("plot:a"));
@@ -87,16 +123,19 @@ class RouteSurveyTest {
         assertEquals("S", RouteDisplay.direction(oriented.points().get(0), oriented.points().get(1)));
     }
 
-    @Test void multipleExitsDoNotDoubleCountAndWidthDoesNotMultiplyLength() {
+    @Test
+    void multipleExitsDoNotDoubleCountAndWidthDoesNotMultiplyLength() {
         World w = new World();
-        for (int z = -1; z <= 1; z++) w.line(0, 100, z);
+        for (int z = -1; z <= 1; z++)
+            w.line(0, 100, z);
         w.seeds.add(new Point(15, 64, 0));
         w.seeds.add(new Point(16, 64, 0));
         Result r = w.run(Kind.ROAD);
         assertTrue(r.length() >= 96 && r.length() <= 100, "Centreline distance, not 303 paving blocks: " + r.length());
     }
 
-    @Test void railwayUsesOnlySuppliedTrackConnections() {
+    @Test
+    void railwayUsesOnlySuppliedTrackConnections() {
         World w = new World();
         w.line(0, 60, 0);
         w.line(0, 60, 2);
@@ -104,7 +143,8 @@ class RouteSurveyTest {
         assertEquals(60, w.run(Kind.RAIL).length(), 0.001);
     }
 
-    @Test void loopsAreSavedOnceAndMultipleExitsDoNotDuplicateTheirEdges() {
+    @Test
+    void loopsAreSavedOnceAndMultipleExitsDoNotDuplicateTheirEdges() {
         World w = new World();
         w.line(0, 20, 0);
         w.line(0, 20, 20);
@@ -126,7 +166,8 @@ class RouteSurveyTest {
         }
     }
 
-    @Test void eightHundredOutwardPlusInsideAndIncompleteRetainsSuccess() {
+    @Test
+    void eightHundredOutwardPlusInsideAndIncompleteRetainsSuccess() {
         World w = new World();
         w.line(0, 1000, 0);
         w.seeds.add(new Point(15, 64, 0));
@@ -142,7 +183,8 @@ class RouteSurveyTest {
         assertEquals(limited, saved.latest());
     }
 
-    @Test void realTimeGatePersistsAndDoesNotRetryOnRestartOrClockRollback() {
+    @Test
+    void realTimeGatePersistsAndDoesNotRetryOnRestartOrClockRollback() {
         Saved saved = Saved.empty().begin(1000);
         Saved loaded = RouteSurveyJson.decode(RouteSurveyJson.encode(saved));
         assertEquals(saved, loaded);
@@ -150,10 +192,12 @@ class RouteSurveyTest {
         assertFalse(loaded.due(1000 + INTERVAL_MILLIS - 1));
         assertTrue(loaded.due(1000 + INTERVAL_MILLIS));
         assertThrows(IllegalStateException.class, () -> loaded.begin(1001));
+        assertEquals(1001, loaded.beginForced(1001).lastChecked());
         assertThrows(RuntimeException.class, () -> RouteSurveyJson.decode("{\"version\":2}"));
     }
 
-    @Test void completeResurveyReplacesRemovedSegmentsAndIncompleteIsExplicit() {
+    @Test
+    void completeResurveyReplacesRemovedSegmentsAndIncompleteIsExplicit() {
         World w = new World();
         w.line(0, 60, 0);
         w.seeds.add(new Point(15, 64, 0));
@@ -165,19 +209,52 @@ class RouteSurveyTest {
         assertFalse(w.run(Kind.ROAD).complete());
     }
 
-    @Test void backgroundMeasurementNeverReadsLiveSource() throws InterruptedException {
+    @Test
+    void backgroundMeasurementNeverReadsLiveSource() throws InterruptedException {
         World w = new World();
         w.line(0, 100, 0);
         w.seeds.add(new Point(15, 64, 0));
         Thread serverThread = Thread.currentThread();
         Source checked = new Source() {
-            void check() { assertSame(serverThread, Thread.currentThread(), "Live source access must stay on server thread"); }
-            @Override public Iterator<Point> seeds() { check(); return w.seeds(); }
-            @Override public List<Link> neighbors(Point p) { check(); return w.neighbors(p); }
-            @Override public boolean inside(Point p) { check(); return w.inside(p); }
-            @Override public Set<String> claims(Point p) { check(); return w.claims(p); }
-            @Override public Set<String> ruins(Point p) { check(); return w.ruins(p); }
-            @Override public Set<String> issues() { check(); return w.issues(); }
+            void check() {
+                assertSame(serverThread, Thread.currentThread(), "Live source access must stay on server thread");
+            }
+
+            @Override
+            public Iterator<Point> seeds() {
+                check();
+                return w.seeds();
+            }
+
+            @Override
+            public List<Link> neighbors(Point p) {
+                check();
+                return w.neighbors(p);
+            }
+
+            @Override
+            public boolean inside(Point p) {
+                check();
+                return w.inside(p);
+            }
+
+            @Override
+            public Set<String> claims(Point p) {
+                check();
+                return w.claims(p);
+            }
+
+            @Override
+            public Set<String> ruins(Point p) {
+                check();
+                return w.ruins(p);
+            }
+
+            @Override
+            public Set<String> issues() {
+                check();
+                return w.issues();
+            }
         };
         var executor = java.util.concurrent.Executors.newSingleThreadExecutor();
         try {

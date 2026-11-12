@@ -262,19 +262,21 @@ public class ForgeEvents {
                     com.falazar.farmupcraft.ChunkManager.VILLAGER_DEATH_WAYPOINT_TAG), serverPlayer);
             }
 
-            // Every login: warn if village treasury is too low to cover today's upkeep.
+            // Every login: warn if village treasury is too low to cover today's net upkeep.
             PlayerData loginPlayerData = playerDatabase.getData(uuid);
             if (loginPlayerData != null && loginPlayerData.getHomeVillageUUID() != null) {
                 com.falazar.farmupcraft.data.VillageData loginVillage = ModEvents.getVillageDatabase()
                         .getData(loginPlayerData.getHomeVillageUUID());
                 if (loginVillage != null) {
                     int upkeep = VillageCommand.getDailyCost(loginVillage);
-                    if (loginVillage.getCoins() < upkeep) {
+                    int income = VillageCommand.countVillageClaimedStructures(loginVillage, level) * 100;
+                    int netDaily = income - upkeep;
+                    if (netDaily < 0 && loginVillage.getCoins() + netDaily < 0) {
                         serverPlayer.sendSystemMessage(
                                 Component
                                         .literal("Warning: " + loginVillage.getName() + " treasury ("
-                                                + loginVillage.getCoins() + " coins) cannot cover today's upkeep ("
-                                                + upkeep + " coins)!")
+                                                + loginVillage.getCoins() + " coins) cannot cover today's net upkeep ("
+                                                + netDaily + " coins; earned=" + income + ", cost=" + upkeep + ")!")
                                         .withStyle(ChatFormatting.RED));
                     }
                 }

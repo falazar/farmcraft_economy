@@ -16,32 +16,36 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public final class VillageRouteSurveys {
-    public static final Codec<RouteSurvey.Saved> CODEC =
-            Codec.STRING.listOf().xmap(RouteSurveyJson::decodeChunks, RouteSurveyJson::encodeChunks);
+    public static final Codec<RouteSurvey.Saved> CODEC = Codec.STRING.listOf().xmap(RouteSurveyJson::decodeChunks,
+            RouteSurveyJson::encodeChunks);
     private static final Logger LOGGER = LogUtils.getLogger();
     private static MinecraftServer activeServer;
     private static ExecutorService worker;
     private static RouteSurvey job;
     private static String jobKey;
     private static int checkTicks;
-    private VillageRouteSurveys() {}
+    private static final Set<String> forcedRequests = new LinkedHashSet<>();
 
-    public static String key(UUID village, RouteSurvey.Kind kind) { return village + "/" + kind; }
+    private VillageRouteSurveys() {
+    }
+
+    public static String key(UUID village, RouteSurvey.Kind kind) {
+        return village + "/" + kind;
+    }
+
+    public static boolean request(ServerLevel level, VillageData village, RouteSurvey.Kind kind) {
+        if (village == null || !village.isBought())
+            return false;
+        activate(level.getServer());
+        String requestedKey = key(village.getUUID(), kind);
+        return !requestedKey.equals(jobKey) && forcedRequests.add(requestedKey);
+    }
 
     public static void tick(MinecraftServer server) {
-        if (activeServer != server) {
-            if (worker != null) worker.shutdownNow();
-            activeServer = server;
-            job = null;
-            checkTicks = 0;
-            worker = Executors.newSingleThreadExecutor(r -> {
-                Thread thread = new Thread(r, "farmupcraft-route-measurement");
-                thread.setDaemon(true);
-                return thread;
-            });
-        }
+        activate(server);
         ServerLevel level = server.overworld();
-        if (level == null) return;
+        if (level == null)
+            return;
         var db = ModEvents.getRouteSurveyDatabase(level);
         if (job != null) {
             try {
@@ -52,48 +56,95 @@ public final class VillageRouteSurveys {
                     LOGGER.info("Route survey {}: {}, {} segments, {} blocks", jobKey, saved.status(),
                             saved.latest().segments().size(), Math.round(saved.latest().length()));
                     job = null;
+                    jobKey = null;
                 }
             } catch (RuntimeException exception) {
                 LOGGER.error("Route survey {} failed; preserving previous successful measurement", jobKey, exception);
                 var previous = db.getData(jobKey);
-                db.putData(jobKey, previous.finish(new RouteSurvey.Result(List.of(), Set.of("survey failed; see server log")),
-                        System.currentTimeMillis()));
+                db.putData(jobKey,
+                        previous.finish(new RouteSurvey.Result(List.of(), Set.of("survey failed; see server log")),
+                                System.currentTimeMillis()));
                 job = null;
+                jobKey = null;
             }
             return;
         }
-        if (++checkTicks < 200) return;
+        if (!forcedRequests.isEmpty()) {
+            String requestedKey = forcedRequests.iterator().next();
+            forcedRequests.remove(requestedKey);
+            String[] parts = requestedKey.split("/", 2);
+            VillageData village = ModEvents.getVillageDatabase(level).getData(UUID.fromString(parts[0]));
+            if (village != null && village.isBought()) {
+                startSurvey(level, village, RouteSurvey.Kind.valueOf(parts[1]), true, System.currentTimeMillis());
+                return;
+            }
+        }
+        if (++checkTicks < 200)
+            return;
         checkTicks = 0;
         long now = System.currentTimeMillis();
         for (VillageData village : ModEvents.getVillageDatabase(level).getValues().stream()
                 .sorted(Comparator.comparing(v -> v.getUUID().toString())).toList()) {
-            if (!village.isBought()) continue;
+            if (!village.isBought())
+                continue;
             for (RouteSurvey.Kind kind : RouteSurvey.Kind.values()) {
                 String key = key(village.getUUID(), kind);
                 RouteSurvey.Saved saved = db.getOrCreate(key, RouteSurvey.Saved::empty);
                 publishDiscovery(level, key, saved);
-                if (!saved.due(now)) continue;
-                db.putData(key, saved.begin(now));
-                jobKey = key;
-                try {
-                    job = new RouteSurvey(new RouteSurveyWorld(level, village, kind), kind,
-                            level.dimension().toString() + "/" + village.getUUID(), worker);
-                    LOGGER.info("Starting automatic {} survey for {}", kind, village.getName());
-                } catch (RuntimeException exception) {
-                    LOGGER.error("Cannot start route survey {}; preserving previous successful measurement", key, exception);
-                    db.putData(key, db.getData(key).finish(
-                            new RouteSurvey.Result(List.of(), Set.of("survey setup failed; see server log")), now));
-                }
+                if (!saved.due(now))
+                    continue;
+                startSurvey(level, village, kind, false, now);
                 return;
             }
         }
     }
 
+    private static void activate(MinecraftServer server) {
+        if (activeServer == server)
+            return;
+        if (worker != null)
+            worker.shutdownNow();
+        activeServer = server;
+        job = null;
+        jobKey = null;
+        checkTicks = 0;
+        forcedRequests.clear();
+        worker = Executors.newSingleThreadExecutor(r -> {
+            Thread thread = new Thread(r, "farmupcraft-route-measurement");
+            thread.setDaemon(true);
+            return thread;
+        });
+    }
+
+    private static void startSurvey(ServerLevel level, VillageData village, RouteSurvey.Kind kind,
+            boolean forced, long now) {
+        var db = ModEvents.getRouteSurveyDatabase(level);
+        String surveyKey = key(village.getUUID(), kind);
+        RouteSurvey.Saved saved = db.getOrCreate(surveyKey, RouteSurvey.Saved::empty);
+        db.putData(surveyKey, forced ? saved.beginForced(now) : saved.begin(now));
+        jobKey = surveyKey;
+        try {
+            job = new RouteSurvey(new RouteSurveyWorld(level, village, kind, kind == RouteSurvey.Kind.ROAD), kind,
+                    level.dimension().toString() + "/" + village.getUUID(), worker);
+            LOGGER.info("Starting {} {} survey for {}", forced ? "requested" : "automatic", kind, village.getName());
+        } catch (RuntimeException exception) {
+            LOGGER.error("Cannot start route survey {}; preserving previous successful measurement", surveyKey,
+                    exception);
+            db.putData(surveyKey, db.getData(surveyKey).finish(
+                    new RouteSurvey.Result(List.of(), Set.of("survey setup failed; see server log")), now));
+            jobKey = null;
+        }
+    }
+
     public static void stop(MinecraftServer server) {
-        if (activeServer != server) return;
-        if (worker != null) worker.shutdownNow();
+        if (activeServer != server)
+            return;
+        if (worker != null)
+            worker.shutdownNow();
         worker = null;
         job = null;
+        jobKey = null;
+        forcedRequests.clear();
         activeServer = null;
         VillageRoads.clear();
     }
@@ -111,7 +162,8 @@ public final class VillageRouteSurveys {
         var villages = ModEvents.getVillageDatabase(source.getLevel());
         VillageData village;
         if (name != null) {
-            village = villages.getValues().stream().filter(v -> v.getName().equalsIgnoreCase(name)).findFirst().orElse(null);
+            village = villages.getValues().stream().filter(v -> v.getName().equalsIgnoreCase(name)).findFirst()
+                    .orElse(null);
         } else {
             var player = source.getPlayer();
             var data = player == null ? null : ModEvents.getPlayerDatabase().getData(player.getUUID());
@@ -121,7 +173,8 @@ public final class VillageRouteSurveys {
             source.sendFailure(Component.literal("No village found. Use /village routes <villageName>."));
             return 0;
         }
-        source.sendSystemMessage(Component.literal("Saved routes for " + village.getName() + " (automatic, every 24 real hours):"));
+        source.sendSystemMessage(
+                Component.literal("Saved routes for " + village.getName() + " (automatic, every 24 real hours):"));
         for (RouteSurvey.Kind kind : RouteSurvey.Kind.values()) {
             var saved = ModEvents.getRouteSurveyDatabase(source.getLevel()).getData(key(village.getUUID(), kind));
             if (saved == null) {
@@ -152,5 +205,7 @@ public final class VillageRouteSurveys {
         return 1;
     }
 
-    private static String datetime(long millis) { return millis == 0 ? "never" : Instant.ofEpochMilli(millis).toString(); }
+    private static String datetime(long millis) {
+        return millis == 0 ? "never" : Instant.ofEpochMilli(millis).toString();
+    }
 }

@@ -200,16 +200,17 @@ public final class MineshaftOreGameTests {
                     && Math.pow(pos.getX() - center.getX(), 2) + Math.pow(pos.getZ() - center.getZ(), 2) <= 48 * 48,
                     "Spawned ores satisfy actual horizontal and vertical ranges");
             helper.assertValueEqual(messages.size(), 2, "Each successful spawn notifies its miner exactly once");
-            for (int i = 2; i < 11; i++) {
+            int totalMessages = com.falazar.farmupcraft.util.LuckyMineMessages.MESSAGES.size();
+            for (int i = 2; i < totalMessages + 1; i++) {
                 level.setBlock(center, Blocks.DIAMOND_ORE.defaultBlockState(), 2);
                 queueBreak(level, center, player);
                 level.setBlock(center, Blocks.AIR.defaultBlockState(), 2);
                 seedWinningRoll(level);
                 MineshaftOreEvents.tick(new ServerTickEvent.Post(() -> true, level.getServer()));
             }
-            helper.assertTrue(messages.subList(0, 10).equals(com.falazar.farmupcraft.util.LuckyMineMessages.MESSAGES),
-                    "Ten themed messages alternate without repeats");
-            helper.assertTrue(messages.get(10).equals(messages.getFirst()), "Messages cycle after all ten are used");
+            helper.assertTrue(messages.subList(0, totalMessages).equals(com.falazar.farmupcraft.util.LuckyMineMessages.MESSAGES),
+                    "Twenty themed messages alternate without repeats");
+            helper.assertTrue(messages.get(totalMessages).equals(messages.getFirst()), "Messages cycle after all twenty are used");
         } finally {
             provenance.remove(center);
             before.forEach((pos, state) -> level.setBlock(pos, state, 2));

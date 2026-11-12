@@ -18,7 +18,10 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
-/** Lists nearby zones and replaces named zone records without changing their identity. */
+/**
+ * Lists nearby zones and replaces named zone records without changing their
+ * identity.
+ */
 public class ZoneCommand {
     public static final CustomLogger LOGGER = new CustomLogger(ZoneCommand.class.getSimpleName());
 
@@ -27,10 +30,12 @@ public class ZoneCommand {
                 .then(Commands.literal("list")
                         .executes(context -> listNearbyZones(context.getSource(), 50, null))
                         .then(Commands.argument("type", StringArgumentType.string())
+                                .suggests(CommandSuggestions::zoneTypes)
                                 .executes(context -> listNearbyZones(context.getSource(), 50,
                                         StringArgumentType.getString(context, "type")))))
                 .then(Commands.literal("rename")
                         .then(Commands.argument("oldName", StringArgumentType.string())
+                                .suggests(CommandSuggestions::zoneNames)
                                 .then(Commands.argument("newName", StringArgumentType.string())
                                         .executes(context -> renameZone(context.getSource(),
                                                 StringArgumentType.getString(context, "oldName"),
@@ -43,7 +48,8 @@ public class ZoneCommand {
     }
 
     static List<GameZone> nearbyZones(Collection<GameZone> zones, ChunkPos origin, int radius, String type) {
-        if (radius < 0) throw new IllegalArgumentException("Chunk radius must not be negative");
+        if (radius < 0)
+            throw new IllegalArgumentException("Chunk radius must not be negative");
         return zones.stream()
                 .filter(zone -> type == null || zone.getType().name().equalsIgnoreCase(type))
                 .filter(zone -> chunkDistance(zone, origin) <= radius)
@@ -77,7 +83,7 @@ public class ZoneCommand {
         for (GameZone zone : nearby) {
             var center = zone.getCenter();
             source.sendSystemMessage(Component.literal(String.format("• %s (%s) - %d chunks away, size: %d sections",
-                            zone.getName(), zone.getType().name(), chunkDistance(zone, origin), zone.getSize()))
+                    zone.getName(), zone.getType().name(), chunkDistance(zone, origin), zone.getSize()))
                     .withStyle(ChatFormatting.WHITE)
                     .withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand(
                             "/tp " + center.getX() + " " + center.getY() + " " + center.getZ()))));
@@ -85,14 +91,18 @@ public class ZoneCommand {
         return nearby.size();
     }
 
-    /** Validates against the same snapshot used for name lookup; no database mutation on failure. */
+    /**
+     * Validates against the same snapshot used for name lookup; no database
+     * mutation on failure.
+     */
     static GameZone renamedZone(Collection<GameZone> zones, String oldName, String newName) {
         GameZone original = zones.stream().filter(zone -> zone.getName().equals(oldName)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Zone '" + oldName + "' not found."));
         if (zones.stream().anyMatch(zone -> zone.getName().equals(newName))) {
             throw new IllegalArgumentException("A zone with name '" + newName + "' already exists.");
         }
-        return new GameZone(original.getUuid(), newName, original.getSections(), original.getType(), original.getCenter());
+        return new GameZone(original.getUuid(), newName, original.getSections(), original.getType(),
+                original.getCenter());
     }
 
     private static int renameZone(CommandSourceStack source, String oldName, String newName) {

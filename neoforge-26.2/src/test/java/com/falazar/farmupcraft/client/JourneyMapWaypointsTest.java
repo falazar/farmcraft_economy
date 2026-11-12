@@ -47,7 +47,7 @@ class JourneyMapWaypointsTest {
     void structureMapOpensOnlyAfterTheMarkerIsAddedAndOrdinaryWaypointsDoNotOpen() {
         var fixture = new Fixture();
         var structure = new AddJMWaypointPacket(120, 70, -300, "Ruin",
-                "minecraft:overworld", true, 0x00FF00, true);
+                "minecraft:overworld", true, 0xFFFF00, true);
         var opened = new ArrayList<AddJMWaypointPacket>();
         JourneyMapIntegration.addWaypoint(structure, fixture.api, fixture, payload -> {
             assertEquals(1, fixture.added.size(), "Map must open after its waypoint has been added");
@@ -58,6 +58,27 @@ class JourneyMapWaypointsTest {
         JourneyMapIntegration.addWaypoint(new AddJMWaypointPacket(0, 64, 0, "Ordinary", "minecraft:overworld"),
                 fixture.api, fixture, opened::add);
         assertEquals(List.of(structure), opened);
+    }
+
+    @Test
+    void structureBookmarkOverwritesMatchingFarmUpCraftWaypointWithoutTouchingOtherMarkers() {
+        var fixture = new Fixture();
+        var structure = new AddJMWaypointPacket(120, 70, -300, "Ruin", "minecraft:overworld", true, 0xFFFF00, true);
+        var old = JourneyMapIntegration.createWaypoint(
+                new AddJMWaypointPacket(120, 70, -300, "Ruin", "minecraft:overworld", true, 0x00FF00), fixture);
+        var unrelated = JourneyMapIntegration.createWaypoint(
+                new AddJMWaypointPacket(121, 70, -300, "Ruin", "minecraft:overworld", true, 0x00FF00), fixture);
+        fixture.added.add(old);
+        fixture.added.add(unrelated);
+
+        JourneyMapIntegration.addWaypoint(structure, fixture.api, fixture, ignored -> {
+        });
+
+        assertEquals(List.of(old), fixture.removed);
+        assertEquals(2, fixture.added.size());
+        assertSame(unrelated, fixture.added.getFirst());
+        assertNotSame(old, fixture.added.getLast());
+        assertEquals(0xFFFF00, fixture.added.getLast().getColor());
     }
 
     @Test
@@ -182,19 +203,24 @@ class JourneyMapWaypointsTest {
         boolean failAddition;
         boolean failRemoval;
         final IClientAPI api = (IClientAPI) Proxy.newProxyInstance(IClientAPI.class.getClassLoader(),
-                new Class<?>[]{IClientAPI.class}, (proxy, method, args) -> {
+                new Class<?>[] { IClientAPI.class }, (proxy, method, args) -> {
                     if (method.getName().equals("getAllWaypoints")) {
                         return List.copyOf(added);
                     }
-                    assertEquals("farmupcraft", args[0], "API calls must use the registered plugin ID, not native owner");
+                    assertEquals("farmupcraft", args[0],
+                            "API calls must use the registered plugin ID, not native owner");
                     switch (method.getName()) {
                         case "addWaypoint" -> {
-                            if (failAddition) throw new IllegalStateException("Expected addition failure");
+                            if (failAddition)
+                                throw new IllegalStateException("Expected addition failure");
                             added.add((Waypoint) args[1]);
                         }
                         case "removeWaypoint" -> {
-                            if (failRemoval) throw new IllegalStateException("Expected removal failure");
-                            removed.add((Waypoint) args[1]);
+                            if (failRemoval)
+                                throw new IllegalStateException("Expected removal failure");
+                            Waypoint waypoint = (Waypoint) args[1];
+                            removed.add(waypoint);
+                            added.remove(waypoint);
                         }
                         default -> throw new UnsupportedOperationException(method.getName());
                     }
@@ -204,8 +230,8 @@ class JourneyMapWaypointsTest {
         @Override
         public Waypoint create(String owner, BlockPos position, String name, String dimension, boolean persistent) {
             Map<String, String> customData = new HashMap<>();
-            int[] color = {0};
-            return (Waypoint) Proxy.newProxyInstance(Waypoint.class.getClassLoader(), new Class<?>[]{Waypoint.class},
+            int[] color = { 0 };
+            return (Waypoint) Proxy.newProxyInstance(Waypoint.class.getClassLoader(), new Class<?>[] { Waypoint.class },
                     (proxy, method, args) -> switch (method.getName()) {
                         case "getModId" -> owner;
                         case "getName" -> name;
@@ -216,8 +242,14 @@ class JourneyMapWaypointsTest {
                         case "getPrimaryDimension" -> dimension;
                         case "isPersistent" -> persistent;
                         case "getColor" -> color[0];
-                        case "setColor" -> { color[0] = (int) args[0]; yield null; }
-                        case "setCustomData" -> { customData.put((String) args[0], (String) args[1]); yield null; }
+                        case "setColor" -> {
+                            color[0] = (int) args[0];
+                            yield null;
+                        }
+                        case "setCustomData" -> {
+                            customData.put((String) args[0], (String) args[1]);
+                            yield null;
+                        }
                         case "getCustomData" -> customData.get((String) args[0]);
                         case "equals" -> proxy == args[0];
                         case "hashCode" -> System.identityHashCode(proxy);

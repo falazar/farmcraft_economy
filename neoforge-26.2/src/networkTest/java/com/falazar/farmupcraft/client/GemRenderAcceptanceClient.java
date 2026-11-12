@@ -24,13 +24,18 @@ public final class GemRenderAcceptanceClient {
 
     @SubscribeEvent
     public static void tick(ClientTickEvent.Post event) {
-        if (!GemRenderAcceptance.enabled() || finished) return;
+        if (!GemRenderAcceptance.enabled() || finished)
+            return;
         var minecraft = Minecraft.getInstance();
-        if (deadline == 0) deadline = System.nanoTime() + 180_000_000_000L;
+        if (deadline == 0)
+            deadline = System.nanoTime() + 180_000_000_000L;
         try {
-            if (System.nanoTime() > deadline) throw new IllegalStateException("Gem render probe timed out");
-            if (minecraft.level == null || minecraft.player == null || minecraft.gameMode == null) return;
-            if (minecraft.gui.screen() != null) minecraft.gui.setScreen(null);
+            if (System.nanoTime() > deadline)
+                throw new IllegalStateException("Gem render probe timed out");
+            if (minecraft.level == null || minecraft.player == null || minecraft.gameMode == null)
+                return;
+            if (minecraft.gui.screen() != null)
+                minecraft.gui.setScreen(null);
             minecraft.gui.hud.getChat().clearMessages(true);
             minecraft.gui.toastManager().clear();
             minecraft.gui.hud.clearTitles();
@@ -38,22 +43,26 @@ public final class GemRenderAcceptanceClient {
                 String gem = GemContent.TYPES.get(i);
                 if (!minecraft.level.getBlockState(new BlockPos(30 + i, 81, 36)).is(GemContent.ore(gem, false))
                         || !minecraft.level.getBlockState(new BlockPos(30 + i, 82, 36)).is(GemContent.ore(gem, true))
-                        || !minecraft.player.getInventory().getItem(i).is(GemContent.gem(gem))) return;
-                for (String resource : new String[]{"textures/item/" + gem + ".png",
+                        || !minecraft.player.getInventory().getItem(i).is(GemContent.gem(gem)))
+                    return;
+                for (String resource : new String[] { "textures/item/" + gem + ".png",
                         "textures/block/" + gem + "_ore.png", "textures/block/deepslate_" + gem + "_ore.png",
-                        "items/" + gem + ".json", "models/item/" + gem + ".json"}) {
-                    if (minecraft.getResourceManager().getResource(Identifier.fromNamespaceAndPath("farmupcraft", resource)).isEmpty()) {
+                        "items/" + gem + ".json", "models/item/" + gem + ".json" }) {
+                    if (minecraft.getResourceManager()
+                            .getResource(Identifier.fromNamespaceAndPath("farmupcraft", resource)).isEmpty()) {
                         throw new IllegalStateException("Missing gem render resource " + resource);
                     }
                 }
             }
             if (seenAt < 0) {
-                if (Boolean.getBoolean("farmupcraft.soundRetryAcceptance")) verifySoundRetry(minecraft);
+                if (Boolean.getBoolean("farmupcraft.soundRetryAcceptance"))
+                    verifySoundFailureLogging(minecraft);
                 seenAt = minecraft.level.getGameTime();
             }
             minecraft.player.setYRot(0);
             minecraft.player.setXRot(0);
-            if (minecraft.level.getGameTime() - seenAt >= 60) capture = true;
+            if (minecraft.level.getGameTime() - seenAt >= 60)
+                capture = true;
         } catch (RuntimeException error) {
             finished = true;
             PlayerActionAcceptance.report("FAIL gem render " + error);
@@ -61,59 +70,43 @@ public final class GemRenderAcceptanceClient {
         }
     }
 
-    private static void verifySoundRetry(Minecraft minecraft) {
+    private static void verifySoundFailureLogging(Minecraft minecraft) {
         try {
             var manager = minecraft.getSoundManager();
             var engineField = manager.getClass().getDeclaredField("soundEngine");
             engineField.setAccessible(true);
             var engine = engineField.get(manager);
-            var loadedField = engine.getClass().getDeclaredField("loaded");
-            loadedField.setAccessible(true);
-            var retryField = engine.getClass().getDeclaredField("farmupcraft$audioRetry");
-            retryField.setAccessible(true);
-            var retry = (SoundRetryCooldown) retryField.get(engine);
-            var shouldChange = engine.getClass().getDeclaredMethod("shouldChangeDevice");
-            shouldChange.setAccessible(true);
-            boolean wasLoaded = loadedField.getBoolean(engine);
-            try {
-                loadedField.setBoolean(engine, false);
-                retry.recordAttempt(false, System.nanoTime());
-                for (int i = 0; i < 1000; i++) {
-                    if (!Boolean.FALSE.equals(shouldChange.invoke(engine))) {
-                        throw new IllegalStateException("Failed sound retried during cooldown");
-                    }
-                }
-                retry.recordAttempt(false, System.nanoTime() - java.util.concurrent.TimeUnit.MINUTES.toNanos(5) - 1_000_000);
-                if (!Boolean.TRUE.equals(shouldChange.invoke(engine))) {
-                    throw new IllegalStateException("Hourly sound retry did not become due");
-                }
-            } finally {
-                loadedField.setBoolean(engine, wasLoaded);
+            var throttleField = engine.getClass().getDeclaredField("farmupcraft$failureLogCooldown");
+            throttleField.setAccessible(true);
+            if (throttleField.get(engine) == null) {
+                throw new IllegalStateException("Sound failure log throttle was not initialized");
             }
-            // Exercise an actual manual reload while the automatic cooldown is active.
-            retry.recordAttempt(false, System.nanoTime());
-            var attemptTime = SoundRetryCooldown.class.getDeclaredField("failedAt");
-            attemptTime.setAccessible(true);
-            long before = attemptTime.getLong(retry);
+            var throttle = new SoundRetryCooldown();
+            long now = System.nanoTime();
+            long oneHour = java.util.concurrent.TimeUnit.HOURS.toNanos(1);
+            if (!throttle.shouldLogFailure(now) || throttle.shouldLogFailure(now + 1)
+                    || !throttle.shouldLogFailure(now + oneHour)) {
+                throw new IllegalStateException("Sound failure warnings are not limited to one per hour");
+            }
             manager.reload();
-            if (attemptTime.getLong(retry) == before || retry.hasFailed() == loadedField.getBoolean(engine)) {
-                throw new IllegalStateException("Manual reload did not update cooldown from actual load result");
-            }
-            PlayerActionAcceptance.report("PASS sound retry transformed client: 1000 suppressed checks, five-minute retry, manual reload");
+            PlayerActionAcceptance
+                    .report("PASS sound failure logging: hourly warning limit and manual resource reload");
         } catch (ReflectiveOperationException error) {
-            throw new IllegalStateException("Cannot verify transformed sound retry mixin", error);
+            throw new IllegalStateException("Cannot verify transformed sound logging mixin", error);
         }
     }
 
     @SubscribeEvent
     public static void frame(RenderFrameEvent.Post event) {
-        if (!GemRenderAcceptance.enabled() || !capture || finished) return;
+        if (!GemRenderAcceptance.enabled() || !capture || finished)
+            return;
         capture = false;
         finished = true;
         Screenshot.takeScreenshot(Minecraft.getInstance().gameRenderer.mainRenderTarget(), image -> {
             try (image) {
                 image.writeToFile(PlayerActionAcceptance.directory().resolve("gem-render.png"));
-                PlayerActionAcceptance.report("PASS gem render synchronized five items, ten blocks, loaded assets, framebuffer screenshot");
+                PlayerActionAcceptance.report(
+                        "PASS gem render synchronized five items, ten blocks, loaded assets, framebuffer screenshot");
             } catch (IOException error) {
                 PlayerActionAcceptance.report("FAIL gem render screenshot " + error);
             } finally {

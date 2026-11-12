@@ -11,24 +11,37 @@ public final class RouteSurvey {
     public static final int OUTWARD_LIMIT = 800;
     public static final int MAX_POSITIONS = 32_768;
     private static final int MAX_SEED_CHECKS = 1_048_576;
-    public enum Kind { ROAD, RAIL }
+
+    public enum Kind {
+        ROAD, RAIL
+    }
+
     public record Point(int x, int y, int z) implements Comparable<Point> {
-        public Point offset(int dx, int dy, int dz) { return new Point(x + dx, y + dy, z + dz); }
+        public Point offset(int dx, int dy, int dz) {
+            return new Point(x + dx, y + dy, z + dz);
+        }
+
         public double distance(Point p) {
             return Math.sqrt((double) (x - p.x) * (x - p.x) + (double) (y - p.y) * (y - p.y)
                     + (double) (z - p.z) * (z - p.z));
         }
-        @Override public int compareTo(Point p) {
+
+        @Override
+        public int compareTo(Point p) {
             int c = Integer.compare(x, p.x);
-            if (c == 0) c = Integer.compare(z, p.z);
+            if (c == 0)
+                c = Integer.compare(z, p.z);
             return c == 0 ? Integer.compare(y, p.y) : c;
         }
     }
+
     public record Link(Point point, double length) {
         public Link {
-            if (!Double.isFinite(length) || length <= 0) throw new IllegalArgumentException("Invalid route edge");
+            if (!Double.isFinite(length) || length <= 0)
+                throw new IllegalArgumentException("Invalid route edge");
         }
     }
+
     private static final int MIN_SHORT_SPUR_STEPS = 8;
 
     public static List<Segment> coalesceSegments(List<Segment> rawSegments) {
@@ -50,7 +63,8 @@ public final class RouteSurvey {
         Map<Point, Set<String>> extraRuins = new HashMap<>();
         for (int i = 0; i < rawSegments.size(); i++) {
             Segment s = rawSegments.get(i);
-            if (s.points().size() - 1 > MIN_SHORT_SPUR_STEPS || s.length() > MIN_SHORT_SPUR_STEPS) continue;
+            if (s.points().size() - 1 > MIN_SHORT_SPUR_STEPS || s.length() > MIN_SHORT_SPUR_STEPS)
+                continue;
             Point a = s.points().get(0);
             Point b = s.points().get(s.points().size() - 1);
             int degA = byEndpoint.getOrDefault(a, List.of()).size();
@@ -64,7 +78,8 @@ public final class RouteSurvey {
         }
         List<Segment> kept = new ArrayList<>();
         for (int i = 0; i < rawSegments.size(); i++) {
-            if (!absorbedSpurs.contains(i)) kept.add(rawSegments.get(i));
+            if (!absorbedSpurs.contains(i))
+                kept.add(rawSegments.get(i));
         }
         if (kept.size() <= 1 && extraClaims.isEmpty() && extraRuins.isEmpty()) {
             return List.copyOf(kept);
@@ -84,14 +99,16 @@ public final class RouteSurvey {
         // Start from non-degree-2 endpoints first, then any remaining cycles.
         for (int pass = 0; pass < 2; pass++) {
             for (int i = 0; i < kept.size(); i++) {
-                if (used[i]) continue;
+                if (used[i])
+                    continue;
                 List<Point> pts = kept.get(i).points();
                 Point a = pts.get(0);
                 Point b = pts.get(pts.size() - 1);
                 Point start = pass == 0
                         ? (adj.get(a).size() != 2 ? a : adj.get(b).size() != 2 ? b : null)
                         : a;
-                if (start == null) continue;
+                if (start == null)
+                    continue;
                 merged.add(walkChain(kept, adj, used, i, start, extraClaims, extraRuins));
             }
         }
@@ -99,8 +116,8 @@ public final class RouteSurvey {
     }
 
     private static Segment walkChain(List<Segment> kept, Map<Point, List<Integer>> adj, boolean[] used,
-                                     int firstIdx, Point startEnd,
-                                     Map<Point, Set<String>> extraClaims, Map<Point, Set<String>> extraRuins) {
+            int firstIdx, Point startEnd,
+            Map<Point, Set<String>> extraClaims, Map<Point, Set<String>> extraRuins) {
         used[firstIdx] = true;
         Segment first = kept.get(firstIdx);
         List<Point> chain = new ArrayList<>(first.points());
@@ -120,7 +137,8 @@ public final class RouteSurvey {
                     break;
                 }
             }
-            if (nextIdx < 0) break;
+            if (nextIdx < 0)
+                break;
             used[nextIdx] = true;
             Segment nextSeg = kept.get(nextIdx);
             List<Point> nextPts = new ArrayList<>(nextSeg.points());
@@ -149,70 +167,115 @@ public final class RouteSurvey {
 
     public static Segment orientOutward(Segment segment, int centerX, int centerZ) {
         List<Point> pts = segment.points();
-        if (pts.size() < 2) return segment;
+        if (pts.size() < 2)
+            return segment;
         Point a = pts.get(0);
         Point b = pts.get(pts.size() - 1);
         long distA = (long) (a.x() - centerX) * (a.x() - centerX) + (long) (a.z() - centerZ) * (a.z() - centerZ);
         long distB = (long) (b.x() - centerX) * (b.x() - centerX) + (long) (b.z() - centerZ) * (b.z() - centerZ);
-        if (distA <= distB) return segment;
+        if (distA <= distB)
+            return segment;
         List<Point> reversed = new ArrayList<>(pts);
         Collections.reverse(reversed);
-        return new Segment(segment.id(), reversed, segment.inside(), segment.outside(), segment.claims(), segment.ruins());
+        return new Segment(segment.id(), reversed, segment.inside(), segment.outside(), segment.claims(),
+                segment.ruins());
     }
 
     public record Segment(String id, List<Point> points, double inside, double outside,
-                          Set<String> claims, Set<String> ruins) {
+            Set<String> claims, Set<String> ruins) {
         public Segment {
             if (id == null || points.size() < 2 || !Double.isFinite(inside) || !Double.isFinite(outside)
-                    || inside < 0 || outside < 0) throw new IllegalArgumentException("Invalid route segment");
+                    || inside < 0 || outside < 0)
+                throw new IllegalArgumentException("Invalid route segment");
             points = List.copyOf(points);
             claims = Set.copyOf(claims);
             ruins = Set.copyOf(ruins);
         }
-        public double length() { return inside + outside; }
+
+        public double length() {
+            return inside + outside;
+        }
     }
+
     public record Result(List<Segment> segments, Set<String> issues) {
-        public Result { segments = List.copyOf(segments); issues = Set.copyOf(issues); }
-        public boolean complete() { return issues.isEmpty(); }
-        public double length() { return segments.stream().mapToDouble(Segment::length).sum(); }
+        public Result {
+            segments = List.copyOf(segments);
+            issues = Set.copyOf(issues);
+        }
+
+        public boolean complete() {
+            return issues.isEmpty();
+        }
+
+        public double length() {
+            return segments.stream().mapToDouble(Segment::length).sum();
+        }
     }
+
     public record Saved(long lastChecked, long lastSuccess, String status, Result latest, Result successful) {
         public Saved {
-            if (lastChecked < 0 || lastSuccess < 0) throw new IllegalArgumentException("Invalid survey datetime");
+            if (lastChecked < 0 || lastSuccess < 0)
+                throw new IllegalArgumentException("Invalid survey datetime");
             Objects.requireNonNull(status);
             Objects.requireNonNull(latest);
             Objects.requireNonNull(successful);
         }
+
         public static Saved empty() {
             return new Saved(0, 0, "Not checked", new Result(List.of(), Set.of()), new Result(List.of(), Set.of()));
         }
+
         public boolean due(long now) {
             return lastChecked == 0 || now >= lastChecked && now - lastChecked >= INTERVAL_MILLIS;
         }
+
         public Saved begin(long now) {
-            if (now <= 0 || !due(now)) throw new IllegalStateException("Survey is not due");
+            return begin(now, false);
+        }
+
+        public Saved beginForced(long now) {
+            return begin(now, true);
+        }
+
+        private Saved begin(long now, boolean force) {
+            if (now <= 0 || (!force && !due(now)))
+                throw new IllegalStateException("Survey is not due");
             return new Saved(now, lastSuccess, "In progress / interrupted if server restarted", latest, successful);
         }
+
         public Saved finish(Result result, long now) {
             return new Saved(lastChecked, result.complete() ? now : lastSuccess,
                     result.complete() ? "Complete" : "Incomplete: " + String.join(", ", new TreeSet<>(result.issues)),
                     result, result.complete() ? result : successful);
         }
     }
+
     public interface Source {
         Iterator<Point> seeds();
+
         List<Link> neighbors(Point point);
+
         boolean inside(Point point);
+
         Set<String> claims(Point point);
+
         Set<String> ruins(Point point);
+
         Set<String> issues();
     }
 
-    private record Pending(Point point, double distance) {}
-    private record Info(boolean inside, Set<String> claims, Set<String> ruins) {}
-    private record Edge(Point a, Point b) {
-        static Edge of(Point a, Point b) { return a.compareTo(b) < 0 ? new Edge(a, b) : new Edge(b, a); }
+    private record Pending(Point point, double distance) {
     }
+
+    private record Info(boolean inside, Set<String> claims, Set<String> ruins) {
+    }
+
+    private record Edge(Point a, Point b) {
+        static Edge of(Point a, Point b) {
+            return a.compareTo(b) < 0 ? new Edge(a, b) : new Edge(b, a);
+        }
+    }
+
     private final Source source;
     private final Kind kind;
     private final String identity;
@@ -241,11 +304,16 @@ public final class RouteSurvey {
         this.executor = executor;
     }
 
-    /** Each unit processes one seed or route position. World reads stay on the calling server thread. */
+    /**
+     * Each unit processes one seed or route position. World reads stay on the
+     * calling server thread.
+     */
     public boolean advance(int budget) {
-        if (budget <= 0) throw new IllegalArgumentException("Survey budget must be positive");
+        if (budget <= 0)
+            throw new IllegalArgumentException("Survey budget must be positive");
         if (measurement != null) {
-            if (measurement.isDone()) result = measurement.join();
+            if (measurement.isDone())
+                result = measurement.join();
             return result != null;
         }
         while (budget-- > 0 && result == null) {
@@ -265,18 +333,22 @@ public final class RouteSurvey {
                         issues.add("position budget");
                         seeded = true;
                     }
-                } else seeded = true;
+                } else
+                    seeded = true;
                 continue;
             }
             if (pending.isEmpty()) {
                 issues.addAll(source.issues());
-                // Everything used by measure() is now an owned snapshot, never a world/database read.
+                // Everything used by measure() is now an owned snapshot, never a world/database
+                // read.
                 measurement = CompletableFuture.supplyAsync(this::measure, executor);
-                if (measurement.isDone()) result = measurement.join();
+                if (measurement.isDone())
+                    result = measurement.join();
                 break;
             }
             Pending next = pending.remove();
-            if (next.distance > distances.get(next.point)) continue;
+            if (next.distance > distances.get(next.point))
+                continue;
             graph.computeIfAbsent(next.point, p -> new TreeMap<>());
             remember(next.point);
             for (Link link : source.neighbors(next.point)) {
@@ -309,15 +381,18 @@ public final class RouteSurvey {
     }
 
     public Result result() {
-        if (result == null) throw new IllegalStateException("Survey has not finished");
+        if (result == null)
+            throw new IllegalStateException("Survey has not finished");
         return result;
     }
 
     private boolean hasEntryRun(Point p, Set<Point> path, int remaining) {
         path.add(p);
-        if (remaining == 1) return true;
+        if (remaining == 1)
+            return true;
         for (Link link : source.neighbors(p)) {
-            if (!path.contains(link.point) && hasEntryRun(link.point, path, remaining - 1)) return true;
+            if (!path.contains(link.point) && hasEntryRun(link.point, path, remaining - 1))
+                return true;
         }
         path.remove(p);
         return false;
@@ -329,12 +404,14 @@ public final class RouteSurvey {
     }
 
     private Result measure() {
-        if (kind == Kind.ROAD) thin();
+        if (kind == Kind.ROAD)
+            thin();
         Set<Point> seen = new HashSet<>();
         List<Segment> segments = new ArrayList<>();
         for (Point start : List.copyOf(graph.keySet())) {
             checkCancelled();
-            if (!graph.containsKey(start) || !seen.add(start)) continue;
+            if (!graph.containsKey(start) || !seen.add(start))
+                continue;
             Set<Point> component = new TreeSet<>();
             Deque<Point> queue = new ArrayDeque<>();
             queue.add(start);
@@ -342,11 +419,15 @@ public final class RouteSurvey {
                 checkCancelled();
                 Point p = queue.removeFirst();
                 component.add(p);
-                for (Point n : graph.get(p).keySet()) if (seen.add(n)) queue.addLast(n);
+                for (Point n : graph.get(p).keySet())
+                    if (seen.add(n))
+                        queue.addLast(n);
             }
-            // Width and branch count must not turn a collection of short stubs into a qualifying route.
+            // Width and branch count must not turn a collection of short stubs into a
+            // qualifying route.
             if (component.size() < 6 || longestRoute(component) < 48
-                    || kind == Kind.ROAD && component.stream().allMatch(p -> info.get(p).inside)) continue;
+                    || kind == Kind.ROAD && component.stream().allMatch(p -> info.get(p).inside))
+                continue;
             pruneShortSpurs(component, 8);
             split(component, segments);
         }
@@ -358,13 +439,15 @@ public final class RouteSurvey {
         do {
             changed = false;
             for (Point leaf : List.copyOf(component)) {
-                if (!component.contains(leaf) || graph.get(leaf).size() != 1) continue;
+                if (!component.contains(leaf) || graph.get(leaf).size() != 1)
+                    continue;
                 List<Point> branch = new ArrayList<>();
                 Point prev = null;
                 Point cur = leaf;
                 while (cur != null && branch.size() <= maxSpurSteps) {
                     int deg = graph.get(cur).size();
-                    if (cur != leaf && deg != 2) break;
+                    if (cur != leaf && deg != 2)
+                        break;
                     branch.add(cur);
                     Point next = null;
                     for (Point n : graph.get(cur).keySet()) {
@@ -405,7 +488,8 @@ public final class RouteSurvey {
         Point farthest = first.entrySet().stream().max(Map.Entry.comparingByValue()).orElseThrow().getKey();
         double diameter = shortestPaths(farthest).values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
         if (component.stream().allMatch(p -> graph.get(p).size() == 2)) {
-            return component.stream().flatMap(p -> graph.get(p).values().stream()).mapToDouble(Double::doubleValue).sum() / 2;
+            return component.stream().flatMap(p -> graph.get(p).values().stream()).mapToDouble(Double::doubleValue)
+                    .sum() / 2;
         }
         return diameter;
     }
@@ -417,7 +501,8 @@ public final class RouteSurvey {
         queue.add(new Pending(start, 0));
         while (!queue.isEmpty()) {
             Pending item = queue.remove();
-            if (item.distance > lengths.get(item.point)) continue;
+            if (item.distance > lengths.get(item.point))
+                continue;
             for (var edge : graph.get(item.point).entrySet()) {
                 double d = item.distance + edge.getValue();
                 if (d < lengths.getOrDefault(edge.getKey(), Double.POSITIVE_INFINITY)) {
@@ -435,25 +520,35 @@ public final class RouteSurvey {
 
     private void split(Set<Point> component, List<Segment> segments) {
         List<Point> starts = component.stream().filter(this::boundary).toList();
-        if (starts.isEmpty()) starts = List.of(component.iterator().next());
+        if (starts.isEmpty())
+            starts = List.of(component.iterator().next());
         Set<Edge> used = new HashSet<>();
         for (Point start : starts) {
             for (Point next : graph.get(start).keySet()) {
-                if (!used.add(Edge.of(start, next))) continue;
+                if (!used.add(Edge.of(start, next)))
+                    continue;
                 List<Point> points = new ArrayList<>(List.of(start));
                 double inside = 0, outside = 0;
                 Point previous = start;
                 Point p = next;
                 while (true) {
                     double length = graph.get(previous).get(p);
-                    if (info.get(previous).inside && info.get(p).inside) inside += length;
-                    else if (!info.get(previous).inside && !info.get(p).inside) outside += length;
-                    else { inside += length / 2; outside += length / 2; }
+                    if (info.get(previous).inside && info.get(p).inside)
+                        inside += length;
+                    else if (!info.get(previous).inside && !info.get(p).inside)
+                        outside += length;
+                    else {
+                        inside += length / 2;
+                        outside += length / 2;
+                    }
                     points.add(p);
-                    if (p.equals(start) || boundary(p)) break;
+                    if (p.equals(start) || boundary(p))
+                        break;
                     Point before = previous;
-                    Point after = graph.get(p).keySet().stream().filter(n -> !n.equals(before)).findFirst().orElseThrow();
-                    if (!used.add(Edge.of(p, after))) break;
+                    Point after = graph.get(p).keySet().stream().filter(n -> !n.equals(before)).findFirst()
+                            .orElseThrow();
+                    if (!used.add(Edge.of(p, after)))
+                        break;
                     previous = p;
                     p = after;
                 }
@@ -476,9 +571,13 @@ public final class RouteSurvey {
         }
     }
 
-    private static final int[][] RING = {{0,-1},{1,-1},{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1}};
+    private static final int[][] RING = { { 0, -1 }, { 1, -1 }, { 1, 0 }, { 1, 1 }, { 0, 1 }, { -1, 1 }, { -1, 0 },
+            { -1, -1 } };
 
-    /** Topology-preserving thinning removes paving width before counting distance and junctions. */
+    /**
+     * Topology-preserving thinning removes paving width before counting distance
+     * and junctions.
+     */
     private void thin() {
         Set<Point> pixels = new HashSet<>(graph.keySet());
         pixels.addAll(gapPoints);
@@ -491,23 +590,29 @@ public final class RouteSurvey {
                 for (Point p : pixels) {
                     checkCancelled();
                     boolean[] n = new boolean[8];
-                    for (int i = 0; i < 8; i++) n[i] = near(pixels, p, RING[i][0], RING[i][1]) != null;
+                    for (int i = 0; i < 8; i++)
+                        n[i] = near(pixels, p, RING[i][0], RING[i][1]) != null;
                     int count = 0, transitions = 0;
                     for (int i = 0; i < 8; i++) {
-                        if (n[i]) count++;
-                        if (!n[i] && n[(i + 1) % 8]) transitions++;
+                        if (n[i])
+                            count++;
+                        if (!n[i] && n[(i + 1) % 8])
+                            transitions++;
                     }
-                    if (count < 2 || count > 6 || transitions != 1) continue;
+                    if (count < 2 || count > 6 || transitions != 1)
+                        continue;
                     boolean first = pass == 0 ? n[0] && n[2] && n[4] : n[0] && n[2] && n[6];
                     boolean second = pass == 0 ? n[2] && n[4] && n[6] : n[0] && n[4] && n[6];
-                    if (!first && !second) remove.add(p);
+                    if (!first && !second)
+                        remove.add(p);
                 }
                 if (!remove.isEmpty()) {
                     pixels.removeAll(remove);
                     for (Point p : remove) {
                         for (int[] d : RING) {
                             Point survivor = near(pixels, p, d[0], d[1]);
-                            if (survivor == null) continue;
+                            if (survivor == null)
+                                continue;
                             Info a = info.get(survivor), b = info.get(p);
                             Set<String> claims = new HashSet<>(a.claims), ruins = new HashSet<>(a.ruins);
                             claims.addAll(b.claims);
@@ -522,10 +627,12 @@ public final class RouteSurvey {
         } while (changed);
         for (Point p : new TreeSet<>(pixels)) {
             List<Point> adjacent = adjacent(pixels, p);
-            if (adjacent.size() != 1) continue;
+            if (adjacent.size() != 1)
+                continue;
             Point n = adjacent.get(0);
             int dx = p.x - n.x, dz = p.z - n.z;
-            if (Math.abs(dx) + Math.abs(dz) != 1) continue;
+            if (Math.abs(dx) + Math.abs(dz) != 1)
+                continue;
             Point end = p;
             Point next;
             while ((next = near(original, end, dx, dz)) != null && !pixels.contains(next)) {
@@ -536,7 +643,8 @@ public final class RouteSurvey {
         Map<Point, Map<Point, Double>> skeleton = new TreeMap<>();
         for (Point p : pixels) {
             Map<Point, Double> links = new TreeMap<>();
-            for (Point n : adjacent(pixels, p)) links.put(n, p.distance(n));
+            for (Point n : adjacent(pixels, p))
+                links.put(n, p.distance(n));
             skeleton.put(p, links);
         }
         graph.clear();
@@ -547,23 +655,27 @@ public final class RouteSurvey {
         List<Point> neighbors = new ArrayList<>();
         for (int[] d : RING) {
             Point n = near(pixels, p, d[0], d[1]);
-            if (n == null) continue;
+            if (n == null)
+                continue;
             if (d[0] != 0 && d[1] != 0
-                    && (near(pixels, p, d[0], 0) != null || near(pixels, p, 0, d[1]) != null)) continue;
+                    && (near(pixels, p, d[0], 0) != null || near(pixels, p, 0, d[1]) != null))
+                continue;
             neighbors.add(n);
         }
         return neighbors;
     }
 
     private static Point near(Set<Point> points, Point p, int dx, int dz) {
-        for (int dy : new int[]{0, -1, 1}) {
+        for (int dy : new int[] { 0, -1, 1 }) {
             Point q = p.offset(dx, dy, dz);
-            if (points.contains(q)) return q;
+            if (points.contains(q))
+                return q;
         }
         return null;
     }
 
     private static void checkCancelled() {
-        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Survey stopped");
+        if (Thread.currentThread().isInterrupted())
+            throw new java.util.concurrent.CancellationException("Survey stopped");
     }
 }

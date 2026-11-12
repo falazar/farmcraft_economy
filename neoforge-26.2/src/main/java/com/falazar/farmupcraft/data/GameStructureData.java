@@ -96,7 +96,8 @@ public class GameStructureData {
         this.specialChestPos = specialChestPos != null ? specialChestPos : BlockPos.ZERO;
         this.specialChestOpened = specialChestOpened;
         this.totalChestCount = totalChestCount;
-        this.openedChestPositions = openedChestPositions != null ? new ArrayList<>(openedChestPositions) : new ArrayList<>();
+        this.openedChestPositions = openedChestPositions != null ? new ArrayList<>(openedChestPositions)
+                : new ArrayList<>();
     }
 
     public Long getId() {
@@ -180,13 +181,18 @@ public class GameStructureData {
         return (hasBoundingBox() ? maxPos : centerPos).getY() < 60;
     }
 
+    public boolean isCenterInSection(SectionPos section) {
+        return SectionPos.of(centerPos).equals(section);
+    }
+
     public boolean intersectsSection(SectionPos section) {
-        if (!hasBoundingBox()) return SectionPos.of(centerPos).equals(section);
+        if (!hasBoundingBox())
+            return SectionPos.of(centerPos).equals(section);
         SectionPos min = SectionPos.of(minPos), max = SectionPos.of(maxPos);
         return section.y() >= min.y() && section.y() <= max.y()
                 && (hasChunkPositions() ? chunkPositions.contains(section.chunk().pack())
-                    : section.x() >= min.x() && section.x() <= max.x()
-                        && section.z() >= min.z() && section.z() <= max.z());
+                        : section.x() >= min.x() && section.x() <= max.x()
+                                && section.z() >= min.z() && section.z() <= max.z());
     }
 
     public List<Long> getChunkPositions() {
@@ -234,16 +240,20 @@ public class GameStructureData {
     }
 
     public boolean isChestOpened(BlockPos pos) {
-        if (openedChestPositions == null) return false;
+        if (openedChestPositions == null)
+            return false;
         for (BlockPos p : openedChestPositions) {
-            if (p.equals(pos)) return true;
+            if (p.equals(pos))
+                return true;
         }
         return false;
     }
 
     public void markChestOpened(BlockPos pos) {
-        if (openedChestPositions == null) openedChestPositions = new ArrayList<>();
-        if (!isChestOpened(pos)) openedChestPositions.add(pos.immutable());
+        if (openedChestPositions == null)
+            openedChestPositions = new ArrayList<>();
+        if (!isChestOpened(pos))
+            openedChestPositions.add(pos.immutable());
     }
 
     @Override

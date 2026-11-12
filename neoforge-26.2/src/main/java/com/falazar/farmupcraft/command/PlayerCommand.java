@@ -41,6 +41,7 @@ public class PlayerCommand {
                     return showPlayerInfo(context.getSource());
                 })
                 .then(Commands.argument("playerName", StringArgumentType.word())
+                        .suggests(CommandSuggestions::onlinePlayers)
                         .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                         .executes(context -> {
                             String name = StringArgumentType.getString(context, "playerName");
@@ -66,15 +67,14 @@ public class PlayerCommand {
 
         // /player givecoins <playerName> <amount> transfers the sender's coins.
         LiteralArgumentBuilder<CommandSourceStack> giveCoinsBuilder = Commands.literal("givecoins")
-            .then(Commands.argument("playerName", StringArgumentType.word())
-                .suggests((context, suggestions) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
-                        context.getSource().getServer().getPlayerNames(), suggestions))
-                .then(Commands.argument("amount", IntegerArgumentType.integer(1))
-                    .executes(context -> {
-                        String playerName = StringArgumentType.getString(context, "playerName");
-                        int amount = IntegerArgumentType.getInteger(context, "amount");
-                        return transferPlayerCoins(context.getSource(), playerName, amount);
-                    })));
+                .then(Commands.argument("playerName", StringArgumentType.word())
+                        .suggests(CommandSuggestions::onlinePlayers)
+                        .then(Commands.argument("amount", IntegerArgumentType.integer(1))
+                                .executes(context -> {
+                                    String playerName = StringArgumentType.getString(context, "playerName");
+                                    int amount = IntegerArgumentType.getInteger(context, "amount");
+                                    return transferPlayerCoins(context.getSource(), playerName, amount);
+                                })));
         builder.then(giveCoinsBuilder);
 
         // Define the "takevillagecoins" and amount sub-command.
@@ -110,8 +110,7 @@ public class PlayerCommand {
                 .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                 .then(Commands.literal("grantcoins")
                         .then(Commands.argument("playerName", StringArgumentType.word())
-                                .suggests((context, suggestions) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
-                                        context.getSource().getServer().getPlayerNames(), suggestions))
+                                .suggests(CommandSuggestions::onlinePlayers)
                                 .then(Commands.argument("amount", IntegerArgumentType.integer(-10000))
                                         .executes(context -> givePlayerCoinsByName(context.getSource(),
                                                 StringArgumentType.getString(context, "playerName"),
@@ -119,6 +118,7 @@ public class PlayerCommand {
                 // joinvillage <village>
                 .then(Commands.literal("joinvillage")
                         .then(Commands.argument("village", StringArgumentType.string())
+                                .suggests(CommandSuggestions::villageNames)
                                 .executes(context -> {
                                     String villageName = StringArgumentType.getString(context, "village");
                                     return setVillage(context.getSource(), villageName);
@@ -146,7 +146,8 @@ public class PlayerCommand {
             }
             LOGGER.info("DEBUG: Player info test name: " + playerSource.getScoreboardName());
             PlayerData player = getPlayer(source);
-            if (player == null) return 0;
+            if (player == null)
+                return 0;
             ServerLevel serverLevel = source.getLevel();
 
             // TODO make helper methods for get name and send text.
@@ -266,7 +267,8 @@ public class PlayerCommand {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             PlayerData player = getPlayer(source);
-            if (player == null) return 0;
+            if (player == null)
+                return 0;
 
             // Add money to player coin field.
             player.setCoins(adjustedBalance(player.getCoins(), amount));
@@ -321,13 +323,15 @@ public class PlayerCommand {
         savePlayer(level, target, to);
         source.sendSuccess(() -> Component.literal("Sent " + amount + " coins to " + targetName
                 + ". Your balance: " + from.getCoins()), false);
-        if (online != null) online.sendSystemMessage(Component.literal("Received " + amount + " coins from "
-                + sender.getName().getString() + ". Your balance: " + to.getCoins()));
+        if (online != null)
+            online.sendSystemMessage(Component.literal("Received " + amount + " coins from "
+                    + sender.getName().getString() + ". Your balance: " + to.getCoins()));
         return 1;
     }
 
     public static void transferBalances(PlayerData from, PlayerData to, int amount) {
-        if (amount <= 0) throw new IllegalArgumentException("Amount must be positive.");
+        if (amount <= 0)
+            throw new IllegalArgumentException("Amount must be positive.");
         if (from == to || from.getPlayerUUID().equals(to.getPlayerUUID())) {
             throw new IllegalArgumentException("You cannot send coins to yourself.");
         }
@@ -337,7 +341,10 @@ public class PlayerCommand {
         to.setCoins(received);
     }
 
-    /** /player admin grantcoins <playerName> <amount> adjusts an online or offline player's wallet. */
+    /**
+     * /player admin grantcoins <playerName> <amount> adjusts an online or offline
+     * player's wallet.
+     */
     public static int givePlayerCoinsByName(CommandSourceStack source, String targetName, int amount) {
         try {
             ServerLevel serverLevel = source.getLevel();
@@ -467,7 +474,8 @@ public class PlayerCommand {
             Entity nullableSummoner = source.getEntity();
             Player playerSource = nullableSummoner instanceof Player ? (Player) nullableSummoner : null;
             PlayerData player = getPlayer(source);
-            if (player == null) return 0;
+            if (player == null)
+                return 0;
 
             // Get village data from database. and uuid
             VillageData village = VillageCommand.findVillageByName(source.getLevel(), villageName);
@@ -531,7 +539,8 @@ public class PlayerCommand {
 
     static int adjustedBalance(int balance, int amount) {
         int result = Math.addExact(balance, amount);
-        if (result < 0) throw new IllegalArgumentException("Not enough coins, only have " + balance);
+        if (result < 0)
+            throw new IllegalArgumentException("Not enough coins, only have " + balance);
         return result;
     }
 
@@ -547,7 +556,8 @@ public class PlayerCommand {
 
             // STEP 1: Get player data and village data.
             PlayerData player = getPlayer(source);
-            if (player == null) return 0;
+            if (player == null)
+                return 0;
             if (player.getHomeVillageUUID() == null) {
                 source.sendFailure(Component.literal("No home village set."));
                 return 0;
@@ -601,7 +611,8 @@ public class PlayerCommand {
 
             // STEP 1: Get player data and village data.
             PlayerData player = getPlayer(source);
-            if (player == null) return 0;
+            if (player == null)
+                return 0;
             if (player.getHomeVillageUUID() == null) {
                 source.sendFailure(Component.literal("No home village set."));
                 return 0;

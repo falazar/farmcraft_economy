@@ -72,11 +72,13 @@ public final class CropsManager {
         var counts = plantableInventory(player, pos, level);
         source.sendSuccess(() -> Component.literal("Inventory crops plantable at " + pos.toShortString() + ":")
                 .withStyle(ChatFormatting.GREEN), false);
-        counts.entrySet().stream().sorted(Comparator.comparing(e -> e.getKey().getDefaultInstance().getHoverName().getString()))
+        counts.entrySet().stream()
+                .sorted(Comparator.comparing(e -> e.getKey().getDefaultInstance().getHoverName().getString()))
                 .forEach(entry -> source.sendSuccess(() -> Component.literal(" - ")
                         .append(entry.getKey().getDefaultInstance().getHoverName())
                         .append(Component.literal(" (" + entry.getValue() + ")")), false));
-        if (counts.isEmpty()) source.sendSuccess(() -> Component.literal("No matching crops in your inventory."), false);
+        if (counts.isEmpty())
+            source.sendSuccess(() -> Component.literal("No matching crops in your inventory."), false);
         return 1;
     }
 
@@ -86,14 +88,18 @@ public final class CropsManager {
         boolean filter = !player.isCreative() && ModEvents.getWorldData(level).isUseBiomeCropRules()
                 && manager.hasRules();
         var biomes = filter && plot != null && plot.getPlotLevel() >= 3
-                ? getDistinctChunkBiomes(pos, level) : Set.of(level.getBiome(pos));
+                ? getDistinctChunkBiomes(pos, level)
+                : Set.of(level.getBiome(pos));
         Map<Item, Integer> counts = new LinkedHashMap<>();
         var inventory = new ArrayList<>(player.getInventory().getNonEquipmentItems());
         inventory.add(player.getInventory().getItem(net.minecraft.world.entity.player.Inventory.SLOT_OFFHAND));
         for (var stack : inventory) {
-            if (stack.isEmpty() || !isFarmlandPlantingItem(stack.getItem())) continue;
-            boolean governed = stack.is(FUCTags.MODDED_CROPS) || stack.is(FUCTags.VANILLA_CROPS) || stack.is(FUCTags.MODDED_SEEDS);
-            if (filter && governed && !isCropAllowedInBiomes(manager, stack, biomes)) continue;
+            if (stack.isEmpty() || !isFarmlandPlantingItem(stack.getItem()))
+                continue;
+            boolean governed = stack.is(FUCTags.MODDED_CROPS) || stack.is(FUCTags.VANILLA_CROPS)
+                    || stack.is(FUCTags.MODDED_SEEDS);
+            if (filter && governed && !isCropAllowedInBiomes(manager, stack, biomes))
+                continue;
             counts.merge(stack.getItem(), stack.getCount(), Integer::sum);
         }
         return counts;
@@ -102,24 +108,29 @@ public final class CropsManager {
     private static boolean isFarmlandPlantingItem(Item item) {
         if (item instanceof net.minecraft.world.item.BlockItem blockItem
                 && (blockItem.getBlock() instanceof CropBlock
-                || blockItem.getBlock() instanceof net.minecraft.world.level.block.StemBlock
-                || blockItem.getBlock() instanceof net.minecraft.world.level.block.PitcherCropBlock)) return true;
+                        || blockItem.getBlock() instanceof net.minecraft.world.level.block.StemBlock
+                        || blockItem.getBlock() instanceof net.minecraft.world.level.block.PitcherCropBlock))
+            return true;
         var id = BuiltInRegistries.ITEM.getKey(item);
-        if (!id.getNamespace().equals("pamhc2crops") || !id.getPath().endsWith("item")) return false;
+        if (!id.getNamespace().equals("pamhc2crops") || !id.getPath().endsWith("item"))
+            return false;
         var seed = BuiltInRegistries.ITEM.getValue(Identifier.fromNamespaceAndPath(id.getNamespace(),
                 id.getPath().substring(0, id.getPath().length() - 4) + "seeditem"));
-        return seed instanceof net.minecraft.world.item.BlockItem blockItem && blockItem.getBlock() instanceof CropBlock;
+        return seed instanceof net.minecraft.world.item.BlockItem blockItem
+                && blockItem.getBlock() instanceof CropBlock;
     }
 
     @SubscribeEvent
     public static void onRightClickPlanting(PlayerInteractEvent.RightClickBlock event) {
-        if (!(event.getLevel() instanceof ServerLevel level) || event.getEntity().isCreative()) return;
+        if (!(event.getLevel() instanceof ServerLevel level) || event.getEntity().isCreative())
+            return;
         Player player = event.getEntity();
         BlockPos pos = event.getPos();
         var state = level.getBlockState(pos);
         ItemStack stack = event.getItemStack();
         if (state.getBlock() instanceof BaseEntityBlock || state.is(BlockTags.DOORS)
-                || state.is(BlockTags.TRAPDOORS) || state.is(BlockTags.FENCE_GATES)) return;
+                || state.is(BlockTags.TRAPDOORS) || state.is(BlockTags.FENCE_GATES))
+            return;
 
         if (stack.is(Items.SUGAR_CANE) || stack.is(Items.SWEET_BERRIES)) {
             if (ModEvents.getWorldData(level).isUseVillageFarms()
@@ -132,19 +143,26 @@ public final class CropsManager {
         }
         boolean farmlandBelow = event.getFace() != null
                 && level.getBlockState(pos.relative(event.getFace()).below()).is(FUCTags.FARMLAND);
-        if (!state.is(FUCTags.FARMLAND) && !farmlandBelow) return;
-        if (!state.is(FUCTags.FARMLAND)) pos = pos.relative(event.getFace()).below();
+        if (!state.is(FUCTags.FARMLAND) && !farmlandBelow)
+            return;
+        if (!state.is(FUCTags.FARMLAND))
+            pos = pos.relative(event.getFace()).below();
         if (!stack.is(FUCTags.MODDED_CROPS) && !stack.is(FUCTags.VANILLA_CROPS)
-                && !stack.is(FUCTags.MODDED_SEEDS)) return;
-        if (!ModEvents.getWorldData(level).isUseBiomeCropRules()) return;
+                && !stack.is(FUCTags.MODDED_SEEDS))
+            return;
+        if (!ModEvents.getWorldData(level).isUseBiomeCropRules())
+            return;
         BiomeRulesManager manager = BiomeRulesManager.get(level);
-        if (!manager.hasRules()) return;
+        if (!manager.hasRules())
+            return;
         Holder<Biome> biome = level.getBiome(pos);
         BiomeRulesInstance instance = manager.getBiomeRules(biome);
-        if (instance == null) return;
+        if (instance == null)
+            return;
         ChunkData plot = ChunkManager.getPlot(pos, level);
         int plotLevel = plot == null ? 1 : plot.getPlotLevel();
-        if (plotLevel >= 3 && isCropAllowedInAnyChunkBiome(manager, stack, pos, level)) return;
+        if (plotLevel >= 3 && isCropAllowedInAnyChunkBiome(manager, stack, pos, level))
+            return;
         if (!isCropAllowed(manager, instance, stack, biome, event)) {
             cancelPredictedPlacement(event);
         }
@@ -153,10 +171,12 @@ public final class CropsManager {
     @SubscribeEvent
     public static void onRightClickHoeing(PlayerInteractEvent.RightClickBlock event) {
         if (!(event.getLevel() instanceof ServerLevel level) || event.getEntity().isCreative()
-                || !event.getItemStack().is(ItemTags.HOES)) return;
+                || !event.getItemStack().is(ItemTags.HOES))
+            return;
         var state = level.getBlockState(event.getPos());
         if (!state.is(Blocks.DIRT) && !state.is(Blocks.GRASS_BLOCK) && !state.is(Blocks.PODZOL)
-                && !state.is(Blocks.COARSE_DIRT)) return;
+                && !state.is(Blocks.COARSE_DIRT))
+            return;
         if (ModEvents.getWorldData(level).isUseVillageFarms()
                 && !ChunkManager.getPlotType(event.getPos(), level).equals("farm")) {
             reject(event, Component.literal(
@@ -182,11 +202,13 @@ public final class CropsManager {
         }
     }
 
-    // Harvest With Ease harvests and cancels at HIGH; roll before it changes the crop.
+    // Harvest With Ease harvests and cancels at HIGH; roll before it changes the
+    // crop.
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onRightClickHarvestFailure(PlayerInteractEvent.RightClickBlock event) {
         if (event.isCanceled() || event.getItemStack().is(Items.BONE_MEAL)
-                || !(event.getLevel() instanceof ServerLevel level)) return;
+                || !(event.getLevel() instanceof ServerLevel level))
+            return;
         if (failCropHarvest(level, event.getPos(), event.getEntity())) {
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
@@ -196,7 +218,8 @@ public final class CropsManager {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onBreakHarvestFailure(BreakBlockEvent event) {
         if (event.isCanceled() || event instanceof com.falazar.farmupcraft.command.BuildCommand.MoveBreakEvent
-                || !(event.getLevel() instanceof ServerLevel level)) return;
+                || !(event.getLevel() instanceof ServerLevel level))
+            return;
         if (failCropHarvest(level, event.getPos(), event.getPlayer())) {
             event.setNotifyClient(true);
             event.setCanceled(true);
@@ -204,13 +227,17 @@ public final class CropsManager {
     }
 
     private static boolean failCropHarvest(ServerLevel level, BlockPos pos, Player player) {
-        if (player == null || player.isCreative()) return false;
+        if (player == null || player.isCreative())
+            return false;
         var state = level.getBlockState(pos);
-        if (!(state.getBlock() instanceof CropBlock crop) || !crop.isMaxAge(state)) return false;
+        if (!(state.getBlock() instanceof CropBlock crop) || !crop.isMaxAge(state))
+            return false;
         ChunkData plot = ChunkManager.getPlot(pos, level);
-        if (plot == null || !"farm".equalsIgnoreCase(plot.getType())) return false;
+        if (plot == null || !"farm".equalsIgnoreCase(plot.getType()))
+            return false;
         int chance = CropHarvestRules.failureChance(plot.getPlotLevel());
-        if (chance == 0 || level.getRandom().nextInt(100) >= chance) return false;
+        if (chance == 0 || level.getRandom().nextInt(100) >= chance)
+            return false;
         level.setBlock(pos, crop.getStateForAge(0), 3);
         player.sendOverlayMessage(Component.literal("Harvest failed - the crop must regrow.")
                 .withStyle(ChatFormatting.YELLOW));
@@ -222,16 +249,20 @@ public final class CropsManager {
 
     @SubscribeEvent
     public static void onRightClickHarvestCrops(PlayerInteractEvent.RightClickBlock event) {
-        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel level) || event.getHand() != InteractionHand.MAIN_HAND
-                || event.getEntity().isCreative() || event.getItemStack().is(Items.BONE_MEAL)) return;
+        if (event.isCanceled() || !(event.getLevel() instanceof ServerLevel level)
+                || event.getHand() != InteractionHand.MAIN_HAND
+                || event.getEntity().isCreative() || event.getItemStack().is(Items.BONE_MEAL))
+            return;
         BlockPos pos = event.getPos();
         var state = level.getBlockState(pos);
         Identifier blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
         if (!blockId.getNamespace().equals("pamhc2crops") || !(state.getBlock() instanceof CropBlock crop)
-                || !crop.isMaxAge(state) || !ChunkManager.getPlotType(pos, level).equalsIgnoreCase("farm")) return;
+                || !crop.isMaxAge(state) || !ChunkManager.getPlotType(pos, level).equalsIgnoreCase("farm"))
+            return;
         ChunkData plot = ChunkManager.getPlot(pos, level);
         int chance = harvestBonusChance(plot == null ? 1 : plot.getPlotLevel());
-        if (chance == 0) return;
+        if (chance == 0)
+            return;
         Item item = harvestItem(blockId);
         if (item != Items.AIR && level.getRandom().nextInt(100) < chance) {
             event.getEntity().addItem(new ItemStack(item));
@@ -244,8 +275,10 @@ public final class CropsManager {
 
     static Item harvestItem(Identifier blockId) {
         String path = blockId.getPath();
-        if (path.startsWith("pam")) path = path.substring(3);
-        if (path.endsWith("crop")) path = path.substring(0, path.length() - 4);
+        if (path.startsWith("pam"))
+            path = path.substring(3);
+        if (path.endsWith("crop"))
+            path = path.substring(0, path.length() - 4);
         return BuiltInRegistries.ITEM.getValue(Identifier.fromNamespaceAndPath(blockId.getNamespace(), path + "item"));
     }
 
@@ -264,9 +297,11 @@ public final class CropsManager {
 
     public static void findNearestVillage(PlayerInteractEvent.RightClickBlock event) {
         if (!(event.getLevel() instanceof ServerLevel level)
-                || !level.getServer().getWorldGenSettings().options().generateStructures()) return;
+                || !level.getServer().getWorldGenSettings().options().generateStructures())
+            return;
         var structures = level.registryAccess().lookupOrThrow(Registries.STRUCTURE).get(StructureTags.VILLAGE);
-        if (structures.isEmpty()) return;
+        if (structures.isEmpty())
+            return;
         var task = AsyncLocator.locate(level, structures.get(), event.getPos(), 100, true);
         task.completableFuture().whenComplete((result, failure) -> {
             if (failure != null && !(failure instanceof java.util.concurrent.CancellationException)) {
@@ -274,14 +309,18 @@ public final class CropsManager {
             }
         });
         task.thenOnServerThread(result -> {
-            if (result == null) return;
+            if (result == null)
+                return;
             LOGGER.info("Nearest village: {} at {}", result.getSecond(), result.getFirst());
             level.structureManager().startsForStructure(ChunkPos.containing(result.getFirst()), structure -> true)
                     .forEach(start -> LOGGER.info("Village bounding box: {}", start.getBoundingBox()));
         });
     }
 
-    /** Samples all block columns at farmland height, including mixed-biome chunk edges. */
+    /**
+     * Samples all block columns at farmland height, including mixed-biome chunk
+     * edges.
+     */
     public static Set<Holder<Biome>> getDistinctChunkBiomes(BlockPos pos, ServerLevel level) {
         ChunkPos chunk = ChunkPos.containing(pos);
         Set<Holder<Biome>> biomes = new LinkedHashSet<>();
@@ -294,7 +333,7 @@ public final class CropsManager {
     }
 
     private static boolean isCropAllowedInAnyChunkBiome(BiomeRulesManager manager, ItemStack stack,
-                                                       BlockPos pos, ServerLevel level) {
+            BlockPos pos, ServerLevel level) {
         return isCropAllowedInBiomes(manager, stack, getDistinctChunkBiomes(pos, level));
     }
 
@@ -306,9 +345,11 @@ public final class CropsManager {
     }
 
     public static boolean isCropAllowed(BiomeRulesManager manager, BiomeRulesInstance instance, ItemStack stack,
-                                        Holder<Biome> biome, PlayerInteractEvent event) {
-        if (instance.biomeHasCrops(stack)) return true;
-        if (!(event.getLevel() instanceof ServerLevel level)) return false;
+            Holder<Biome> biome, PlayerInteractEvent event) {
+        if (instance.biomeHasCrops(stack))
+            return true;
+        if (!(event.getLevel() instanceof ServerLevel level))
+            return false;
         String cropName = stack.getHoverName().getString();
         Component biomeName = Component.translatable(getBiomeLangKey(biome.unwrapKey()
                 .map(key -> key.identifier()).orElse(Identifier.withDefaultNamespace("unknown"))))
@@ -331,34 +372,45 @@ public final class CropsManager {
 
     public static String cropDisplayName(Item item) {
         String key = item.getDescriptionId();
-        if (key.contains("sesameseedsseeditem")) return "Sesame";
-        if (key.contains("mustardseedsseeditem")) return "Mustard";
-        if (key.contains("sesameseedsitem")) return "Sesame Seeds";
-        if (key.contains("mustardseedsitem")) return "Mustard Seeds";
-        if (key.contains("wheat_seeds")) return "Wheat";
+        if (key.contains("sesameseedsseeditem"))
+            return "Sesame";
+        if (key.contains("mustardseedsseeditem"))
+            return "Mustard";
+        if (key.contains("sesameseedsitem"))
+            return "Sesame Seeds";
+        if (key.contains("mustardseedsitem"))
+            return "Mustard Seeds";
+        if (key.contains("wheat_seeds"))
+            return "Wheat";
         return Component.translatable(key).getString();
     }
 
     @SubscribeEvent
     public static void hunger(PlayerTickEvent.Post event) {
         Player player = event.getEntity();
-        if (!(player.level() instanceof ServerLevel level) || player.isCreative()) return;
+        if (!(player.level() instanceof ServerLevel level) || player.isCreative())
+            return;
         var random = level.getRandom();
-        if (random.nextInt(500) == 1) player.getFoodData().addExhaustion(0.5F);
+        if (random.nextInt(500) == 1)
+            player.getFoodData().addExhaustion(0.5F);
         int regenInterval = regenerationCheckInterval(player.experienceLevel);
-        if (random.nextInt(regenInterval) == 1) fadeRegeneration(player);
+        if (random.nextInt(regenInterval) == 1)
+            fadeRegeneration(player);
     }
 
     public static boolean fadeRegeneration(Player player) {
-        if (!player.hasEffect(MobEffects.REGENERATION)) return false;
+        if (!player.hasEffect(MobEffects.REGENERATION))
+            return false;
         Player previous = FADING_REGENERATION.get();
         FADING_REGENERATION.set(player);
         boolean removed;
         try {
             removed = player.removeEffect(MobEffects.REGENERATION);
         } finally {
-            if (previous == null) FADING_REGENERATION.remove();
-            else FADING_REGENERATION.set(previous);
+            if (previous == null)
+                FADING_REGENERATION.remove();
+            else
+                FADING_REGENERATION.set(previous);
         }
         if (removed) {
             player.sendSystemMessage(Component.literal("Your regeneration has faded."));
@@ -368,7 +420,8 @@ public final class CropsManager {
 
     @SubscribeEvent(priority = EventPriority.LOWEST, receiveCanceled = true)
     public static void allowRegenerationFading(MobEffectEvent.Remove event) {
-        // Only our random fade bypasses protection; milk and other removals keep normal rules.
+        // Only our random fade bypasses protection; milk and other removals keep normal
+        // rules.
         if (FADING_REGENERATION.get() == event.getEntity()
                 && event.getEffect().equals(MobEffects.REGENERATION)) {
             event.setCanceled(false);
@@ -392,21 +445,25 @@ public final class CropsManager {
         List<String> selected = new ArrayList<>(foods.subList(0, Math.min(20, foods.size())));
         Collections.sort(selected);
         selected.removeIf(name -> getIngredients(level, name.replaceFirst("^item\\.", "").replace(".", ":"))
-                .stream().anyMatch(stack -> BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace().equals("pamhc2trees")));
+                .stream().anyMatch(
+                        stack -> BuiltInRegistries.ITEM.getKey(stack.getItem()).getNamespace().equals("pamhc2trees")));
         return new ArrayList<>(selected.subList(0, Math.min(15, selected.size())));
     }
 
     public static List<ItemStack> getIngredients(ServerLevel level, String itemResourceName) {
-        return getIngredients(level.getServer().getRecipeManager(), SlotDisplayContext.fromLevel(level), itemResourceName);
+        return getIngredients(level.getServer().getRecipeManager(), SlotDisplayContext.fromLevel(level),
+                itemResourceName);
     }
 
     static List<ItemStack> getIngredients(RecipeManager recipes, ContextMap context, String itemResourceName) {
         Item item = BuiltInRegistries.ITEM.getValue(Identifier.parse(itemResourceName));
-        if (item == Items.AIR) return List.of();
+        if (item == Items.AIR)
+            return List.of();
         return recipes.recipeMap().byType(RecipeType.CRAFTING).stream()
                 .map(holder -> holder.value())
                 .filter(recipe -> recipe.display().stream()
-                        .anyMatch(display -> display.result().resolveForStacks(context).stream().anyMatch(stack -> stack.is(item))))
+                        .anyMatch(display -> display.result().resolveForStacks(context).stream()
+                                .anyMatch(stack -> stack.is(item))))
                 .findFirst()
                 .map(recipe -> recipe.placementInfo().ingredients().stream()
                         .flatMap(ingredient -> ingredient.items().findFirst().stream())
@@ -416,10 +473,12 @@ public final class CropsManager {
 
     @SubscribeEvent
     public static void onFarmlandTrample(BlockEvent.FarmlandTrampleEvent event) {
-        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (!(event.getLevel() instanceof ServerLevel level))
+            return;
         ChunkData plot = ModEvents.getChunkDataDatabase(level).getData(ChunkPos.containing(event.getPos()).pack());
         if (plot == null || (!plot.getType().equalsIgnoreCase("farm")
-                && !plot.getType().equalsIgnoreCase("village center"))) return;
+                && !plot.getType().equalsIgnoreCase("village center")))
+            return;
         if (!(event.getEntity() instanceof Player player)) {
             event.setCanceled(true);
         } else if (!player.isCreative()) {
@@ -428,7 +487,7 @@ public final class CropsManager {
             if (!member || plot.getPlotLevel() >= 2) {
                 event.setCanceled(true);
                 player.sendOverlayMessage(Component.literal(member ? "Protected farm — watch your step!"
-                                : "You can't trample crops here — not a village member.")
+                        : "You can't trample crops here — not a village member.")
                         .withStyle(member ? ChatFormatting.YELLOW : ChatFormatting.RED));
             }
         }
@@ -445,14 +504,18 @@ public final class CropsManager {
 
     @EventBusSubscriber(modid = FarmUpCraftNeoForge.MOD_ID, value = Dist.CLIENT)
     public static final class ClientEvents {
-        private ClientEvents() {}
+        private ClientEvents() {
+        }
 
         @SubscribeEvent
         public static void onMiddleClick(net.neoforged.neoforge.client.event.InputEvent.MouseButton.Pre event) {
-            if (event.getButton() != 2 || event.getAction() != 1) return;
+            if (event.getButton() != 2 || event.getAction() != 1)
+                return;
             var mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc.player == null || mc.level == null || mc.gameMode == null
-                    || !(mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)) return;
+            if (mc.player == null || mc.level == null || mc.gameMode == null)
+                return;
+            if (!(mc.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit))
+                return;
             BlockPos pos = hit.getBlockPos();
             var state = mc.level.getBlockState(pos);
             if (state.is(FUCTags.FARMLAND) && mc.gui.screen() == null && mc.getConnection() != null) {
@@ -460,8 +523,16 @@ public final class CropsManager {
                 event.setCanceled(true);
                 return;
             }
+            if (mc.gui.screen() == null && mc.getConnection() != null
+                    && isCropBiomeQueryItem(mc.player.getMainHandItem())) {
+                Identifier itemId = BuiltInRegistries.ITEM.getKey(mc.player.getMainHandItem().getItem());
+                mc.getConnection().sendCommand("show cropbiomes " + itemId);
+                event.setCanceled(true);
+                return;
+            }
             ItemStack seed = state.getCloneItemStack(pos, mc.level, false, mc.player);
-            if (seed.isEmpty() || !seed.is(FUCTags.VANILLA_AND_MODDED_CROPS)) return;
+            if (seed.isEmpty() || !seed.is(FUCTags.VANILLA_AND_MODDED_CROPS))
+                return;
             Item harvest = harvestItem(BuiltInRegistries.BLOCK.getKey(state.getBlock()));
             ItemStack target = harvest == Items.AIR ? seed : new ItemStack(harvest);
             mc.player.sendSystemMessage(Component.literal("Seed: ").withStyle(ChatFormatting.GOLD)
@@ -470,16 +541,25 @@ public final class CropsManager {
             event.setCanceled(true);
         }
 
-        private static void pickItemFromInventory(net.minecraft.world.entity.player.Inventory inventory, ItemStack target) {
+        private static boolean isCropBiomeQueryItem(ItemStack stack) {
+            return stack.is(FUCTags.VANILLA_CROPS) || stack.is(FUCTags.MODDED_CROPS)
+                    || stack.is(FUCTags.MODDED_SEEDS) || stack.is(Items.WHEAT) || stack.is(Items.BEETROOT);
+        }
+
+        private static void pickItemFromInventory(net.minecraft.world.entity.player.Inventory inventory,
+                ItemStack target) {
             int slot = inventory.findSlotMatchingItem(target);
-            if (slot < 0 || slot >= 36) return;
+            if (slot < 0 || slot >= 36)
+                return;
             var mc = net.minecraft.client.Minecraft.getInstance();
-            if (mc.player == null || mc.gameMode == null || mc.getConnection() == null) return;
+            if (mc.player == null || mc.gameMode == null || mc.getConnection() == null)
+                return;
             if (slot < 9) {
                 inventory.setSelectedSlot(slot);
                 mc.getConnection().send(new net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket(slot));
             } else if (mc.player.containerMenu == mc.player.inventoryMenu) {
-                // The old pick-slot packet was removed. Use the authoritative inventory-menu hotbar swap.
+                // The old pick-slot packet was removed. Use the authoritative inventory-menu
+                // hotbar swap.
                 mc.gameMode.handleContainerInput(mc.player.inventoryMenu.containerId, slot,
                         inventory.getSelectedSlot(), net.minecraft.world.inventory.ContainerInput.SWAP, mc.player);
             }

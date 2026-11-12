@@ -15,7 +15,8 @@ import java.util.*;
 
 @EventBusSubscriber(modid = "farmupcraft")
 public final class GemGameplayGameTests {
-    @SubscribeEvent public static void register(RegisterEvent event) {
+    @SubscribeEvent
+    public static void register(RegisterEvent event) {
         event.register(Registries.TEST_FUNCTION, registry -> registry.register(
                 FarmUpCraftNeoForge.prefix("gem_gameplay"), GemGameplayGameTests::gameplay));
     }
@@ -25,8 +26,9 @@ public final class GemGameplayGameTests {
         var origin = helper.absolutePos(new BlockPos(1, 1, 1));
         var chunk = level.getChunkSource().getChunkNow(origin.getX() >> 4, origin.getZ() >> 4);
         helper.assertTrue(chunk != null, "Fixture chunk is loaded");
-        for (int dx = -1; dx <= 1; dx++) for (int dz = -1; dz <= 1; dz++)
-            level.getChunk(GemPlatform.chunkX(chunk) + dx, GemPlatform.chunkZ(chunk) + dz);
+        for (int dx = -1; dx <= 1; dx++)
+            for (int dz = -1; dz <= 1; dz++)
+                level.getChunk(GemPlatform.chunkX(chunk) + dx, GemPlatform.chunkZ(chunk) + dz);
         var rules = GemRules.create(12345, List.of(
                 new GemRules.Biome("minecraft:plains", false, false, false, 64),
                 new GemRules.Biome("minecraft:forest", false, false, false, 64),
@@ -39,7 +41,10 @@ public final class GemGameplayGameTests {
         helper.assertValueEqual(GemWorld.enforceGemReply(level,
                 new GemWorld.ConversationGem(GemRules.Kind.NONE, ""), "Rubies are north at level 100"),
                 "Rubies are north at level 100", "Ignorant replies no longer have a content filter");
-        helper.assertValueEqual(GemWorld.generic("Ada", identity).getName(), "Ada", "Generic conversational profile");
+        var genericVillager = GemWorld.generic("Ada", identity, "farmer");
+        helper.assertValueEqual(genericVillager.getName(), "Ada", "Generic conversational profile");
+        helper.assertTrue(genericVillager.getDescription().contains("farmer"),
+                "Generic gem profile includes the villager's current profession");
         helper.assertTrue(!GemWorld.replaceable(Blocks.CHEST.defaultBlockState()), "Containers are protected");
         helper.assertTrue(!GemWorld.replaceable(Blocks.DIAMOND_ORE.defaultBlockState()), "Existing ores are protected");
         helper.assertTrue(!GemWorld.replaceable(Blocks.OAK_PLANKS.defaultBlockState()), "Crafted blocks are protected");
@@ -68,7 +73,8 @@ public final class GemGameplayGameTests {
         level.setBlock(ground, Blocks.STONE.defaultBlockState(), 2);
         for (int above = ground.getY() + 1; above < level.getMaxY(); above++)
             level.setBlock(new BlockPos(ground.getX(), above, ground.getZ()), Blocks.AIR.defaultBlockState(), 2);
-        for (int above = 1; above <= 10; above++) level.setBlock(ground.above(above), Blocks.OAK_LEAVES.defaultBlockState(), 2);
+        for (int above = 1; above <= 10; above++)
+            level.setBlock(ground.above(above), Blocks.OAK_LEAVES.defaultBlockState(), 2);
         GemWorld.generateOwned(level, chunk, fixture, Heightmap.Types.OCEAN_FLOOR);
         helper.assertTrue(level.getBlockState(ground).is(Blocks.STONE),
                 "Leaf canopies do not count as terrain burial; surface ore must not be placed");
@@ -85,10 +91,12 @@ public final class GemGameplayGameTests {
         helper.assertTrue(chest.getItem(2).is(net.minecraft.world.item.Items.DIAMOND), "Chest hooks preserve contents");
         chest.setItem(0, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND));
         int noteSlot = GemWorld.threatNoteSlot(chest, chest);
-        helper.assertTrue(noteSlot > 0 && chest.getItem(noteSlot).isEmpty(), "Late threat books must not overwrite player or gem notes");
+        helper.assertTrue(noteSlot > 0 && chest.getItem(noteSlot).isEmpty(),
+                "Late threat books must not overwrite player or gem notes");
         for (int slot = 0; slot < chest.getContainerSize(); slot++)
             chest.setItem(slot, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.DIAMOND));
-        helper.assertValueEqual(GemWorld.threatNoteSlot(chest, chest), -1, "Full new chest contents are never overwritten");
+        helper.assertValueEqual(GemWorld.threatNoteSlot(chest, chest), -1,
+                "Full new chest contents are never overwritten");
         helper.succeed();
     }
 }

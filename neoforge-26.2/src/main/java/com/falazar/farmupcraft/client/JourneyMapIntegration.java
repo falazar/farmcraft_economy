@@ -45,7 +45,8 @@ public class JourneyMapIntegration implements IClientPlugin {
     }
 
     public static boolean openMapAt(int x, int z) {
-        if (requireApi() == null) return false;
+        if (requireApi() == null)
+            return false;
         try {
             Class<?> managerType = Class.forName("journeymap.client.ui.UIManager");
             Object manager = managerType.getField("INSTANCE").get(null);
@@ -55,8 +56,9 @@ public class JourneyMapIntegration implements IClientPlugin {
         } catch (ReflectiveOperationException | LinkageError error) {
             LOGGER.error("Cannot open JourneyMap at {}, {}", x, z, error);
             var player = net.minecraft.client.Minecraft.getInstance().player;
-            if (player != null) player.sendSystemMessage(Component.literal(
-                    "Could not open JourneyMap. See the log for details.").withStyle(ChatFormatting.RED));
+            if (player != null)
+                player.sendSystemMessage(Component.literal(
+                        "Could not open JourneyMap. See the log for details.").withStyle(ChatFormatting.RED));
             return false;
         }
     }
@@ -86,20 +88,39 @@ public class JourneyMapIntegration implements IClientPlugin {
     }
 
     static void addWaypoint(AddJMWaypointPacket payload, IClientAPI api, WaypointCreator factory,
-                            Consumer<AddJMWaypointPacket> openMap) {
+            Consumer<AddJMWaypointPacket> openMap) {
         try {
+            if (payload.openMap())
+                replaceExistingStructureWaypoint(payload, api);
             api.addWaypoint(MOD_ID, createWaypoint(payload, factory));
-            if (payload.openMap()) openMap.accept(payload);
+            if (payload.openMap())
+                openMap.accept(payload);
         } catch (RuntimeException error) {
             LOGGER.warn("Failed to add JourneyMap waypoint '{}'", payload.name(), error);
             var player = net.minecraft.client.Minecraft.getInstance().player;
-            if (player != null) player.sendSystemMessage(Component.literal(
-                    "Could not add the JourneyMap waypoint. See the log for details.").withStyle(ChatFormatting.RED));
+            if (player != null)
+                player.sendSystemMessage(Component.literal(
+                        "Could not add the JourneyMap waypoint. See the log for details.")
+                        .withStyle(ChatFormatting.RED));
+        }
+    }
+
+    private static void replaceExistingStructureWaypoint(AddJMWaypointPacket payload, IClientAPI api) {
+        BlockPos position = new BlockPos(payload.x(), payload.y(), payload.z());
+        for (Waypoint existing : api.getAllWaypoints()) {
+            boolean farmUpCraftWaypoint = MOD_ID.equals(existing.getModId())
+                    || NATIVE_OWNER.equals(existing.getModId()) && MOD_ID.equals(existing.getCustomData(ORIGIN_KEY));
+            if (farmUpCraftWaypoint && payload.name().equals(existing.getName())
+                    && payload.dimId().equals(existing.getPrimaryDimension())
+                    && position.equals(existing.getBlockPos())) {
+                api.removeWaypoint(MOD_ID, existing);
+            }
         }
     }
 
     static Waypoint createWaypoint(AddJMWaypointPacket payload, WaypointCreator factory) {
-        // Native ownership replaces the removed v1 setEditable flag and keeps normal JM editing/removal.
+        // Native ownership replaces the removed v1 setEditable flag and keeps normal JM
+        // editing/removal.
         Waypoint waypoint = factory.create(NATIVE_OWNER,
                 new BlockPos(payload.x(), payload.y(), payload.z()), payload.name(),
                 payload.dimId(), payload.persistent());
@@ -164,7 +185,8 @@ public class JourneyMapIntegration implements IClientPlugin {
     public static void removeWaypoints(RemoveModWaypointsPacket payload, Consumer<Component> feedback) {
         IClientAPI api = requireApi();
         if (api == null) {
-            feedback.accept(Component.literal("[Waypoints] JourneyMap is not available.").withStyle(ChatFormatting.YELLOW));
+            feedback.accept(
+                    Component.literal("[Waypoints] JourneyMap is not available.").withStyle(ChatFormatting.YELLOW));
             return;
         }
         removeWaypoints(payload, api, feedback);
@@ -202,8 +224,9 @@ public class JourneyMapIntegration implements IClientPlugin {
                 }
             }
             if (payload.nearestOnly() && removed == 1) {
-                feedback.accept(Component.literal("[Waypoints] Removed nearest waypoint: " + describe(matched.getFirst()))
-                        .withStyle(ChatFormatting.GREEN));
+                feedback.accept(
+                        Component.literal("[Waypoints] Removed nearest waypoint: " + describe(matched.getFirst()))
+                                .withStyle(ChatFormatting.GREEN));
             } else {
                 feedback.accept(Component.literal("[Waypoints] Removed " + removed + " mod waypoint(s) within "
                         + payload.rangeBlocks() + " blocks.").withStyle(ChatFormatting.GREEN));
@@ -221,7 +244,8 @@ public class JourneyMapIntegration implements IClientPlugin {
         for (Waypoint waypoint : candidates) {
             // Never clear a player's unrelated native JourneyMap waypoints.
             if (!MOD_ID.equals(waypoint.getModId())
-                    && !(NATIVE_OWNER.equals(waypoint.getModId()) && MOD_ID.equals(waypoint.getCustomData(ORIGIN_KEY)))) {
+                    && !(NATIVE_OWNER.equals(waypoint.getModId())
+                            && MOD_ID.equals(waypoint.getCustomData(ORIGIN_KEY)))) {
                 continue;
             }
             if (filter != null && (waypoint.getName() == null
@@ -233,7 +257,8 @@ public class JourneyMapIntegration implements IClientPlugin {
             }
         }
         if (payload.nearestOnly() && matches.size() > 1) {
-            return List.of(matches.stream().min(Comparator.comparingDouble(wp -> distanceSquared(wp, payload))).orElseThrow());
+            return List.of(
+                    matches.stream().min(Comparator.comparingDouble(wp -> distanceSquared(wp, payload))).orElseThrow());
         }
         return List.copyOf(matches);
     }

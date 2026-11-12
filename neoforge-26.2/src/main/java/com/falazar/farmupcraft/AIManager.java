@@ -20,25 +20,26 @@ import java.util.concurrent.CompletableFuture;
 /** Central prompt construction and dispatch for NPCs and structure notes. */
 public class AIManager {
     private static final CustomLogger LOGGER = new CustomLogger(AIManager.class.getSimpleName());
-    private static final String SETTING_CONTEXT =
-            "You are a character designer for a cozy medieval Minecraft village mod. ";
-    private static final String PARAGRAPH_INSTRUCTIONS =
-            "Use exactly 4 short paragraphs with NO headings or bullet points:\n"
+    private static final String SETTING_CONTEXT = "You are a character designer for a cozy medieval Minecraft village mod. ";
+    private static final String PARAGRAPH_INSTRUCTIONS = "Use exactly 4 short paragraphs with NO headings or bullet points:\n"
             + "Paragraph 1: Their background and origin story (2-3 sentences).\n"
             + "Paragraph 2: Their daily habits and typical routine (2-3 sentences).\n"
             + "Paragraph 3: Things they like and enjoy (2-3 sentences).\n"
             + "Paragraph 4: Things they dislike or find annoying (2-3 sentences).\n"
             + "Give them a unique, memorable personality that fits the medieval village setting.";
 
-    private AIManager() {}
+    private AIManager() {
+    }
 
-    record CachedThreatNote(String text, int remaining) {}
+    record CachedThreatNote(String text, int remaining) {
+    }
 
     static CachedThreatNote popCachedThreatNote() {
         return popCachedThreatNote(FMLPaths.GAMEDIR.get().resolve("npcData").resolve("threat_notes_cache.json"));
     }
 
-    // Keep the existing NpcDataLoader cache format without pulling NPC file management into this port.
+    // Keep the existing NpcDataLoader cache format without pulling NPC file
+    // management into this port.
     static synchronized CachedThreatNote popCachedThreatNote(Path cacheFile) {
         if (!Files.exists(cacheFile))
             return null;
@@ -165,7 +166,16 @@ public class AIManager {
     }
 
     public static String buildNpcSystemPrompt(NpcData profile, String playerName, String playerMessage) {
-        return NpcPrompts.base(com.falazar.farmupcraft.gems.GemPlatform.configDir(), profile.getName(),
+        return buildNpcSystemPrompt(profile, playerName, playerMessage, null);
+    }
+
+    public static String buildNpcSystemPrompt(NpcData profile, String playerName, String playerMessage,
+            String profession) {
+        String prompt = NpcPrompts.base(com.falazar.farmupcraft.gems.GemPlatform.configDir(), profile.getName(),
                 profile.getDescription(), profile.getPersonality(), playerName, playerMessage);
+        if (profession == null || profession.isBlank())
+            return prompt;
+        return prompt + " Their current villager profession is " + profession
+                + ". Let this role inform what they know and how they speak.";
     }
 }

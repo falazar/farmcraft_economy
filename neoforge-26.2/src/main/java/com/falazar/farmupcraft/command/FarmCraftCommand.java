@@ -101,6 +101,7 @@ public class FarmCraftCommand {
                 .then(Commands.literal("admin").requires(FarmCraftCommand::isAdmin).then(settings)));
         dispatcher.register(Commands.literal("frecipe")
                 .then(Commands.argument("itemId", StringArgumentType.greedyString())
+                        .suggests(CommandSuggestions::itemIds)
                         .executes(ctx -> openRecipeForPlayer(ctx.getSource(),
                                 StringArgumentType.getString(ctx, "itemId")))));
     }
@@ -117,13 +118,15 @@ public class FarmCraftCommand {
     }
 
     private static ServerPlayer player(CommandSourceStack source) {
-        if (source.getEntity() instanceof ServerPlayer player) return player;
+        if (source.getEntity() instanceof ServerPlayer player)
+            return player;
         source.sendFailure(Component.literal("Must be a player."));
         return null;
     }
 
     public static int toggleLanNotice(CommandSourceStack source) {
-        if (player(source) == null) return 0;
+        if (player(source) == null)
+            return 0;
         var database = ModEvents.getWorldDataDatabase(source.getLevel());
         WorldData data = database.getOrCreate(0, WorldData::new);
         boolean enabled = !data.isLanNoticeEnabled();
@@ -135,9 +138,11 @@ public class FarmCraftCommand {
     }
 
     public static void displayLanNotice(Player player) {
-        if (!(player.level() instanceof ServerLevel level) || level.getServer().isPublished()) return;
+        if (!(player.level() instanceof ServerLevel level) || level.getServer().isPublished())
+            return;
         WorldData data = ModEvents.getWorldDataDatabase(level).getOrCreate(0, WorldData::new);
-        if (!data.isLanNoticeEnabled()) return;
+        if (!data.isLanNoticeEnabled())
+            return;
         player.sendSystemMessage(Component.literal(
                 "You are not Open To LAN. Use /farmcraft lan to toggle this notice.")
                 .withStyle(ChatFormatting.YELLOW));
@@ -167,14 +172,16 @@ public class FarmCraftCommand {
 
     public static int openRecipeForPlayer(CommandSourceStack source, String itemId) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         EDBMessages.sendToPlayer(new OpenJeiRecipePacket(itemId), player);
         return 1;
     }
 
     public static int clearModWaypoints(CommandSourceStack source, boolean testOnly, int chunks) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         int blocks = chunks * 16;
         EDBMessages.sendToPlayer(new RemoveModWaypointsPacket(
                 player.getX(), player.getY(), player.getZ(), blocks, testOnly), player);
@@ -186,7 +193,8 @@ public class FarmCraftCommand {
 
     public static int removeNearestWaypoint(CommandSourceStack source) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         EDBMessages.sendToPlayer(new RemoveModWaypointsPacket(
                 player.getX(), player.getY(), player.getZ(), 16, false, null, true), player);
         source.sendSuccess(() -> Component.literal("Removing nearest mod waypoint around you...")
@@ -200,7 +208,8 @@ public class FarmCraftCommand {
 
     public static int addMapWaypoint(CommandSourceStack source, int x, int y, int z, String name, int color) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         EDBMessages.sendToPlayer(new AddJMWaypointPacket(x, y, z, name,
                 player.level().dimension().identifier().toString(), true, color), player);
         source.sendSuccess(() -> Component.literal(
@@ -211,7 +220,8 @@ public class FarmCraftCommand {
 
     public static int highlightChunk(CommandSourceStack source, int chunkX, int chunkZ, String label) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         EDBMessages.sendToPlayer(new HighlightChunkPacket(chunkX, chunkZ, label,
                 player.level().dimension().identifier().toString(), 0x00FF00), player);
         source.sendSuccess(() -> Component.literal(
@@ -222,7 +232,8 @@ public class FarmCraftCommand {
 
     public static int highlightHereChunk(CommandSourceStack source, String label) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         ChunkPos pos = ChunkPos.containing(player.blockPosition());
         EDBMessages.sendToPlayer(new HighlightChunkPacket(pos.x(), pos.z(), label,
                 player.level().dimension().identifier().toString(), 0x00FF00), player);
@@ -233,7 +244,8 @@ public class FarmCraftCommand {
 
     public static int showVillageChunks(CommandSourceStack source) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         List<int[]> chunks = buildVillageChunkOverlayData(player);
         if (chunks == null) {
             source.sendFailure(Component.literal("You are not a member of any village."));
@@ -250,9 +262,11 @@ public class FarmCraftCommand {
 
     public static void refreshVillageChunksOverlay(ServerPlayer player) {
         PlayerData data = ModEvents.getPlayerDatabase(player.level()).getData(player.getUUID());
-        if (data == null || !data.isVillageMapShow()) return;
+        if (data == null || !data.isVillageMapShow())
+            return;
         List<int[]> chunks = buildVillageChunkOverlayData(player);
-        if (chunks == null) return;
+        if (chunks == null)
+            return;
         String dimension = player.level().dimension().identifier().toString();
         EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false, dimension), player);
         EDBMessages.sendToPlayer(new ShowVillageChunksPacket(chunks, true, dimension), player);
@@ -261,16 +275,18 @@ public class FarmCraftCommand {
     static List<int[]> buildVillageChunkOverlayData(ServerPlayer player) {
         DataBase<UUID, PlayerData> players = ModEvents.getPlayerDatabase(player.level());
         PlayerData data = players.getData(player.getUUID());
-        if (data == null || data.getHomeVillageUUID() == null) return null;
+        if (data == null || data.getHomeVillageUUID() == null)
+            return null;
         var village = ModEvents.getVillageDatabase(player.level()).getData(data.getHomeVillageUUID());
-        if (village == null) return null;
+        if (village == null)
+            return null;
         DataBase<Long, ChunkData> database = ModEvents.getChunkDataDatabase(player.level());
         List<int[]> chunks = new ArrayList<>();
         for (ChunkPos pos : village.getClaimedChunks()) {
             ChunkData chunk = database.getData(pos.pack());
             String type = chunk == null ? "village" : chunk.getType();
             boolean plot = pos.equals(village.getPosition()) || !"village".equalsIgnoreCase(type);
-            chunks.add(new int[]{pos.x(), pos.z(), plot ? 0x0055FF : 0x00E000});
+            chunks.add(new int[] { pos.x(), pos.z(), plot ? 0x0055FF : 0x00E000 });
         }
         return chunks;
     }
@@ -285,7 +301,8 @@ public class FarmCraftCommand {
 
     private static int clearOverlays(CommandSourceStack source, String message) {
         ServerPlayer player = player(source);
-        if (player == null) return 0;
+        if (player == null)
+            return 0;
         setVillageMapPreference(player, false);
         EDBMessages.sendToPlayer(new ShowVillageChunksPacket(List.of(), false,
                 player.level().dimension().identifier().toString()), player);
@@ -296,7 +313,8 @@ public class FarmCraftCommand {
     private static void setVillageMapPreference(ServerPlayer player, boolean show) {
         var database = ModEvents.getPlayerDatabase(player.level());
         PlayerData data = database.getData(player.getUUID());
-        if (data == null) throw new IllegalStateException("Missing player data for " + player.getUUID());
+        if (data == null)
+            throw new IllegalStateException("Missing player data for " + player.getUUID());
         data.setVillageMapShow(show);
         database.putData(player.getUUID(), data);
     }
@@ -365,7 +383,8 @@ public class FarmCraftCommand {
         List<Map.Entry<Long, GameStructureData>> all = new ArrayList<>();
         for (Long key : database.getKeys()) {
             GameStructureData data = database.getData(key);
-            if (data != null) all.add(Map.entry(key, data));
+            if (data != null)
+                all.add(Map.entry(key, data));
         }
         all.sort(Comparator.comparingDouble(entry -> entry.getValue().getCenterPos().distSqr(playerPos)));
         if (index < 1 || index > all.size()) {
@@ -380,7 +399,8 @@ public class FarmCraftCommand {
         detail(source, "Name:   " + data.getName(), ChatFormatting.WHITE);
         detail(source, "Type:   " + data.getType(), ChatFormatting.WHITE);
         detail(source, "ID:     " + entry.getKey(), ChatFormatting.WHITE);
-        detail(source, "Center: " + data.getCenterPos().toShortString() + "  (d=" + distance + ")", ChatFormatting.WHITE);
+        detail(source, "Center: " + data.getCenterPos().toShortString() + "  (d=" + distance + ")",
+                ChatFormatting.WHITE);
         detail(source, "Claimed:" + data.isOnClaimedPlot() + "  Visited:" + data.wasVisited(), ChatFormatting.WHITE);
         if (data.hasBoundingBox()) {
             BlockPos min = data.getMinPos(), max = data.getMaxPos();
@@ -388,24 +408,28 @@ public class FarmCraftCommand {
             detail(source, "Size:   " + (max.getX() - min.getX()) + "x" + (max.getY() - min.getY())
                     + "x" + (max.getZ() - min.getZ()), ChatFormatting.AQUA);
         } else {
-            detail(source, "BBox:   (missing — run /village structures rescan near this location)", ChatFormatting.YELLOW);
+            detail(source, "BBox:   (missing — run /village structures rescan near this location)",
+                    ChatFormatting.YELLOW);
         }
         if (data.hasChunkPositions()) {
             StringBuilder chunks = new StringBuilder();
             for (long packed : data.getChunkPositions()) {
                 ChunkPos pos = ChunkPos.unpack(packed);
-                if (!chunks.isEmpty()) chunks.append("  ");
+                if (!chunks.isEmpty())
+                    chunks.append("  ");
                 chunks.append("[").append(pos.x()).append(",").append(pos.z()).append("]");
             }
             detail(source, "Chunks: " + data.getChunkPositions().size() + " — " + chunks, ChatFormatting.AQUA);
         }
         if (data.hasSpecialChest()) {
             detail(source, "SpecialChest: " + data.getSpecialChestPos().toShortString() + "  opened="
-                    + data.isSpecialChestOpened() + "  totalChests=" + data.getTotalChestCount(), ChatFormatting.LIGHT_PURPLE);
+                    + data.isSpecialChestOpened() + "  totalChests=" + data.getTotalChestCount(),
+                    ChatFormatting.LIGHT_PURPLE);
         } else {
             detail(source, "SpecialChest: none set", ChatFormatting.GRAY);
         }
-        // Legacy detail always scans chests, including calls without the optional "chests" argument.
+        // Legacy detail always scans chests, including calls without the optional
+        // "chests" argument.
         VillageCommand.scanAndShowStructureChests(source, data, level);
         return 1;
     }

@@ -24,6 +24,7 @@ public final class BotCommand {
                 .then(Commands.literal("stop")
                         .executes(ctx -> stopBot(ctx.getSource(), null))
                         .then(Commands.argument("name", StringArgumentType.word())
+                            .suggests(CommandSuggestions::runningBots)
                                 .executes(ctx -> stopBot(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "name")))))
                 .then(Commands.argument("name", StringArgumentType.word())

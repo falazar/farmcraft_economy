@@ -54,9 +54,12 @@ public final class GemGameplayAcceptance {
         for (var gem : GemRules.GEMS) require(goods.getData("farmupcraft:" + gem) != null, "Gem market catalog entry");
         var ruby = goods.getData("farmupcraft:ruby");
         int cost = ruby.getCost();
+        boolean active = ruby.isActive();
+        ruby.setActive(true);
         ruby.setCost(cost + 1);
         com.falazar.farmupcraft.command.MarketCommand.initializeMarket(level.getServer().createCommandSourceStack());
         require(ruby.getCost() == cost + 1, "Market initialization preserves administrator/dynamic gem prices");
+        ruby.setActive(active);
         ruby.setCost(cost);
         var chunk = level.getChunkSource().getChunkNow(0, 0);
         if (chunk == null) {

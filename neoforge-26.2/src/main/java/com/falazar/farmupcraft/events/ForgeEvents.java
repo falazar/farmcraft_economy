@@ -111,9 +111,12 @@ public final class ForgeEvents {
             var village = ModEvents.getVillageDatabase(player.level()).getData(data.getHomeVillageUUID());
             if (village != null) {
                 int upkeep = VillageCommand.getDailyCost(village);
-                if (village.getCoins() < upkeep) {
+                int income = Math.multiplyExact(VillageCommand.countVillageClaimedStructures(village, player.level()), 100);
+                int netDaily = income - upkeep;
+                if (netDaily < 0 && village.getCoins() + netDaily < 0) {
                     player.sendSystemMessage(Component.literal("Warning: " + village.getName() + " treasury ("
-                            + village.getCoins() + " coins) cannot cover today's upkeep (" + upkeep + " coins)!")
+                            + village.getCoins() + " coins) cannot cover today's net upkeep (" + netDaily
+                            + " coins; earned=" + income + ", cost=" + upkeep + ")!")
                             .withStyle(ChatFormatting.RED));
                 }
             }

@@ -63,6 +63,11 @@ public final class LanBotLauncher {
         return false;
     }
 
+    public static synchronized List<String> getRunningBotNames() {
+        return PROCESSES.entrySet().stream().filter(entry -> entry.getValue().isAlive())
+                .map(Map.Entry::getKey).sorted().toList();
+    }
+
     public static synchronized Process startBot(String rawName, int port) throws IOException {
         if (port < 1 || port > 65535) {
             throw new IllegalArgumentException("World is not Open to LAN (port=" + port + "). Open to LAN first.");

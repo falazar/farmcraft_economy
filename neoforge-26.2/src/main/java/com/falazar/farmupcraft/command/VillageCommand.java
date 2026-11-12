@@ -52,8 +52,10 @@ import java.util.*;
 import static com.falazar.farmupcraft.command.PlotCommand.getCropsPlanted;
 
 /**
- * Village commands and shared economy queries. Scheduled upkeep runs once per local calendar day
- * for each village with an online member; the administrator's upkeep command deliberately forces a run.
+ * Village commands and shared economy queries. Scheduled upkeep runs once per
+ * local calendar day
+ * for each village with an online member; the administrator's upkeep command
+ * deliberately forces a run.
  */
 public class VillageCommand {
     public static final CustomLogger LOGGER = new CustomLogger(VillageCommand.class.getSimpleName());
@@ -72,6 +74,7 @@ public class VillageCommand {
                     return showVillageInfo(context.getSource(), null);
                 })
                 .then(Commands.argument("villageName", StringArgumentType.string())
+                        .suggests(CommandSuggestions::villageNames)
                         .executes(context -> {
                             String villageName = StringArgumentType.getString(context, "villageName");
                             // Behavior when villageName is provided
@@ -86,6 +89,7 @@ public class VillageCommand {
                             .executes(c -> com.falazar.farmupcraft.events.VillageRoads.show(c.getSource(), null,
                                     IntegerArgumentType.getInteger(c, "page"), kind)))
                     .then(Commands.argument("villageName", StringArgumentType.string())
+                            .suggests(CommandSuggestions::villageNames)
                             .executes(c -> com.falazar.farmupcraft.events.VillageRoads.show(c.getSource(),
                                     StringArgumentType.getString(c, "villageName"), 1, kind))
                             .then(Commands.argument("page", IntegerArgumentType.integer(1))
@@ -96,11 +100,13 @@ public class VillageCommand {
         builder.then(Commands.literal("routes")
                 .executes(c -> com.falazar.farmupcraft.events.VillageRouteSurveys.show(c.getSource(), null))
                 .then(Commands.argument("villageName", StringArgumentType.string())
+                        .suggests(CommandSuggestions::villageNames)
                         .executes(c -> com.falazar.farmupcraft.events.VillageRouteSurveys.show(c.getSource(),
                                 StringArgumentType.getString(c, "villageName")))));
         builder.then(Commands.literal("info2")
                 .executes(c -> showVillageInfo(c.getSource(), null, true))
                 .then(Commands.argument("villageName", StringArgumentType.string())
+                        .suggests(CommandSuggestions::villageNames)
                         .executes(c -> showVillageInfo(c.getSource(),
                                 StringArgumentType.getString(c, "villageName"), true))));
 
@@ -134,6 +140,7 @@ public class VillageCommand {
         // Define the delete sub-command. ADMIN ONLY!
         LiteralArgumentBuilder<CommandSourceStack> deleteBuilder = Commands.literal("delete")
                 .then(Commands.argument("villageName", StringArgumentType.string())
+                        .suggests(CommandSuggestions::villageNames)
                         .executes(context -> {
                             String villageName = StringArgumentType.getString(context, "villageName");
                             return deleteVillage(context.getSource(), villageName);
@@ -148,6 +155,7 @@ public class VillageCommand {
                 });
         levelUpBuilder.then(Commands.literal("confirm")
                 .then(Commands.argument("villageId", StringArgumentType.word())
+                        .suggests(CommandSuggestions::villageIds)
                         .then(Commands.argument("expectedLevel", IntegerArgumentType.integer(1, 9))
                                 .executes(ctx -> confirmVillageLevelUp(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "villageId"),
@@ -190,9 +198,11 @@ public class VillageCommand {
         // Define the "structures" sub-command to show structures in the village
         LiteralArgumentBuilder<CommandSourceStack> villageStructuresBuilder = Commands.literal("structures")
                 .then(Commands.literal("waypoint")
-                        .then(Commands.argument("structureId", com.mojang.brigadier.arguments.LongArgumentType.longArg())
+                        .then(Commands
+                                .argument("structureId", com.mojang.brigadier.arguments.LongArgumentType.longArg())
                                 .executes(context -> waypointVillageStructure(context.getSource(),
-                                        com.mojang.brigadier.arguments.LongArgumentType.getLong(context, "structureId")))))
+                                        com.mojang.brigadier.arguments.LongArgumentType.getLong(context,
+                                                "structureId")))))
                 .executes(context -> {
                     return showVillageStructures(context.getSource(), 20, "all");
                 })
@@ -256,6 +266,7 @@ public class VillageCommand {
         // Define the "setfounder" sub-command. ADMIN ONLY.
         LiteralArgumentBuilder<CommandSourceStack> setFounderBuilder = Commands.literal("setfounder")
                 .then(Commands.argument("playerName", StringArgumentType.word())
+                        .suggests(CommandSuggestions::onlinePlayers)
                         .executes(context -> {
                             String playerName = StringArgumentType.getString(context, "playerName");
                             return setVillageFounder(context.getSource(), playerName);
@@ -266,8 +277,7 @@ public class VillageCommand {
         // Define the "invite" sub-command — send a village invite to an online player.
         LiteralArgumentBuilder<CommandSourceStack> inviteBuilder = Commands.literal("invite")
                 .then(Commands.argument("playerName", StringArgumentType.word())
-                        .suggests((context, suggestions) -> net.minecraft.commands.SharedSuggestionProvider.suggest(
-                                context.getSource().getServer().getPlayerNames(), suggestions))
+                        .suggests(CommandSuggestions::onlinePlayers)
                         .executes(context -> {
                             String playerName = StringArgumentType.getString(context, "playerName");
                             return invitePlayerToVillage(context.getSource(), playerName);
@@ -292,25 +302,35 @@ public class VillageCommand {
         // Define admin utility subcommands.
         LiteralArgumentBuilder<CommandSourceStack> adminBuilder = Commands.literal("admin")
                 .requires(s -> s.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
+                .then(Commands.literal("rescanroads")
+                        .executes(context -> requestVillageRoadRescan(context.getSource(), null))
+                        .then(Commands.argument("villageName", StringArgumentType.string())
+                                .suggests(CommandSuggestions::villageNames)
+                                .executes(context -> requestVillageRoadRescan(context.getSource(),
+                                        StringArgumentType.getString(context, "villageName")))))
                 .then(Commands.literal("regenanimalgrains")
                         .executes(context -> regenerateVillageAnimalGrains(context.getSource(), null))
                         .then(Commands.argument("villageName", StringArgumentType.string())
+                                .suggests(CommandSuggestions::villageNames)
                                 .executes(context -> regenerateVillageAnimalGrains(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "villageName")))))
                 .then(Commands.literal("setfounder")
                         .then(Commands.argument("playerName", StringArgumentType.word())
+                                .suggests(CommandSuggestions::onlinePlayers)
                                 .executes(context -> setVillageFounder(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "playerName")))))
                 .then(Commands.literal("addmember")
                         .then(Commands.argument("playerName", StringArgumentType.word())
+                                .suggests(CommandSuggestions::onlinePlayers)
                                 .executes(context -> addMemberToVillage(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "playerName")))))
                 .then(Commands.literal("clearbreeding")
                         .executes(context -> clearVillageBreedingCooldown(context.getSource(), null))
                         .then(Commands.argument("villageName", StringArgumentType.string())
+                                .suggests(CommandSuggestions::villageNames)
                                 .executes(context -> clearVillageBreedingCooldown(
                                         context.getSource(),
                                         StringArgumentType.getString(context, "villageName")))));
@@ -522,7 +542,8 @@ public class VillageCommand {
             }
             source.sendSuccess(() -> Component.literal("=== " + village.getName() + " Animal Grain Requirements ===")
                     .withStyle(ChatFormatting.GOLD), false);
-            if (AnimalGrainAssigner.ensureDuckGrain(village)) villageDb.putData(village.getUUID(), village);
+            if (AnimalGrainAssigner.ensureDuckGrain(village))
+                villageDb.putData(village.getUUID(), village);
             java.util.Map<String, java.util.List<String>> map = village.getAnimalGrainsMap();
             for (String animal : AnimalGrainAssigner.ANIMAL_TYPES) {
                 java.util.List<String> grains = map.getOrDefault(animal, java.util.List.of());
@@ -786,10 +807,12 @@ public class VillageCommand {
                         view = view.publicOverview();
                     }
                     com.falazar.farmupcraft.database.message.EDBMessages.sendToPlayer(
-                            new com.falazar.farmupcraft.database.message.VillageViewPacket(view), (ServerPlayer) playerSource);
+                            new com.falazar.farmupcraft.database.message.VillageViewPacket(view),
+                            (ServerPlayer) playerSource);
                 } catch (IllegalArgumentException | ArithmeticException error) {
                     LOGGER.error("Cannot display village dashboard: " + error.getMessage(), error);
-                    source.sendFailure(Component.literal("Cannot display village dashboard: invalid village data. See log."));
+                    source.sendFailure(
+                            Component.literal("Cannot display village dashboard: invalid village data. See log."));
                     return 0;
                 }
             } else {
@@ -840,7 +863,8 @@ public class VillageCommand {
     // Returns the number of villages processed.
     public static int runOnlinePlayerVillageUpkeep(net.minecraft.server.MinecraftServer server) {
         Objects.requireNonNull(server, "server");
-        if (server.getPlayerList().getPlayers().isEmpty()) return 0;
+        if (server.getPlayerList().getPlayers().isEmpty())
+            return 0;
         int processed = 0;
         {
             DataBase<UUID, VillageData> villageDatabase = ModEvents.getVillageDatabase();
@@ -866,22 +890,26 @@ public class VillageCommand {
     }
 
     static int villageBuyCost(int existingVillageCount) {
-        if (existingVillageCount < 0) throw new IllegalArgumentException("Village count must not be negative");
+        if (existingVillageCount < 0)
+            throw new IllegalArgumentException("Village count must not be negative");
         return Math.addExact(500, Math.multiplyExact(existingVillageCount, 200));
     }
 
     static int dailyCost(int level, int plots) {
-        if (level < 1 || level > 10 || plots < 0) throw new IllegalArgumentException("Invalid level or plot count");
+        if (level < 1 || level > 10 || plots < 0)
+            throw new IllegalArgumentException("Invalid level or plot count");
         return Math.addExact(Math.multiplyExact(level, 100), Math.multiplyExact(plots, 15));
     }
 
     static int levelUpCost(int currentLevel) {
-        if (currentLevel < 1 || currentLevel >= 10) throw new IllegalArgumentException("Village cannot level up");
+        if (currentLevel < 1 || currentLevel >= 10)
+            throw new IllegalArgumentException("Village cannot level up");
         return currentLevel * 300;
     }
 
     static int requiredVillagers(int newLevel) {
-        if (newLevel < 2 || newLevel > 10) throw new IllegalArgumentException("Invalid next level");
+        if (newLevel < 2 || newLevel > 10)
+            throw new IllegalArgumentException("Invalid next level");
         return newLevel * 2;
     }
 
@@ -889,9 +917,13 @@ public class VillageCommand {
         return requiredVillagers(newLevel) - 2;
     }
 
-    /** Negative balances are intentional: upkeep is charged even when the village cannot afford it. */
+    /**
+     * Negative balances are intentional: upkeep is charged even when the village
+     * cannot afford it.
+     */
     static int applyDailyBalance(VillageData village, int cost, int claimedStructures) {
-        if (cost < 0 || claimedStructures < 0) throw new IllegalArgumentException("Negative upkeep inputs");
+        if (cost < 0 || claimedStructures < 0)
+            throw new IllegalArgumentException("Negative upkeep inputs");
         int net = Math.subtractExact(Math.multiplyExact(claimedStructures, 100), cost);
         village.setCoins(Math.addExact(village.getCoins(), net));
         village.markDailyRanToday();
@@ -903,7 +935,8 @@ public class VillageCommand {
         Set<UUID> villageIds = new LinkedHashSet<>();
         for (UUID playerId : onlinePlayerIds) {
             PlayerData player = players.getData(playerId);
-            if (player != null && player.getHomeVillageUUID() != null) villageIds.add(player.getHomeVillageUUID());
+            if (player != null && player.getHomeVillageUUID() != null)
+                villageIds.add(player.getHomeVillageUUID());
         }
         return villageIds.stream().map(villages::getData).filter(Objects::nonNull)
                 .filter(village -> !village.hasRanTodayAlready()).toList();
@@ -929,9 +962,11 @@ public class VillageCommand {
 
     public static com.falazar.farmupcraft.util.VillageListView villageListView(ServerPlayer player, int page) {
         var villages = ModEvents.getVillageDatabase(player.level()).getValues();
-        if (villages == null || villages.isEmpty()) throw new IllegalArgumentException("No villages data found.");
+        if (villages == null || villages.isEmpty())
+            throw new IllegalArgumentException("No villages data found.");
         int pages = (villages.size() - 1) / com.falazar.farmupcraft.util.VillageListView.PAGE_SIZE + 1;
-        if (page < 1 || page > pages) throw new IllegalArgumentException("Village list page must be between 1 and " + pages + ".");
+        if (page < 1 || page > pages)
+            throw new IllegalArgumentException("Village list page must be between 1 and " + pages + ".");
         var playerData = ModEvents.getPlayerDatabase(player.level()).getData(player.getUUID());
         UUID home = playerData == null ? null : playerData.getHomeVillageUUID();
         var entries = villages.stream().map(village -> {
@@ -1010,12 +1045,40 @@ public class VillageCommand {
         return findVillageByName(villageName, ModEvents.getVillageDatabase());
     }
 
+    private static int requestVillageRoadRescan(CommandSourceStack source, String villageName) {
+        var level = source.getServer().overworld();
+        VillageData village;
+        if (villageName != null) {
+            village = findVillageByName(level, villageName);
+        } else {
+            var player = source.getPlayer();
+            var playerData = player == null ? null : ModEvents.getPlayerDatabase().getData(player.getUUID());
+            village = playerData == null ? null
+                    : ModEvents.getVillageDatabase(level).getData(playerData.getHomeVillageUUID());
+        }
+        if (village == null || !village.isBought()) {
+            source.sendFailure(Component
+                    .literal("No purchased village found. Specify a village name or run this in your village."));
+            return 0;
+        }
+        boolean queued = com.falazar.farmupcraft.events.VillageRouteSurveys.request(
+                level, village, com.falazar.farmupcraft.util.RouteSurvey.Kind.ROAD);
+        if (!queued) {
+            source.sendFailure(
+                    Component.literal("A road survey for " + village.getName() + " is already active or queued."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Queued a fresh road survey for " + village.getName() + "."), false);
+        return 1;
+    }
+
     public static VillageData findVillageByName(Level level, String villageName) {
         return findVillageByName(villageName, ModEvents.getVillageDatabase(level));
     }
 
     private static VillageData findVillageByName(String villageName, DataBase<UUID, VillageData> dataBase) {
-        if (villageName == null || villageName.isBlank()) return null;
+        if (villageName == null || villageName.isBlank())
+            return null;
         Collection<VillageData> dataList = dataBase.getValues();
         if (dataList == null || dataList.isEmpty()) {
             return null;
@@ -1319,7 +1382,8 @@ public class VillageCommand {
 
     // -------------------------------------------------------------------------
 
-    private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken", "duck");
+    private static final java.util.Set<String> VALID_ANIMAL_TYPES = java.util.Set.of("cow", "sheep", "pig", "chicken",
+            "duck");
 
     // Sets the village's allowed breeding animal type. Can only be changed once
     // every two weeks.
@@ -1333,7 +1397,8 @@ public class VillageCommand {
             }
 
             if (animalType == null || !VALID_ANIMAL_TYPES.contains(animalType.toLowerCase(Locale.ROOT))) {
-                source.sendFailure(Component.literal("Invalid animal type. Must be: cow, sheep, pig, chicken, or duck."));
+                source.sendFailure(
+                        Component.literal("Invalid animal type. Must be: cow, sheep, pig, chicken, or duck."));
                 return 0;
             }
 
@@ -1403,8 +1468,8 @@ public class VillageCommand {
                 targetUuid = onlineTarget.getUUID();
                 normalizedFounderName = onlineTarget.getName().getString();
             } else {
-                Optional<net.minecraft.server.players.NameAndId> profile =
-                        source.getServer().services().nameToIdCache().get(playerName);
+                Optional<net.minecraft.server.players.NameAndId> profile = source.getServer().services().nameToIdCache()
+                        .get(playerName);
                 if (profile.isPresent()) {
                     targetUuid = profile.get().id();
                     normalizedFounderName = profile.get().name();
@@ -1469,8 +1534,8 @@ public class VillageCommand {
                 targetUuid = onlineTarget.getUUID();
                 normalizedName = onlineTarget.getName().getString();
             } else {
-                Optional<net.minecraft.server.players.NameAndId> profile =
-                        source.getServer().services().nameToIdCache().get(playerName);
+                Optional<net.minecraft.server.players.NameAndId> profile = source.getServer().services().nameToIdCache()
+                        .get(playerName);
                 if (profile.isPresent()) {
                     targetUuid = profile.get().id();
                     normalizedName = profile.get().name();
@@ -1571,10 +1636,22 @@ public class VillageCommand {
                 : ModEvents.getVillageDatabase().getData(data.getHomeVillageUUID());
         if (village == null || !village.getUUID().toString().equals(villageId)
                 || village.getLevel() != expectedLevel || expectedLevel < 1 || expectedLevel >= 10) {
-            source.sendFailure(Component.literal("Village or level changed. Reopen /village info2 before confirming."));
+            String message = "Village or level changed. Reopen /village info2 before confirming.";
+            source.sendFailure(Component.literal(message));
+            sendLevelUpGuiResult(player, message, false);
             return 0;
         }
-        return levelUpVillage(source);
+        int result = levelUpVillage(source);
+        if (result > 0) {
+            showVillageInfo(source, null, true);
+            sendLevelUpGuiResult(player, "Village leveled up to level " + village.getLevel() + ".", true);
+        }
+        return result;
+    }
+
+    private static void sendLevelUpGuiResult(ServerPlayer player, String message, boolean success) {
+        com.falazar.farmupcraft.database.message.EDBMessages.sendToPlayer(
+                new com.falazar.farmupcraft.database.message.VillageLevelUpResultPacket(message, success), player);
     }
 
     public static int levelUpVillage(CommandSourceStack source) {
@@ -1604,7 +1681,10 @@ public class VillageCommand {
 
             // STEP 2: Check if already max level.
             if (currLevel >= 10) {
-                source.sendFailure(Component.literal("Village is already at max level 10."));
+                String message = "Village is already at max level 10.";
+                source.sendFailure(Component.literal(message));
+                if (playerSource instanceof ServerPlayer serverPlayer)
+                    sendLevelUpGuiResult(serverPlayer, message, false);
                 return 0;
             }
 
@@ -1646,11 +1726,16 @@ public class VillageCommand {
             // d. If any checks failed, show all messages and return
             if (failedChecks) {
                 source.sendFailure(failureMessages);
+                if (playerSource instanceof ServerPlayer serverPlayer)
+                    sendLevelUpGuiResult(serverPlayer, failureMessages.getString(), false);
                 return 0;
             }
 
             if (!payLevelUpCost(village, player, levelUpCost)) {
-                source.sendFailure(Component.literal("Failed to deduct coins for village level up."));
+                String message = "Failed to deduct coins for village level up.";
+                source.sendFailure(Component.literal(message));
+                if (playerSource instanceof ServerPlayer serverPlayer)
+                    sendLevelUpGuiResult(serverPlayer, message, false);
                 return 0;
             }
             ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
@@ -2278,12 +2363,14 @@ public class VillageCommand {
             return 1;
         } catch (IllegalArgumentException error) {
             LOGGER.error("Cannot display village structures: " + error.getMessage(), error);
-            source.sendFailure(Component.literal("Cannot display village structures: invalid or oversized data. See log."));
+            source.sendFailure(
+                    Component.literal("Cannot display village structures: invalid or oversized data. See log."));
             return 0;
         }
     }
 
-    public static com.falazar.farmupcraft.util.VillageStructuresView structuresSnapshot(VillageData village, ServerPlayer player) {
+    public static com.falazar.farmupcraft.util.VillageStructuresView structuresSnapshot(VillageData village,
+            ServerPlayer player) {
         var entries = getVillageStructuresList(village, player.level()).stream().map(e -> {
             var structure = e.getValue();
             var pos = structure.getCenterPos();
@@ -2651,7 +2738,7 @@ public class VillageCommand {
                 LOGGER.info("Auto-triggering setupSpecialChest for structure {} ({}) — {} chest(s) found",
                         s.getName(), s.getId(), foundChests.size());
                 boolean placed = com.falazar.farmupcraft.StructureManager.setupSpecialChest(world, s, foundChests,
-                    structureDb);
+                        structureDb);
                 if (placed) {
                     source.sendSystemMessage(Component.literal(
                             "Special chest planted in " + s.getName() + "!")
@@ -2693,12 +2780,14 @@ public class VillageCommand {
             if (entry.getKey() == structureId) {
                 var structure = entry.getValue();
                 var pos = structure.getCenterPos();
-                if (FarmCraftCommand.showVillageChunks(source) != 1) return 0;
+                if (FarmCraftCommand.showVillageChunks(source) != 1)
+                    return 0;
                 com.falazar.farmupcraft.database.message.EDBMessages.sendToPlayer(
                         new com.falazar.farmupcraft.database.message.AddJMWaypointPacket(
                                 pos.getX(), pos.getY(), pos.getZ(),
                                 StructureDisplayNames.villageStructure(structure.getName()),
-                                player.level().dimension().identifier().toString(), true, 0x00FF00, true), player);
+                                player.level().dimension().identifier().toString(), true, 0xFFFF00, true),
+                        player);
                 source.sendSuccess(() -> Component.literal("Marked structure; opening JourneyMap at "
                         + pos.toShortString() + "."), false);
                 return 1;
@@ -2969,7 +3058,8 @@ public class VillageCommand {
      * @return List of nearby villagers
      */
     public static List<LivingEntity> getVillagersList(BlockPos centerPos, Level level, int radiusInChunks) {
-        if (radiusInChunks < 0) throw new IllegalArgumentException("Radius must not be negative");
+        if (radiusInChunks < 0)
+            throw new IllegalArgumentException("Radius must not be negative");
         List<Villager> list = level.getEntitiesOfClass(Villager.class,
                 new AABB(centerPos).inflate((double) radiusInChunks * 16), Entity::isAlive);
         return new ArrayList<>(list);
@@ -2999,7 +3089,8 @@ public class VillageCommand {
 
     public static boolean payLevelUpCost(VillageData village, PlayerData player, int cost) {
         var payment = com.falazar.farmupcraft.util.VillageLevelUpPayment.calculate(cost, village.getCoins());
-        if (payment.playerCoins() > 0 && !player.removeCoins(payment.playerCoins())) return false;
+        if (payment.playerCoins() > 0 && !player.removeCoins(payment.playerCoins()))
+            return false;
         village.subtractCoins(payment.villageCoins());
         return true;
     }
@@ -3010,14 +3101,17 @@ public class VillageCommand {
         for (ServerPlayer online : server.getPlayerList().getPlayers()) {
             ServerLevel level = (ServerLevel) online.level();
             ChunkData chunk = ModEvents.getChunkDataDatabase(level).getData(ChunkPos.pack(online.blockPosition()));
-            if (chunk == null || chunk.getVillageId() == null || !seen.add(chunk.getVillageId())) continue;
+            if (chunk == null || chunk.getVillageId() == null || !seen.add(chunk.getVillageId()))
+                continue;
             VillageData village = ModEvents.getVillageDatabase(level).getData(chunk.getVillageId());
-            if (village != null) refreshVillageCensus(village, level, now);
+            if (village != null)
+                refreshVillageCensus(village, level, now);
         }
     }
 
     public static boolean refreshVillageCensus(VillageData village, ServerLevel level, long now) {
-        if (!village.isVillagerScanDue(now)) return false;
+        if (!village.isVillagerScanDue(now))
+            return false;
         var chunks = ModEvents.getChunkDataDatabase(level);
         boolean occupied = level.getServer().getPlayerList().getPlayers().stream()
                 .filter(p -> p.level() == level)
@@ -3025,7 +3119,8 @@ public class VillageCommand {
                     ChunkData chunk = chunks.getData(ChunkPos.pack(p.blockPosition()));
                     return chunk != null && village.getUUID().equals(chunk.getVillageId());
                 });
-        if (!occupied) return false;
+        if (!occupied)
+            return false;
         BlockPos center = village.getPosition().getWorldPosition().offset(8, 0, 8);
         var bounds = new AABB(center.getX() - 160, level.getMinY(), center.getZ() - 160,
                 center.getX() + 161, level.getMaxY(), center.getZ() + 161);

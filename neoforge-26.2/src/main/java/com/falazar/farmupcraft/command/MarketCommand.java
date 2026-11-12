@@ -61,7 +61,8 @@ public class MarketCommand {
                 .executes(MarketCommand::showMarketInfo);
         builder.then(infoBuilder);
 
-        // Define the "show" sub-command (graphical market screen) and "show2" (text chat list)
+        // Define the "show" sub-command (graphical market screen) and "show2" (text
+        // chat list)
         var showBuilder = Commands.literal("show").executes(ctx -> showMarketScreen(ctx.getSource(), "general", 10));
         for (String category : MarketView.CATEGORIES) {
             var tab = Commands.literal(category).executes(ctx -> showMarketScreen(ctx.getSource(), category, null));
@@ -99,6 +100,7 @@ public class MarketCommand {
         builder.then(show2);
         builder.then(Commands.literal("favorite")
                 .then(Commands.argument("itemId", StringArgumentType.string())
+                        .suggests(CommandSuggestions::marketItems)
                         .then(Commands.argument("favorite", com.mojang.brigadier.arguments.BoolArgumentType.bool())
                                 .executes(ctx -> setMarketFavorite(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "itemId"),
@@ -108,6 +110,7 @@ public class MarketCommand {
         LiteralArgumentBuilder<CommandSourceStack> sellBuilder = Commands.literal("sell")
                 .then(Commands.literal("item")
                         .then(Commands.argument("itemId", StringArgumentType.string())
+                                .suggests(CommandSuggestions::marketItems)
                                 .executes(context -> sellMarketItem(context.getSource(),
                                         StringArgumentType.getString(context, "itemId")))))
                 .then(Commands.literal("general").executes(context -> {
@@ -141,6 +144,7 @@ public class MarketCommand {
                 // raiseprices <type>
                 .then(Commands.literal("raiseprices")
                         .then(Commands.argument("type", StringArgumentType.string())
+                                .suggests(CommandSuggestions::marketTypes)
                                 .executes(context -> {
                                     String type = StringArgumentType.getString(context, "type");
                                     raiseMarketPrices(context.getSource(), type);
@@ -151,6 +155,7 @@ public class MarketCommand {
                         .executes(context -> importAllMarketItems(context.getSource())))
                 .then(Commands.literal("importtxt")
                         .then(Commands.argument("type", StringArgumentType.string())
+                                .suggests(CommandSuggestions::marketTypes)
                                 .executes(context -> {
                                     String type = StringArgumentType.getString(context, "type");
                                     importMarketItemsTXT(context.getSource(), type);
@@ -159,7 +164,9 @@ public class MarketCommand {
                 // setactive <itemId> <active|inactive>
                 .then(Commands.literal("setactive")
                         .then(Commands.argument("itemId", StringArgumentType.string())
+                                .suggests(CommandSuggestions::marketItems)
                                 .then(Commands.argument("status", StringArgumentType.string())
+                                        .suggests(CommandSuggestions::activeStatuses)
                                         .executes(context -> {
                                             String itemId = StringArgumentType.getString(context, "itemId");
                                             String status = StringArgumentType.getString(context, "status");
@@ -169,6 +176,7 @@ public class MarketCommand {
                 // setcost <itemId> <cost>
                 .then(Commands.literal("setcost")
                         .then(Commands.argument("itemId", StringArgumentType.string())
+                                .suggests(CommandSuggestions::marketItems)
                                 .then(Commands.argument("cost", IntegerArgumentType.integer(0))
                                         .executes(context -> {
                                             String itemId = StringArgumentType.getString(context, "itemId");
@@ -179,6 +187,7 @@ public class MarketCommand {
                 // clearall <forreal> - clears all market items
                 .then(Commands.literal("clearall")
                         .then(Commands.argument("confirm", StringArgumentType.string())
+                                .suggests(CommandSuggestions::clearAllConfirmation)
                                 .executes(context -> {
                                     String confirm = StringArgumentType.getString(context, "confirm");
                                     if ("forreal".equals(confirm)) {
@@ -197,6 +206,7 @@ public class MarketCommand {
                 // addrandom <type>
                 .then(Commands.literal("addrandom")
                         .then(Commands.argument("type", StringArgumentType.string())
+                                .suggests(CommandSuggestions::marketTypes)
                                 .executes(context -> {
                                     String type = StringArgumentType.getString(context, "type");
                                     addRandomItemToMarket(context.getSource(), type);
@@ -299,9 +309,10 @@ public class MarketCommand {
 
             // STEP 2.5: Block villager egg buy if village is in debt.
             if (village.getCoins() < 0) {
-                                
+
                 source.sendFailure(Component.literal(
-                        "Your village is in debt (" + village.getCoins() + " coins). Pay off the debt before buying villager eggs."));
+                        "Your village is in debt (" + village.getCoins()
+                                + " coins). Pay off the debt before buying villager eggs."));
                 return 0;
             }
 
@@ -371,9 +382,12 @@ public class MarketCommand {
             return 0;
         }
         var wallet = PlayerCommand.getPlayer(source);
-        if (wallet == null) return 0;
-        if (!category.equals("high") && !category.equals("favorites") && getFilteredActiveGoods(source, category).isEmpty()) {
-            if (seedMarketType(source, category) == 0) return 0;
+        if (wallet == null)
+            return 0;
+        if (!category.equals("high") && !category.equals("favorites")
+                && getFilteredActiveGoods(source, category).isEmpty()) {
+            if (seedMarketType(source, category) == 0)
+                return 0;
         }
         try {
             int price = minimumPrice == null ? wallet.getMarketMinimumPrice() : minimumPrice;
@@ -397,7 +411,8 @@ public class MarketCommand {
             return 0;
         }
         var wallet = PlayerCommand.getPlayer(source);
-        if (wallet == null) return 0;
+        if (wallet == null)
+            return 0;
         var good = ModEvents.getGoodsDataDatabase(source.getLevel()).getData(itemId);
         if (good == null || good.getItem() == null) {
             source.sendFailure(Component.literal("Cannot change favorite: unknown market item."));
@@ -415,9 +430,11 @@ public class MarketCommand {
         for (var good : ModEvents.getGoodsDataDatabase(source.getLevel()).getValues()) {
             boolean favorite = preferences != null && preferences.isMarketFavorite(good.getItemId());
             if (!good.isActive() || (category.equals("high") ? good.getCost() < minimumPrice
-                    : category.equals("favorites") ? !favorite : !good.getMarketType().equals(category))) continue;
+                    : category.equals("favorites") ? !favorite : !good.getMarketType().equals(category)))
+                continue;
             Item item = good.getItem();
-            if (item == null) continue;
+            if (item == null)
+                continue;
             entries.add(new MarketView.Entry(good.getItemId(), good.getCost(),
                     countSaleItems(player.getInventory(), item), favorite));
         }
@@ -575,7 +592,8 @@ public class MarketCommand {
             return 0;
         }
         var wallet = PlayerCommand.getPlayer(source);
-        if (wallet == null) return 0;
+        if (wallet == null)
+            return 0;
         var good = ModEvents.getGoodsDataDatabase(source.getLevel()).getData(itemId);
         Item item = good == null ? null : good.getItem();
         if (good == null || !good.isActive() || item == null) {
@@ -591,7 +609,8 @@ public class MarketCommand {
             wallet.setCoins(Math.addExact(wallet.getCoins(), coins));
             ModEvents.getPlayerDatabase(source.getLevel()).putData(player.getUUID(), wallet);
             if (player instanceof ServerPlayer serverPlayer)
-                EDBMessages.sendToPlayer(new com.falazar.farmupcraft.database.message.MarketSaleReceiptPacket(coins), serverPlayer);
+                EDBMessages.sendToPlayer(new com.falazar.farmupcraft.database.message.MarketSaleReceiptPacket(coins),
+                        serverPlayer);
             return 1;
         } catch (IllegalArgumentException | IllegalStateException | ArithmeticException error) {
             LOGGER.error("Cannot sell market item " + itemId, error);
@@ -1102,8 +1121,8 @@ public class MarketCommand {
                 response = response.append(Component.literal("+ " + itemName + "\n"));
                 // Add to market, set active and cost.
                 good.setActive(Boolean.valueOf(true)); // Set active status
-                // Set at 4, cause we add one to all afterwards.
-                good.setCost(4); // Set a default cost, can be changed later.
+                // Set at basePrice - 1, cause we add one to all afterwards.
+                good.setCost(initialMarketPrice(good.getItemId()) - 1);
                 good.setDateAddedToMarket(java.time.LocalDate.now().toString());
                 ModEvents.getGoodsDataDatabase(source.getLevel()).putData(good.getItemId(), good);
             }
@@ -1154,14 +1173,21 @@ public class MarketCommand {
 
     public static void initializeMarket(CommandSourceStack source) {
         for (String type : List.of("food", "wood", "stone", "general")) {
-            if (getFilteredGoods(source, type).isEmpty() && !importMarketItemsTXT(source, type)) continue;
-            if (getFilteredActiveGoods(source, type).isEmpty()) seedMarketType(source, type, false);
+            if (getFilteredGoods(source, type).isEmpty() && !importMarketItemsTXT(source, type))
+                continue;
+            if (getFilteredActiveGoods(source, type).isEmpty())
+                seedMarketType(source, type, false);
         }
         var database = ModEvents.getGoodsDataDatabase(source.getLevel());
         for (var entry : com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES.entrySet()) {
             String id = "farmupcraft:" + entry.getKey();
-            if (database.getData(id) == null) {
+            GoodsData existing = database.getData(id);
+            if (existing == null) {
                 database.putData(id, new GoodsData(id, entry.getValue(), 0, "rare", false, "general", ""));
+                database.setDirty();
+            } else if (!existing.isActive() && existing.getAmountSold() == 0 && existing.getCost() > entry.getValue()) {
+                existing.setCost(entry.getValue());
+                database.putData(id, existing);
                 database.setDirty();
             }
         }
@@ -1170,8 +1196,9 @@ public class MarketCommand {
     public static boolean importMarketItemsTXT(CommandSourceStack source, String type) {
         String path = "data/farmupcraft/farmupcraft/market/market_" + type + "_items.txt";
         InputStream resource = MarketCommand.class.getClassLoader().getResourceAsStream(path);
-        if (resource == null) resource = MarketCommand.class.getClassLoader()
-                .getResourceAsStream("data/farmupcraft/market/market_" + type + "_items.txt");
+        if (resource == null)
+            resource = MarketCommand.class.getClassLoader()
+                    .getResourceAsStream("data/farmupcraft/market/market_" + type + "_items.txt");
         try (InputStream inputStream = resource) {
             if (inputStream == null) {
                 throw new FileNotFoundException(
@@ -1210,12 +1237,14 @@ public class MarketCommand {
                         if (!validMarketItem(trimmedItem)) {
                             LOGGER.warn("Market import SKIPPED '{}' — resolves to Air/null, mod may not be loaded.",
                                     trimmedItem);
-                            source.sendFailure(Component.literal("Market import skipped invalid/unavailable item: " + trimmedItem));
+                            source.sendFailure(Component
+                                    .literal("Market import skipped invalid/unavailable item: " + trimmedItem));
                             continue;
                         }
                         // STEP 3: Insert into DB, ignore if an old one exists.
                         // Dont create dupes, just insert new ones.
-                        goodsData = new GoodsData(trimmedItem, 5, 0, "common", false, type, "");
+                        goodsData = new GoodsData(trimmedItem, initialMarketPrice(trimmedItem), 0,
+                                isGemMarketItem(trimmedItem) ? "rare" : "common", false, type, "");
                         goodsDataDataBase.putData(trimmedItem, goodsData);
                         importedCount++;
                     } else {
@@ -1405,12 +1434,14 @@ public class MarketCommand {
 
             if (randomGood != null) {
                 randomGood.setActive(true); // Set it active
-                if (resetPrice) randomGood.setCost(5);
+                if (resetPrice)
+                    randomGood.setCost(initialMarketPrice(randomGood.getItemId()));
                 randomGood.setDateAddedToMarket(java.time.LocalDate.now().toString());
                 ModEvents.getGoodsDataDatabase(source.getLevel()).putData(randomGood.getItemId(), randomGood);
                 source.sendSuccess(
                         () -> Component.literal(
-                                "Added random item to market: " + randomGood.getItem().getDefaultInstance().getHoverName().getString()),
+                                "Added random item to market: "
+                                        + randomGood.getItem().getDefaultInstance().getHoverName().getString()),
                         false);
             } else {
                 source.sendFailure(Component.literal("No valid item found to add to market."));
@@ -1419,6 +1450,19 @@ public class MarketCommand {
             source.sendFailure(Component.literal("Add Random Item to Market Exception thrown - see log"));
             LOGGER.error(ex.getMessage(), ex);
         }
+    }
+
+    static boolean isGemMarketItem(String itemId) {
+        return itemId != null && itemId.startsWith("farmupcraft:")
+                && com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES
+                        .containsKey(itemId.substring("farmupcraft:".length()));
+    }
+
+    static int initialMarketPrice(String itemId) {
+        if (isGemMarketItem(itemId)) {
+            return com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES.get(itemId.substring("farmupcraft:".length()));
+        }
+        return 5;
     }
 
     static boolean validMarketItem(String itemId) {
@@ -1497,7 +1541,8 @@ public class MarketCommand {
                 .getRecipes().stream()
                 .filter(recipe -> recipe.value().getType() == RecipeType.CRAFTING)
                 .flatMap(recipe -> recipe.value().display().stream())
-                .flatMap(display -> display.result().resolveForStacks(SlotDisplayContext.fromLevel(source.getLevel())).stream())
+                .flatMap(display -> display.result().resolveForStacks(SlotDisplayContext.fromLevel(source.getLevel()))
+                        .stream())
                 .anyMatch(stack -> stack.is(item));
 
         Style style = itemLineStyle(item, itemId, inInventory, hasRecipe);
@@ -1533,7 +1578,8 @@ public class MarketCommand {
 
     static Style itemLineStyle(Item item, String itemId, boolean inInventory, boolean hasRecipe) {
         if (hasRecipe) {
-            // Item tooltips can consume chat clicks; recipe links use text tooltips instead.
+            // Item tooltips can consume chat clicks; recipe links use text tooltips
+            // instead.
             return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA)
                     .withUnderlined(true)
                     .withClickEvent(new ClickEvent.RunCommand("/frecipe " + itemId))

@@ -7,43 +7,30 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SoundRetryCooldownTest {
-    private static final long FIVE_MINUTES = TimeUnit.MINUTES.toNanos(5);
+    private static final long ONE_HOUR = TimeUnit.HOURS.toNanos(1);
 
     @Test
-    void failureWaitsExactlyFiveRealTimeMinutes() {
-        var cooldown = new SoundRetryCooldown();
-        assertFalse(cooldown.hasFailed());
-        cooldown.recordAttempt(false, 10);
-        assertTrue(cooldown.hasFailed());
-        assertFalse(cooldown.retryDue(10));
-        assertFalse(cooldown.retryDue(10 + FIVE_MINUTES - 1));
-        assertTrue(cooldown.retryDue(10 + FIVE_MINUTES));
+    void logsFirstFailureAndThenAtMostOncePerHour() {
+        var throttle = new SoundRetryCooldown();
+        assertTrue(throttle.shouldLogFailure(10));
+        assertFalse(throttle.shouldLogFailure(10 + ONE_HOUR - 1));
+        assertTrue(throttle.shouldLogFailure(10 + ONE_HOUR));
     }
 
     @Test
-    void manualAttemptIsNotGatedAndSuccessClearsFailure() {
-        var cooldown = new SoundRetryCooldown();
-        cooldown.recordAttempt(false, 0);
-        cooldown.recordAttempt(true, 1);
-        assertFalse(cooldown.hasFailed());
-        assertFalse(cooldown.retryDue(FIVE_MINUTES));
-    }
-
-    @Test
-    void failedManualOrAutomaticAttemptRestartsFiveMinutes() {
-        var cooldown = new SoundRetryCooldown();
-        cooldown.recordAttempt(false, 0);
-        cooldown.recordAttempt(false, 100);
-        assertFalse(cooldown.retryDue(FIVE_MINUTES));
-        assertTrue(cooldown.retryDue(FIVE_MINUTES + 100));
+    void repeatedFailuresDoNotResetTheLogInterval() {
+        var throttle = new SoundRetryCooldown();
+        assertTrue(throttle.shouldLogFailure(0));
+        assertFalse(throttle.shouldLogFailure(ONE_HOUR - 1));
+        assertTrue(throttle.shouldLogFailure(ONE_HOUR));
     }
 
     @Test
     void nanoTimeWraparoundPreservesElapsedDuration() {
-        var cooldown = new SoundRetryCooldown();
-        long start = Long.MAX_VALUE - FIVE_MINUTES / 2;
-        cooldown.recordAttempt(false, start);
-        assertFalse(cooldown.retryDue(start + FIVE_MINUTES - 1));
-        assertTrue(cooldown.retryDue(start + FIVE_MINUTES));
+        var throttle = new SoundRetryCooldown();
+        long start = Long.MAX_VALUE - ONE_HOUR / 2;
+        assertTrue(throttle.shouldLogFailure(start));
+        assertFalse(throttle.shouldLogFailure(start + ONE_HOUR - 1));
+        assertTrue(throttle.shouldLogFailure(start + ONE_HOUR));
     }
 }

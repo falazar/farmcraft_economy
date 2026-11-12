@@ -41,9 +41,12 @@ public final class ShowBiomesCommand {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("show")
                 .then(Commands.literal("plantable")
-                        .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
+                        .then(Commands
+                                .argument("pos",
+                                        net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
                                 .executes(c -> CropsManager.showPlantableInventory(c.getSource(),
-                                        net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(c, "pos")))))
+                                        net.minecraft.commands.arguments.coordinates.BlockPosArgument.getBlockPos(c,
+                                                "pos")))))
                 .then(Commands.literal("plotcrops").executes(c -> showPlotCrops(c.getSource())))
                 .then(Commands.literal("biomes")
                         .requires(source -> source.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER))
@@ -55,20 +58,21 @@ public final class ShowBiomesCommand {
                         .then(Commands.argument("crop", StringArgumentType.greedyString())
                                 .suggests((context, builder) -> SharedSuggestionProvider.suggest(
                                         cropAliases(context.getSource()).keySet(),
-                                        builder.createOffset(builder.getStart() + builder.getRemaining().lastIndexOf(' ') + 1)))
+                                        builder.createOffset(
+                                                builder.getStart() + builder.getRemaining().lastIndexOf(' ') + 1)))
                                 .executes(c -> {
-                            showCropBiomes(c.getSource(), StringArgumentType.getString(c, "crop"));
-                            return 0;
-                        })))
+                                    showCropBiomes(c.getSource(), StringArgumentType.getString(c, "crop"));
+                                    return 0;
+                                })))
                 .then(Commands.literal("biomecrops")
                         .executes(c -> showCurrentBiomeCrops(c.getSource()))
                         .then(Commands.argument("biome", StringArgumentType.greedyString())
                                 .suggests((context, builder) -> SharedSuggestionProvider.suggest(
-                                        biomeAliases(context.getSource()).keySet(), builder))
+                                    biomeAliases(context.getSource()).keySet(), builder))
                                 .executes(c -> {
-                            showBiomeCrops(c.getSource(), StringArgumentType.getString(c, "biome"));
-                            return 0;
-                        }))));
+                                    showBiomeCrops(c.getSource(), StringArgumentType.getString(c, "biome"));
+                                    return 0;
+                                }))));
     }
 
     public static int showPlotCrops(CommandSourceStack source) {
@@ -94,16 +98,20 @@ public final class ShowBiomesCommand {
         Set<Item> crops = new LinkedHashSet<>();
         MutableComponent message = Component.literal("Plot biomes: ").withStyle(ChatFormatting.AQUA);
         for (var entry : biomes.entrySet()) {
-            if (!crops.isEmpty() || message.getSiblings().size() > 0) message.append(", ");
+            if (!crops.isEmpty() || message.getSiblings().size() > 0)
+                message.append(", ");
             message.append(Component.translatable(CropsManager.getBiomeLangKey(Identifier.parse(entry.getKey())))
                     .withStyle(ChatFormatting.YELLOW));
             var rules = manager.getBiomeRules(entry.getValue());
-            if (rules != null) crops.addAll(rules.getCrops(source.getLevel()));
-            else message.append(Component.literal(" (no crop rules)").withStyle(ChatFormatting.GRAY));
+            if (rules != null)
+                crops.addAll(rules.getCrops(source.getLevel()));
+            else
+                message.append(Component.literal(" (no crop rules)").withStyle(ChatFormatting.GRAY));
         }
         message.append(Component.literal("\nCombined crops for this plot: ").withStyle(ChatFormatting.AQUA))
                 .append(com.falazar.farmupcraft.util.CropListChat.crops(crops, player));
-        message.append(Component.literal("\nBiome-specific planting restrictions still apply; farm level 3+ allows crops from any biome in the chunk.")
+        message.append(Component.literal(
+                "\nBiome-specific planting restrictions still apply; farm level 3+ allows crops from any biome in the chunk.")
                 .withStyle(ChatFormatting.GRAY));
         source.sendSuccess(() -> message, false);
         return 1;
@@ -131,9 +139,11 @@ public final class ShowBiomesCommand {
         }
 
         Identifier pamId = Identifier.tryParse("pamhc2crops:" + name + "item");
-        if (pamId == null) return Items.AIR;
+        if (pamId == null)
+            return Items.AIR;
         Item item = BuiltInRegistries.ITEM.getValue(pamId);
-        if (item != Items.AIR) return item;
+        if (item != Items.AIR)
+            return item;
         String path = switch (name) {
             case "wheat" -> "wheat_seeds";
             case "beetroot" -> "beetroot_seeds";
@@ -166,8 +176,10 @@ public final class ShowBiomesCommand {
             var aliases = cropAliases(source);
             shared = com.falazar.farmupcraft.util.CropBiomeQuery.shared(crops, crop -> {
                 Item item = resolveCrop(aliases.getOrDefault(crop, crop));
-                if (item == Items.AIR) throw new IllegalArgumentException("Crop not found: " + crop);
-                return manager.getBiomesForItem(item).stream().flatMap(b -> b.unwrapKey().stream())
+                if (item == Items.AIR)
+                    throw new IllegalArgumentException("Crop not found: " + crop);
+                Item lookupItem = resolveBiomeLookupItem(item, manager);
+                return manager.getBiomesForItem(lookupItem).stream().flatMap(b -> b.unwrapKey().stream())
                         .collect(java.util.stream.Collectors.toSet());
             });
         } catch (IllegalArgumentException error) {
@@ -177,7 +189,8 @@ public final class ShowBiomesCommand {
         Set<String> villageBiomes = getPlayerVillageBiomeSet(source.getPlayer());
         Component biomes = shared.stream()
                 .map(key -> Component.translatable(CropsManager.getBiomeLangKey(key.identifier()))
-                        .withStyle(villageBiomes.contains(key.identifier().toString()) ? ChatFormatting.GREEN : ChatFormatting.WHITE))
+                        .withStyle(villageBiomes.contains(key.identifier().toString()) ? ChatFormatting.GREEN
+                                : ChatFormatting.WHITE))
                 .sorted(Comparator.comparing(Component::getString))
                 .reduce((first, second) -> first.append(", ").append(second))
                 .orElse(Component.literal(crops.size() == 1 ? "None" : "No shared biomes"));
@@ -185,10 +198,28 @@ public final class ShowBiomesCommand {
                 + (crops.size() > 1 ? " together in: " : " in: ")).append(biomes), false);
     }
 
+    static Item resolveBiomeLookupItem(Item item, BiomeRulesManager manager) {
+        if (!manager.getBiomesForItem(item).isEmpty())
+            return item;
+        if (item == Items.WHEAT)
+            return Items.WHEAT_SEEDS;
+        if (item == Items.BEETROOT)
+            return Items.BEETROOT_SEEDS;
+        Identifier id = BuiltInRegistries.ITEM.getKey(item);
+        if (!id.getNamespace().equals("pamhc2crops") || !id.getPath().endsWith("item"))
+            return item;
+        Identifier seedId = Identifier.fromNamespaceAndPath(id.getNamespace(),
+                id.getPath().substring(0, id.getPath().length() - "item".length()) + "seeditem");
+        Item seed = BuiltInRegistries.ITEM.getValue(seedId);
+        return seed != Items.AIR && !manager.getBiomesForItem(seed).isEmpty() ? seed : item;
+    }
+
     private static Set<String> getPlayerVillageBiomeSet(Player player) {
-        if (player == null) return Set.of();
+        if (player == null)
+            return Set.of();
         PlayerData data = ModEvents.getPlayerDatabase(player.level()).getData(player.getUUID());
-        if (data == null || data.getHomeVillageUUID() == null) return Set.of();
+        if (data == null || data.getHomeVillageUUID() == null)
+            return Set.of();
         VillageData village = ModEvents.getVillageDatabase(player.level()).getData(data.getHomeVillageUUID());
         return village == null ? Set.of()
                 : new HashSet<>(VillageCommand.getVillageBiomes(village, player.level()).keySet());
@@ -201,7 +232,8 @@ public final class ShowBiomesCommand {
                 .distinct()
                 .map(key -> Component.translatable(CropsManager.getBiomeLangKey(key.identifier()))
                         .withStyle(villageBiomes.contains(key.identifier().toString())
-                                ? ChatFormatting.GREEN : ChatFormatting.WHITE))
+                                ? ChatFormatting.GREEN
+                                : ChatFormatting.WHITE))
                 .sorted(Comparator.comparing(Component::getString))
                 .reduce((first, second) -> first.append(", ").append(second))
                 .orElse(Component.literal("None"));
@@ -219,7 +251,8 @@ public final class ShowBiomesCommand {
                 : registry.get(ResourceKey.create(Registries.BIOME, id));
         if (biome.isEmpty() && !biomeName.contains(":")) {
             Identifier bopId = Identifier.tryParse("biomesoplenty:" + biomeName);
-            if (bopId != null) biome = registry.get(ResourceKey.create(Registries.BIOME, bopId));
+            if (bopId != null)
+                biome = registry.get(ResourceKey.create(Registries.BIOME, bopId));
         }
         if (biome.isEmpty()) {
             source.sendFailure(Component.literal("Biome not found: " + biomeName));
@@ -232,7 +265,8 @@ public final class ShowBiomesCommand {
         }
         Component crops = com.falazar.farmupcraft.util.CropListChat.crops(
                 instance.getCrops(source.getLevel()), source.getPlayer());
-        source.sendSuccess(() -> Component.literal("§bCrops you can plant in " + biomeName + ": ").append(crops), false);
+        source.sendSuccess(() -> Component.literal("§bCrops you can plant in " + biomeName + ": ").append(crops),
+                false);
     }
 
     public static int showBiomes(CommandContext<CommandSourceStack> context, Vec3 pos, int radius) {

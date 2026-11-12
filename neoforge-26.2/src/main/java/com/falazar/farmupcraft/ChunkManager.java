@@ -75,10 +75,8 @@ public class ChunkManager {
     private static final long DEATH_WINDOW_MS = 3_000L;
     private static final ConcurrentLinkedDeque<RecentDeath> LYCANITES_DEATH_POS = new ConcurrentLinkedDeque<>();
     private static final Map<UUID, Long> VILLAGE_CENTER_SHOWN_AT = new HashMap<>();
-    private static final com.falazar.farmupcraft.util.StructureDiscoveryCooldown STRUCTURE_DISCOVERY_COOLDOWN =
-            new com.falazar.farmupcraft.util.StructureDiscoveryCooldown();
-    private static final com.falazar.farmupcraft.util.PastureEntryCooldown PASTURE_ENTRY_COOLDOWN =
-            new com.falazar.farmupcraft.util.PastureEntryCooldown();
+    private static final com.falazar.farmupcraft.util.StructureDiscoveryCooldown STRUCTURE_DISCOVERY_COOLDOWN = new com.falazar.farmupcraft.util.StructureDiscoveryCooldown();
+    private static final com.falazar.farmupcraft.util.PastureEntryCooldown PASTURE_ENTRY_COOLDOWN = new com.falazar.farmupcraft.util.PastureEntryCooldown();
     private static final long VILLAGE_CENTER_COOLDOWN_MS = 60 * 60 * 1000L;
     private static final Map<UUID, Long> WILDERNESS_SCAN_LAST_AT = new HashMap<>();
     private static final long WILDERNESS_SCAN_COOLDOWN_MS = 30_000L;
@@ -92,12 +90,15 @@ public class ChunkManager {
     }
 
     static boolean isRecentDeathNear(BlockPos deathPos, ResourceKey<Level> deathDimension, long time,
-                                     ResourceKey<Level> itemDimension, Vec3 itemPos, long now) {
+            ResourceKey<Level> itemDimension, Vec3 itemPos, long now) {
         return now - time <= DEATH_WINDOW_MS && deathDimension.equals(itemDimension)
                 && itemPos.distanceToSqr(deathPos.getX(), deathPos.getY(), deathPos.getZ()) <= 25.0;
     }
 
-    /** Called at server stop so cooldowns and drop interception cannot outlive a world. */
+    /**
+     * Called at server stop so cooldowns and drop interception cannot outlive a
+     * world.
+     */
     public static void clearTransientState() {
         VILLAGE_CENTER_SHOWN_AT.clear();
         STRUCTURE_DISCOVERY_COOLDOWN.clear();
@@ -112,7 +113,8 @@ public class ChunkManager {
 
     private static String findVillageByChunkPos(ChunkPos pos, Level level) {
         ChunkData chunk = ModEvents.getChunkDataDatabase(level).getData(pos.pack());
-        if (chunk == null || chunk.getVillageId() == null) return null;
+        if (chunk == null || chunk.getVillageId() == null)
+            return null;
         VillageData village = ModEvents.getVillageDatabase(level).getData(chunk.getVillageId());
         return village == null ? null : village.getName();
     }
@@ -120,10 +122,12 @@ public class ChunkManager {
     @SubscribeEvent
     public static void onPlayerEnterChunk(EntityEvent.EnteringSection event) {
         try {
-            if (!(event.getEntity() instanceof ServerPlayer player)) return;
+            if (!(event.getEntity() instanceof ServerPlayer player))
+                return;
             SectionPos oldPos = event.getOldPos();
             SectionPos newPos = event.getNewPos();
-            if (!newPos.chunk().equals(oldPos.chunk())) notifyPastureEntry(player, newPos.chunk());
+            if (!newPos.chunk().equals(oldPos.chunk()))
+                notifyPastureEntry(player, newPos.chunk());
             String previous = findVillageByChunkPos(oldPos.chunk(), player.level());
             String current = findVillageByChunkPos(newPos.chunk(), player.level());
             checkForStructuresInSection(player, newPos);
@@ -157,9 +161,11 @@ public class ChunkManager {
     private static void notifyPastureEntry(ServerPlayer player, ChunkPos chunk) {
         var level = player.level();
         var data = ModEvents.getChunkDataDatabase(level).getData(chunk.pack());
-        if (data == null || !data.isActivePasture(player.blockPosition().getY())) return;
+        if (data == null || !data.isActivePasture(player.blockPosition().getY()))
+            return;
         if (!PASTURE_ENTRY_COOLDOWN.shouldShow(player.getUUID(), level.dimension().identifier().toString(),
-                chunk.pack(), System.nanoTime() / 1_000_000L)) return;
+                chunk.pack(), System.nanoTime() / 1_000_000L))
+            return;
         var pos = new BlockPos(chunk.getMinBlockX(), data.getBoughtY(), chunk.getMinBlockZ());
         int count = AnimalsManager.countAnimalsInChunk(level, pos);
         boolean full = count >= AnimalsManager.MAX_ANIMALS_PER_PASTURE;
@@ -170,7 +176,8 @@ public class ChunkManager {
 
     private static void checkForStructuresInSection(Player player, SectionPos sectionPos) {
         try {
-            if (!(player.level() instanceof ServerLevel level)) return;
+            if (!(player.level() instanceof ServerLevel level))
+                return;
             ChunkData entered = ModEvents.getChunkDataDatabase(level).getData(sectionPos.chunk().pack());
             if (entered != null && entered.getType().equalsIgnoreCase("village center")) {
                 long now = System.currentTimeMillis();
@@ -180,15 +187,20 @@ public class ChunkManager {
                     VillageData village = entered.getVillageId() == null ? null
                             : ModEvents.getVillageDatabase(level).getData(entered.getVillageId());
                     if (village != null) {
-                        var msg = Component.literal("--- " + village.getName() + " ---").withStyle(ChatFormatting.YELLOW)
-                                .append(Component.literal("\nLevel: " + village.getLevel()).withStyle(ChatFormatting.WHITE));
+                        var msg = Component.literal("--- " + village.getName() + " ---")
+                                .withStyle(ChatFormatting.YELLOW)
+                                .append(Component.literal("\nLevel: " + village.getLevel())
+                                        .withStyle(ChatFormatting.WHITE));
                         if (!village.getFounder().isEmpty()) {
-                            msg.append(Component.literal("  |  Founded by: " + village.getFounder()).withStyle(ChatFormatting.WHITE));
+                            msg.append(Component.literal("  |  Founded by: " + village.getFounder())
+                                    .withStyle(ChatFormatting.WHITE));
                         }
                         if (!village.getAnimalType().isEmpty()) {
-                            msg.append(Component.literal("\nVillage animal: " + village.getAnimalType()).withStyle(ChatFormatting.WHITE));
+                            msg.append(Component.literal("\nVillage animal: " + village.getAnimalType())
+                                    .withStyle(ChatFormatting.WHITE));
                         }
-                        msg.append(Component.literal("\nChunks: " + village.getClaimedChunks().size()).withStyle(ChatFormatting.GRAY));
+                        msg.append(Component.literal("\nChunks: " + village.getClaimedChunks().size())
+                                .withStyle(ChatFormatting.GRAY));
                         player.sendSystemMessage(msg);
                     }
                 }
@@ -197,13 +209,14 @@ public class ChunkManager {
             var structures = ModEvents.getGameStructureDatabase(level);
             for (Long id : structures.getKeys()) {
                 GameStructureData data = structures.getData(id);
-                if (data == null || !data.intersectsSection(sectionPos)) continue;
+                if (data == null || !data.isCenterInSection(sectionPos))
+                    continue;
                 if (STRUCTURE_DISCOVERY_COOLDOWN.shouldShow(player.getUUID(),
                         level.dimension().identifier().toString(), id,
                         entered != null && entered.getVillageId() != null, System.nanoTime() / 1_000_000L)) {
                     player.sendSystemMessage(Component.literal("You discovered: " + data.getName()
-                        + (data.isOnClaimedPlot() ? " (claimed)" : "")
-                        + (data.wasVisited() ? " (visited)" : " (new!)")));
+                            + (data.isOnClaimedPlot() ? " (claimed)" : "")
+                            + (data.wasVisited() ? " (visited)" : " (new!)")));
                 }
                 if (!data.wasVisited() && !player.isCreative()) {
                     data.setWasVisited(true);
@@ -236,7 +249,8 @@ public class ChunkManager {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dz = -1; dz <= 1; dz++) {
                 ChunkData data = database.getData(ChunkPos.pack(center.x() + dx, center.z() + dz));
-                if (data != null && !data.getType().isEmpty()) return true;
+                if (data != null && !data.getType().isEmpty())
+                    return true;
             }
         }
         return false;
@@ -250,7 +264,7 @@ public class ChunkManager {
         if (!(level.getBlockEntity(pos) instanceof net.minecraft.world.level.block.entity.SignBlockEntity sign)) {
             return false;
         }
-        for (boolean front : new boolean[]{true, false}) {
+        for (boolean front : new boolean[] { true, false }) {
             var signText = sign.getText(front);
             var lines = new java.util.ArrayList<String>(4);
             for (int i = 0; i < 4; i++) {
@@ -265,7 +279,8 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onRightClickPlotBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getLevel().isClientSide()) return;
+        if (event.getLevel().isClientSide())
+            return;
         Player player = event.getEntity();
         BlockPos pos = event.getPos();
         if (event.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND
@@ -287,7 +302,8 @@ public class ChunkManager {
             return;
         }
         if (!isProtectedAccessBlock(event.getLevel().getBlockState(pos)) || data == null
-                || pos.getY() < protectionMinY(data) || player.isCreative()) return;
+                || pos.getY() < protectionMinY(data) || player.isCreative())
+            return;
         if (!isPlayerVillageMember(player, data)) {
             event.setCanceled(true);
             deny(player, "You are not a member of this village.");
@@ -299,7 +315,8 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
-        if (event.getLevel().isClientSide() || !(event.getEntity() instanceof Player player) || player.isCreative()) return;
+        if (event.getLevel().isClientSide() || !(event.getEntity() instanceof Player player) || player.isCreative())
+            return;
         BlockPos pos = event.getPos();
         BlockState placed = event.getLevel().getBlockState(pos);
         if (isRockPathBlock(placed) && isRockPathBlock(event.getLevel().getBlockState(pos.below()))) {
@@ -321,7 +338,8 @@ public class ChunkManager {
         var database = ModEvents.getChunkDataDatabase(player.level());
         ChunkPos chunk = ChunkPos.containing(pos);
         ChunkData data = database.getData(chunk.pack());
-        if (data == null || pos.getY() < protectionMinY(data)) return;
+        if (data == null || pos.getY() < protectionMinY(data))
+            return;
         if (!isPlayerVillageMember(player, data)) {
             event.setCanceled(true);
             deny(player, "You are not a member of this village.");
@@ -333,14 +351,17 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onBlockBreak(BreakBlockEvent event) {
-        if (event.getLevel().isClientSide()) return;
+        if (event.getLevel().isClientSide())
+            return;
         Player player = event.getPlayer();
-        if (player == null || player.isCreative()) return;
+        if (player == null || player.isCreative())
+            return;
         BlockPos pos = event.getPos();
         ChunkPos chunk = ChunkPos.containing(pos);
         var database = ModEvents.getChunkDataDatabase(player.level());
         ChunkData data = database.getData(chunk.pack());
-        if (data == null || pos.getY() < protectionMinY(data)) return;
+        if (data == null || pos.getY() < protectionMinY(data))
+            return;
         if (!isPlayerVillageMember(player, data)) {
             event.setCanceled(true);
             event.setNotifyClient(true);
@@ -364,20 +385,23 @@ public class ChunkManager {
     }
 
     private static boolean isPlayerVillageMember(Player player, ChunkData data) {
-        if (data.getVillageId() == null) return true;
-        return isPlayerVillageMember(data.getVillageId(), ModEvents.getPlayerDatabase(player.level()).getData(player.getUUID()));
+        if (data.getVillageId() == null)
+            return true;
+        return isPlayerVillageMember(data.getVillageId(),
+                ModEvents.getPlayerDatabase(player.level()).getData(player.getUUID()));
     }
 
     static boolean isPlayerVillageMember(UUID villageId, PlayerData player) {
         return villageId == null || player != null && villageId.equals(player.getHomeVillageUUID());
     }
 
-    private static boolean hasHouseAccess(Player player, ChunkData data, DataBase<Long, ChunkData> database, ChunkPos pos) {
+    private static boolean hasHouseAccess(Player player, ChunkData data, DataBase<Long, ChunkData> database,
+            ChunkPos pos) {
         return hasHouseAccess(player.getUUID(), player.getId(), player.getName().getString(), data, database, pos);
     }
 
     static boolean hasHouseAccess(UUID playerId, int entityId, String name, ChunkData data,
-                                  DataBase<Long, ChunkData> database, ChunkPos pos) {
+            DataBase<Long, ChunkData> database, ChunkPos pos) {
         UUID owner = data.getOwnerUUID();
         if (owner == null && data.getPlayerId() == entityId) {
             data.setOwnerUUID(playerId);
@@ -406,7 +430,8 @@ public class ChunkManager {
     }
 
     private static boolean isConcapedeOrWispEntity(Identifier id) {
-        if (id == null) return false;
+        if (id == null)
+            return false;
         String path = id.getPath().toLowerCase(java.util.Locale.ROOT);
         return path.contains("concapede") || path.contains("wisp");
     }
@@ -418,7 +443,8 @@ public class ChunkManager {
     }
 
     private static boolean isHostile(Entity entity) {
-        return entity.getType().getCategory() == MobCategory.MONSTER || entity instanceof Monster || entity instanceof Enemy;
+        return entity.getType().getCategory() == MobCategory.MONSTER || entity instanceof Monster
+                || entity instanceof Enemy;
     }
 
     static double joinedMobSuppressionChance(Identifier id, int y, int light, String plot) {
@@ -430,21 +456,29 @@ public class ChunkManager {
     }
 
     static double joinedMobSuppressionChance(Identifier id, int y, int light, String plot, boolean bredOffspring,
-                                             net.minecraft.world.entity.EntitySpawnReason reason) {
-        if (net.minecraft.world.entity.EntitySpawnReason.isSpawner(reason)) return 0;
-        if (id == null || "minecraft".equals(id.getNamespace()) || y < 45 || plot.isEmpty()) return 0;
-        if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(), bredOffspring)) return 0;
-        if (light == 0 && !LYCANITES_HIGH_BLOCK.contains(id.toString())) return 0;
-        if (!plot.equalsIgnoreCase("village")) return 1;
-        if (!LYCANITES_MODID.equals(id.getNamespace())) return 0;
-        if (LYCANITES_HIGH_BLOCK.contains(id.toString())) return 1;
+            net.minecraft.world.entity.EntitySpawnReason reason) {
+        if (net.minecraft.world.entity.EntitySpawnReason.isSpawner(reason))
+            return 0;
+        if (id == null || "minecraft".equals(id.getNamespace()) || y < 45 || plot.isEmpty())
+            return 0;
+        if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(), bredOffspring))
+            return 0;
+        if (light == 0 && !LYCANITES_HIGH_BLOCK.contains(id.toString()))
+            return 0;
+        if (!plot.equalsIgnoreCase("village"))
+            return 1;
+        if (!LYCANITES_MODID.equals(id.getNamespace()))
+            return 0;
+        if (LYCANITES_HIGH_BLOCK.contains(id.toString()))
+            return 1;
         return y >= 55 ? 0.95 : 0.50;
     }
 
     @SubscribeEvent
     public static void onMobSpawnCheck(FinalizeSpawnEvent event) {
         try {
-            if (event.getLevel().isClientSide()) return;
+            if (event.getLevel().isClientSide())
+                return;
             Mob entity = event.getEntity();
             if (net.minecraft.world.entity.EntitySpawnReason.isSpawner(event.getSpawnType())) {
                 // Custom-NBT spawners can skip finalizeSpawn, leaving Mob.getSpawnType() unset.
@@ -453,19 +487,23 @@ public class ChunkManager {
                 return;
             }
             BlockPos pos = entity.blockPosition();
-            if (pos.getY() < 45) return;
+            if (pos.getY() < 45)
+                return;
             Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-            if (id == null || "minecraft".equals(id.getNamespace())) return;
+            if (id == null || "minecraft".equals(id.getNamespace()))
+                return;
             if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(),
                     entity.getPersistentData().getBooleanOr(
-                            com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, false))) return;
+                            com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, false)))
+                return;
             if (LYCANITES_MODID.equals(id.getNamespace())) {
                 double rate = LYCANITES_HIGH_BLOCK.contains(id.toString()) ? 0.10 : LYCANITES_SPAWN_RATE;
                 if (LYCANITES_RAND.nextDouble() >= rate) {
                     event.setSpawnCancelled(true);
                     return;
                 }
-                // Worldgen regions are not Levels, but their owning server level supplies database context.
+                // Worldgen regions are not Levels, but their owning server level supplies
+                // database context.
                 var worldData = ModEvents.getWorldDataDatabase(event.getLevel().getLevel()).getOrCreate(0,
                         com.falazar.farmupcraft.data.WorldData::new);
                 if (worldData.isLycaniteLightBlock() && event.getLevel() instanceof Level lightLevel
@@ -474,16 +512,19 @@ public class ChunkManager {
                     return;
                 }
             }
-            if (!isHostile(entity) || !(event.getLevel() instanceof Level level)) return;
+            if (!isHostile(entity) || !(event.getLevel() instanceof Level level))
+                return;
             int light = level.getBrightness(LightLayer.BLOCK, pos);
-            if (light == 0) return;
+            if (light == 0)
+                return;
             String plot = getPlotType(pos, level);
             if (!plot.isEmpty()) {
                 if (plot.equalsIgnoreCase("village") && LYCANITES_MODID.equals(id.getNamespace())) {
                     if (LYCANITES_HIGH_BLOCK.contains(id.toString()) || LYCANITES_RAND.nextDouble() < 0.50) {
                         event.setSpawnCancelled(true);
                     } else {
-                        LOGGER.info("[SPAWN-ALLOWED] {} | location=VILLAGE-CHUNK | blockLight={} | pos={}", id, light, pos);
+                        LOGGER.info("[SPAWN-ALLOWED] {} | location=VILLAGE-CHUNK | blockLight={} | pos={}", id, light,
+                                pos);
                     }
                 } else {
                     event.setSpawnCancelled(true);
@@ -506,7 +547,8 @@ public class ChunkManager {
     @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.LOWEST)
     public static void onBabyEntitySpawn(net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent event) {
         var child = event.getChild();
-        if (event.isCanceled() || child == null || child.level().isClientSide()) return;
+        if (event.isCanceled() || child == null || child.level().isClientSide())
+            return;
         var id = BuiltInRegistries.ENTITY_TYPE.getKey(child.getType());
         if (com.falazar.farmupcraft.util.PlotSpawnExemptions.allows(id.toString(), true)) {
             child.getPersistentData().putBoolean(
@@ -516,7 +558,8 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onEntityJoinLevel(EntityJoinLevelEvent event) {
-        if (event.getLevel().isClientSide()) return;
+        if (event.getLevel().isClientSide())
+            return;
         Entity entity = event.getEntity();
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
         if (isConcapedeEntity(id)) {
@@ -526,22 +569,27 @@ public class ChunkManager {
             long now = System.currentTimeMillis();
             LYCANITES_DEATH_POS.removeIf(death -> now - death.time() > DEATH_WINDOW_MS);
             for (RecentDeath death : LYCANITES_DEATH_POS) {
-                if (!death.matches(item, now)) continue;
-                if (LYCANITES_RAND.nextDouble() >= LYCANITES_DROP_RATE) event.setCanceled(true);
+                if (!death.matches(item, now))
+                    continue;
+                if (LYCANITES_RAND.nextDouble() >= LYCANITES_DROP_RATE)
+                    event.setCanceled(true);
                 return;
             }
             return;
         }
         if (!(entity instanceof Mob) || entity.blockPosition().getY() < 45
-                || id == null || "minecraft".equals(id.getNamespace())) return;
+                || id == null || "minecraft".equals(id.getNamespace()))
+            return;
         if (entity.getPersistentData().getBooleanOr(
-                com.falazar.farmupcraft.util.PlotSpawnExemptions.SPAWNER_ORIGIN, false)) return;
+                com.falazar.farmupcraft.util.PlotSpawnExemptions.SPAWNER_ORIGIN, false))
+            return;
         BlockPos pos = entity.blockPosition();
         int light = event.getLevel().getBrightness(LightLayer.BLOCK, pos);
         String plot = getPlotType(pos, event.getLevel());
         double chance = joinedMobSuppressionChance(id, pos.getY(), light, plot,
                 entity.getPersistentData().getBooleanOr(
-                        com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, false), ((Mob) entity).getSpawnType());
+                        com.falazar.farmupcraft.util.PlotSpawnExemptions.BRED_OFFSPRING, false),
+                ((Mob) entity).getSpawnType());
         if (chance == 1 || chance > 0 && LYCANITES_RAND.nextDouble() < chance) {
             event.setCanceled(true);
             if (plot.equalsIgnoreCase("village") && !LYCANITES_HIGH_BLOCK.contains(id.toString())) {
@@ -557,19 +605,25 @@ public class ChunkManager {
     @SubscribeEvent
     public static void onEntityTravelToDimension(EntityTravelToDimensionEvent event) {
         Entity entity = event.getEntity();
-        if (entity == null || entity.level().isClientSide()) return;
+        if (entity == null || entity.level().isClientSide())
+            return;
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-        if (!isConcapedeOrWispEntity(id)) return;
+        if (!isConcapedeOrWispEntity(id))
+            return;
         logTrackedEntityWithPlot("[DIMENSION-ENTER]", entity, id, entity.level());
-        LOGGER.info("[DIMENSION-ENTER] targetDim={} | {} | uuid={}", event.getDimension().identifier(), id, entity.getUUID());
+        LOGGER.info("[DIMENSION-ENTER] targetDim={} | {} | uuid={}", event.getDimension().identifier(), id,
+                entity.getUUID());
     }
 
     @SubscribeEvent
     public static void onModdedMobDeath(LivingDeathEvent event) {
         var entity = event.getEntity();
-        if (entity.level().isClientSide()) return;
+        if (entity.level().isClientSide())
+            return;
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
-        if (id == null || "minecraft".equals(id.getNamespace()) || !(event.getSource().getEntity() instanceof Player killer)) return;
+        if (id == null || "minecraft".equals(id.getNamespace())
+                || !(event.getSource().getEntity() instanceof Player killer))
+            return;
         String plot = getPlotType(entity.blockPosition(), entity.level());
         LOGGER.info("DEBUG: Modded mob death: " + id + " | uuid=" + entity.getUUID() + " | hostile=" + isHostile(entity)
                 + " | category=" + entity.getType().getCategory() + " | plot=" + (plot.isEmpty() ? "unclaimed" : plot)
@@ -578,10 +632,12 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onPortalSpawn(BlockEvent.PortalSpawnEvent event) {
-        if (event.getLevel().isClientSide() || !(event.getLevel() instanceof Level level)) return;
+        if (event.getLevel().isClientSide() || !(event.getLevel() instanceof Level level))
+            return;
         BlockPos pos = event.getPos();
         String plot = getPlotType(pos, level);
-        if (plot.equalsIgnoreCase("portal")) return;
+        if (plot.equalsIgnoreCase("portal"))
+            return;
         event.setCanceled(true);
         LOGGER.info("[PORTAL] Blocked portal ignition outside portal plot at {} (plot='{}')", pos, plot);
         level.getEntitiesOfClass(ServerPlayer.class, new AABB(pos).inflate(8)).forEach(player -> {
@@ -594,24 +650,29 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onPlayerDeath(LivingDeathEvent event) {
-        if (event.getEntity().level().isClientSide() || !(event.getEntity() instanceof Player player)) return;
+        if (event.getEntity().level().isClientSide() || !(event.getEntity() instanceof Player player))
+            return;
         LOGGER.info("KILL: PLAYER " + player.getName().getString() + " was killed by " + buildKillerDesc(event)
                 + " at " + player.blockPosition());
     }
 
     @SubscribeEvent
     public static void onVillagerDeath(LivingDeathEvent event) {
-        if (event.getEntity().level().isClientSide() || !(event.getEntity() instanceof Villager victim)) return;
+        if (event.getEntity().level().isClientSide() || !(event.getEntity() instanceof Villager victim))
+            return;
         String killer = buildKillerDesc(event);
-        LOGGER.info("Villager " + victim.getName().getString() + " died by " + killer + " at " + victim.blockPosition());
+        LOGGER.info(
+                "Villager " + victim.getName().getString() + " died by " + killer + " at " + victim.blockPosition());
         try {
             String name = victim.getName().getString();
             BlockPos pos = victim.blockPosition();
             var server = victim.level().getServer();
-            if (server == null) return;
+            if (server == null)
+                return;
             ChunkData chunk = getPlot(pos, victim.level());
             var villages = ModEvents.getVillageDatabase(victim.level());
-            VillageData village = chunk == null || chunk.getVillageId() == null ? null : villages.getData(chunk.getVillageId());
+            VillageData village = chunk == null || chunk.getVillageId() == null ? null
+                    : villages.getData(chunk.getVillageId());
             if (village != null) {
                 village.addToReincarnationPool(new VillagerRecord(victim.getUUID(), name, pos));
                 villages.putData(village.getUUID(), village);
@@ -623,7 +684,8 @@ public class ChunkManager {
             String waypoint = VILLAGER_DEATH_WAYPOINT_TAG + " " + name + " died by " + killer;
             Component message = Component.literal(label + " Villager ").withStyle(ChatFormatting.GRAY)
                     .append(Component.literal(name).withStyle(ChatFormatting.YELLOW))
-                    .append(Component.literal(" was killed by " + killer + " at " + pos.toShortString()).withStyle(ChatFormatting.RED));
+                    .append(Component.literal(" was killed by " + killer + " at " + pos.toShortString())
+                            .withStyle(ChatFormatting.RED));
             var players = ModEvents.getPlayerDatabase(victim.level());
             Set<UUID> notified = new HashSet<>();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
@@ -650,17 +712,21 @@ public class ChunkManager {
 
     private static String buildKillerDesc(LivingDeathEvent event) {
         Entity killer = event.getSource().getEntity();
-        if (killer == null) killer = event.getSource().getDirectEntity();
-        if (killer == null) return event.getSource().getMsgId();
+        if (killer == null)
+            killer = event.getSource().getDirectEntity();
+        if (killer == null)
+            return event.getSource().getMsgId();
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(killer.getType());
         return id == null ? killer.getType().toString() : id.getPath();
     }
 
     @SubscribeEvent
     public static void onLycanitesMobDeath(LivingDeathEvent event) {
-        if (event.getEntity().level().isClientSide()) return;
+        if (event.getEntity().level().isClientSide())
+            return;
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType());
-        if (id == null || !LYCANITES_MODID.equals(id.getNamespace())) return;
+        if (id == null || !LYCANITES_MODID.equals(id.getNamespace()))
+            return;
         BlockPos pos = event.getEntity().blockPosition();
         long now = System.currentTimeMillis();
         LYCANITES_DEATH_POS.removeIf(death -> now - death.time() > DEATH_WINDOW_MS);
@@ -671,9 +737,11 @@ public class ChunkManager {
 
     @SubscribeEvent
     public static void onLycanitesDrops(LivingDropsEvent event) {
-        if (event.getEntity().level().isClientSide()) return;
+        if (event.getEntity().level().isClientSide())
+            return;
         Identifier id = BuiltInRegistries.ENTITY_TYPE.getKey(event.getEntity().getType());
-        if (id == null || !LYCANITES_MODID.equals(id.getNamespace())) return;
+        if (id == null || !LYCANITES_MODID.equals(id.getNamespace()))
+            return;
         LOGGER.info("DEBUG: Lycanites LivingDropsEvent fired: " + id + " | dropCount=" + event.getDrops().size());
         event.getDrops().forEach(entity -> {
             ItemStack stack = entity.getItem();

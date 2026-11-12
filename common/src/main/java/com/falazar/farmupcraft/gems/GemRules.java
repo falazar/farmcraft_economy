@@ -8,7 +8,7 @@ public final class GemRules {
     public static final int REACH = 2;
     public static final List<String> GEMS = List.of("ruby", "opal", "sapphire", "topaz", "peridot");
     public static final Map<String, Integer> MARKET_PRICES = Map.of(
-            "ruby", 100, "opal", 80, "sapphire", 100, "topaz", 60, "peridot", 60);
+            "ruby", 20, "opal", 20, "sapphire", 20, "topaz", 20, "peridot", 20);
     public record Biome(String id, boolean cave, boolean rare, boolean ocean, int referenceElevation) {}
     public record Band(String id, int centerY, int minY, int maxY) {
         public boolean contains(int y) { return y >= minY && y <= maxY; }

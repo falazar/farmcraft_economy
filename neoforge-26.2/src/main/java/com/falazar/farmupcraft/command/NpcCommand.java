@@ -53,7 +53,10 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.ToIntFunction;
 
-/** NPC commands and server-owned AI jobs. No worker thread reads or mutates a world. */
+/**
+ * NPC commands and server-owned AI jobs. No worker thread reads or mutates a
+ * world.
+ */
 public final class NpcCommand {
     public static final CustomLogger LOGGER = new CustomLogger(NpcCommand.class.getSimpleName());
     private static final Set<String> NPC_BEHAVIORS = Set.of("nonhostile", "wary", "hostile");
@@ -65,15 +68,16 @@ public final class NpcCommand {
     private static final Map<MinecraftServer, Jobs> JOBS = new IdentityHashMap<>();
 
     public record ProfileRequest(String name, UUID uuid, String profession, List<String> villagerNames,
-                                 String villageName, List<String> biomes, @Nullable String structureCuriosity,
-                                 UUID villageUUID, boolean isRegen, @Nullable String existingText) {
+            String villageName, List<String> biomes, @Nullable String structureCuriosity,
+            UUID villageUUID, boolean isRegen, @Nullable String existingText) {
         public ProfileRequest {
             villagerNames = List.copyOf(villagerNames);
             biomes = List.copyOf(biomes);
         }
     }
 
-    private record RequestContext(CommandSourceStack source, ServerLevel level, ProfileRequest request) {}
+    private record RequestContext(CommandSourceStack source, ServerLevel level, ProfileRequest request) {
+    }
 
     private static final class Jobs {
         final Map<UUID, RequestContext> requests = new HashMap<>();
@@ -83,7 +87,8 @@ public final class NpcCommand {
         boolean stopped;
     }
 
-    private NpcCommand() {}
+    private NpcCommand() {
+    }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         var root = Commands.literal("npc");
@@ -95,17 +100,21 @@ public final class NpcCommand {
                 .then(Commands.literal("findnearestliving").executes(c -> run(c, s -> findNearestLiving(s, 16)))));
         root.then(Commands.literal("claim").requires(NpcCommand::admin)
                 .then(Commands.argument("name", StringArgumentType.string())
+                        .suggests(CommandSuggestions::npcNames)
                         .executes(c -> run(c, s -> claimNpc(s, arg(c, "name"))))
                         .then(Commands.argument("behavior", StringArgumentType.word())
+                                .suggests(CommandSuggestions::npcBehaviors)
                                 .executes(c -> run(c, s -> claimNpc(s, arg(c, "name"), arg(c, "behavior")))))));
-        root.then(named("info", false, NpcCommand::showNpcInfo));
+        root.then(named("info", false, NpcCommand::showNpcInfo, true));
         root.then(Commands.literal("list").executes(c -> run(c, s -> listNearbyNpcs(s, 64)))
                 .then(Commands.argument("radius", IntegerArgumentType.integer(4, 256))
                         .executes(c -> run(c, s -> listNearbyNpcs(s, IntegerArgumentType.getInteger(c, "radius"))))));
         root.then(Commands.literal("setdescription").requires(NpcCommand::admin)
                 .then(Commands.argument("name", StringArgumentType.string())
+                        .suggests(CommandSuggestions::npcNames)
                         .then(Commands.argument("description", StringArgumentType.string())
-                                .executes(c -> run(c, s -> setNpcDescription(s, arg(c, "name"), arg(c, "description")))))));
+                                .executes(c -> run(c,
+                                        s -> setNpcDescription(s, arg(c, "name"), arg(c, "description")))))));
         root.then(named("createskeleton", true, NpcCommand::createNpcSkeleton));
         // Retain the initial port's typo as an alias.
         root.then(named("createskleleton", true, NpcCommand::createNpcSkeleton));
@@ -114,17 +123,18 @@ public final class NpcCommand {
                 .executes(c -> run(c, NpcCommand::initVillagers)));
         root.then(Commands.literal("rename").requires(NpcCommand::admin)
                 .then(Commands.argument("oldName", StringArgumentType.string())
+                        .suggests(CommandSuggestions::npcNames)
                         .then(Commands.argument("newName", StringArgumentType.string())
                                 .executes(c -> run(c, s -> renameVillager(s, arg(c, "oldName"), arg(c, "newName")))))));
-        root.then(named("redoprofile", true, NpcCommand::redoProfile));
+        root.then(named("redoprofile", true, NpcCommand::redoProfile, true));
         root.then(Commands.literal("cleanprofiles").requires(NpcCommand::admin)
                 .executes(c -> run(c, NpcCommand::cleanProfiles)));
-        root.then(named("setkid", true, (s, n) -> setForeverKid(s, n, true)));
-        root.then(named("unsetkid", true, (s, n) -> setForeverKid(s, n, false)));
+        root.then(named("setkid", true, (s, n) -> setForeverKid(s, n, true), true));
+        root.then(named("unsetkid", true, (s, n) -> setForeverKid(s, n, false), true));
         root.then(Commands.literal("shownames").executes(c -> run(c, s -> setVillagerNamesVisible(s, true))));
         root.then(Commands.literal("hidenames").executes(c -> run(c, s -> setVillagerNamesVisible(s, false))));
-        root.then(named("showname", false, (s, n) -> setOneVillagerNameVisible(s, n, true)));
-        root.then(named("hidename", false, (s, n) -> setOneVillagerNameVisible(s, n, false)));
+        root.then(named("showname", false, (s, n) -> setOneVillagerNameVisible(s, n, true), true));
+        root.then(named("hidename", false, (s, n) -> setOneVillagerNameVisible(s, n, false), true));
         root.then(Commands.literal("fillnotescache").requires(NpcCommand::admin)
                 .executes(c -> run(c, s -> fillNotesCache(s, 5)))
                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 20))
@@ -133,13 +143,23 @@ public final class NpcCommand {
     }
 
     @FunctionalInterface
-    private interface NamedCommand { int run(CommandSourceStack source, String name); }
+    private interface NamedCommand {
+        int run(CommandSourceStack source, String name);
+    }
 
     private static LiteralArgumentBuilder<CommandSourceStack> named(String command, boolean op, NamedCommand action) {
+        return named(command, op, action, false);
+    }
+
+    private static LiteralArgumentBuilder<CommandSourceStack> named(
+            String command, boolean op, NamedCommand action, boolean suggestExistingNpc) {
         var builder = Commands.literal(command);
-        if (op) builder.requires(NpcCommand::admin);
-        return builder.then(Commands.argument("name", StringArgumentType.string())
-                .executes(c -> run(c, s -> action.run(s, arg(c, "name")))));
+        if (op)
+            builder.requires(NpcCommand::admin);
+        var name = Commands.argument("name", StringArgumentType.string());
+        if (suggestExistingNpc)
+            name.suggests(CommandSuggestions::npcNames);
+        return builder.then(name.executes(c -> run(c, s -> action.run(s, arg(c, "name")))));
     }
 
     private static String arg(CommandContext<CommandSourceStack> context, String name) {
@@ -190,7 +210,8 @@ public final class NpcCommand {
     public static int showNpcInfo(CommandSourceStack source, String name) {
         player(source);
         NpcData npc = getNpc(source, name);
-        if (npc == null) return fail(source, "NPC not found.");
+        if (npc == null)
+            return fail(source, "NPC not found.");
         success(source, "NPC info: " + npc.getName());
         success(source, "NPC description: " + npc.getDescription());
         return 1;
@@ -199,7 +220,8 @@ public final class NpcCommand {
     public static int setNpcDescription(CommandSourceStack source, String name, String description) {
         player(source);
         NpcData npc = getNpc(source, name);
-        if (npc == null) return fail(source, "NPC not found.");
+        if (npc == null)
+            return fail(source, "NPC not found.");
         npc.setDescription(description);
         database(source).putData(npc.getUUID(), npc);
         success(source, "NPC description updated: " + npc.getName());
@@ -218,15 +240,18 @@ public final class NpcCommand {
     }
 
     private static void nameEntity(LivingEntity target, String name) {
-        if (name.isBlank()) throw new IllegalArgumentException("NPC name must not be blank.");
+        if (name.isBlank())
+            throw new IllegalArgumentException("NPC name must not be blank.");
         target.setCustomName(Component.literal(name));
         target.setCustomNameVisible(true);
-        if (target instanceof Mob mob) mob.setPersistenceRequired();
+        if (target instanceof Mob mob)
+            mob.setPersistenceRequired();
     }
 
     public static int createNpc(CommandSourceStack source, String name) {
         LivingEntity target = nearest(player(source), 16);
-        if (target == null) return fail(source, "No nearby living entity found (range 16 blocks).");
+        if (target == null)
+            return fail(source, "No nearby living entity found (range 16 blocks).");
         nameEntity(target, name);
         NpcData npc = new NpcData(target.getUUID(), name, null, "Created NPC " + name + " (" + typeName(target) + ")");
         database(source).putData(npc.getUUID(), npc);
@@ -244,7 +269,8 @@ public final class NpcCommand {
         if (!NPC_BEHAVIORS.contains(normalized))
             return fail(source, "Behavior must be one of: nonhostile, wary, hostile.");
         LivingEntity target = nearest(player, 8);
-        if (target == null) return fail(source, "No nearby mob found to claim (range 8 blocks).");
+        if (target == null)
+            return fail(source, "No nearby mob found to claim (range 8 blocks).");
         VillageData village = homeVillage(source);
         UUID villageId = village == null ? new UUID(0, 0) : village.getUUID();
         String villageName = village == null ? "" : village.getName();
@@ -256,13 +282,16 @@ public final class NpcCommand {
                 case "wary" -> "You are cautious and distrustful, avoid direct conflict unless cornered.";
                 default -> "You are peaceful, calm, and helpful to nearby villagers and players.";
             };
-            if (!NpcDataLoader.writeProfileToFile(filename, name, target.getUUID(), description, personality, villageName))
+            if (!NpcDataLoader.writeProfileToFile(filename, name, target.getUUID(), description, personality,
+                    villageName))
                 return fail(source, "Could not write NPC profile; claim was not applied.");
         }
         nameEntity(target, name);
-        if (target instanceof Mob mob && !"hostile".equals(normalized)) mob.setTarget(null);
+        if (target instanceof Mob mob && !"hostile".equals(normalized))
+            mob.setTarget(null);
         NpcData npc = database(source).getData(target.getUUID());
-        if (npc == null) npc = new NpcData(target.getUUID(), name, villageId, description);
+        if (npc == null)
+            npc = new NpcData(target.getUUID(), name, villageId, description);
         npc.setName(name);
         npc.setHomeVillageId(villageId);
         npc.setDescription(description);
@@ -277,14 +306,16 @@ public final class NpcCommand {
 
     static String defaultProfileFileName(String name, UUID uuid) {
         String base = name == null ? "npc" : name.trim().toLowerCase(Locale.ROOT);
-        if (base.isEmpty()) base = "npc";
+        if (base.isEmpty())
+            base = "npc";
         return base.replaceAll("[^a-z0-9_-]+", "_") + "-" + uuid + ".json";
     }
 
     public static int findNearestLiving(CommandSourceStack source, double radius) {
         ServerPlayer player = player(source);
         LivingEntity target = nearest(player, radius);
-        if (target == null) return fail(source, "No nearby living entity found (range " + (int) radius + " blocks).");
+        if (target == null)
+            return fail(source, "No nearby living entity found (range " + (int) radius + " blocks).");
         success(source, "[NPC] nearest living | type=" + typeName(target) + " | uuid=" + target.getUUID()
                 + " | dist=" + Math.round(Math.sqrt(target.distanceToSqr(player))));
         return 1;
@@ -293,11 +324,13 @@ public final class NpcCommand {
     public static int createNpcSkeleton(CommandSourceStack source, String name) {
         ServerPlayer player = player(source);
         Skeleton skeleton = EntityTypes.SKELETON.create(player.level(), EntitySpawnReason.COMMAND);
-        if (skeleton == null) return fail(source, "Skeleton creation failed.");
+        if (skeleton == null)
+            return fail(source, "Skeleton creation failed.");
         skeleton.snapTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), 0);
         skeleton.goalSelector.removeAllGoals(g -> true);
         skeleton.targetSelector.removeAllGoals(g -> true);
-        if (!player.level().addFreshEntity(skeleton)) return fail(source, "Skeleton spawn was rejected.");
+        if (!player.level().addFreshEntity(skeleton))
+            return fail(source, "Skeleton spawn was rejected.");
         success(source, "NON NPC skeleton created.");
         return 1;
     }
@@ -305,7 +338,8 @@ public final class NpcCommand {
     public static int createNpcCow(CommandSourceStack source, String name) {
         ServerPlayer player = player(source);
         Cow cow = EntityTypes.COW.create(player.level(), EntitySpawnReason.COMMAND);
-        if (cow == null) return fail(source, "Cow creation failed.");
+        if (cow == null)
+            return fail(source, "Cow creation failed.");
         cow.snapTo(player.getX(), player.getY(), player.getZ(), player.getYRot(), 0);
         cow.goalSelector.removeAllGoals(g -> true);
         cow.targetSelector.removeAllGoals(g -> true);
@@ -315,7 +349,8 @@ public final class NpcCommand {
                 if (cow.getAttributes().hasAttribute(Attributes.ATTACK_DAMAGE)) {
                     super.checkAndPerformAttack(target);
                 } else if (canPerformAttack(target)) {
-                    // Vanilla cows lack ATTACK_DAMAGE; the stock melee goal would throw on their first hit.
+                    // Vanilla cows lack ATTACK_DAMAGE; the stock melee goal would throw on their
+                    // first hit.
                     resetAttackCooldown();
                     cow.swing(InteractionHand.MAIN_HAND);
                     target.hurtServer(getServerLevel(cow), cow.damageSources().mobAttack(cow), 4.0F);
@@ -323,7 +358,8 @@ public final class NpcCommand {
             }
         });
         cow.targetSelector.addGoal(1, new NearestAttackableTargetGoal<>(cow, Player.class, true));
-        if (!player.level().addFreshEntity(cow)) return fail(source, "Cow spawn was rejected.");
+        if (!player.level().addFreshEntity(cow))
+            return fail(source, "Cow spawn was rejected.");
         success(source, "Aggressive cow created.");
         return 1;
     }
@@ -342,13 +378,16 @@ public final class NpcCommand {
 
     public static int renameVillager(CommandSourceStack source, String oldName, String newName) {
         Villager villager = namedVillager(source, oldName);
-        if (villager == null) return fail(source, "No villager named '" + oldName + "' found within 320 blocks.");
-        if (newName.isBlank()) return fail(source, "NPC name must not be blank.");
+        if (villager == null)
+            return fail(source, "No villager named '" + oldName + "' found within 320 blocks.");
+        if (newName.isBlank())
+            return fail(source, "NPC name must not be blank.");
         if (jobs(source.getServer()).requests.containsKey(villager.getUUID()))
             return fail(source, "Profile generation/retry pending for this NPC. Finish it before renaming.");
         boolean existed = NpcDataLoader.hasProfile(source.getLevel(), oldName, villager.getUUID());
         boolean renamed = NpcDataLoader.renameProfile(source.getLevel(), oldName, newName, villager.getUUID());
-        if (existed && !renamed) return fail(source, "Profile rename failed; NPC name was not changed.");
+        if (existed && !renamed)
+            return fail(source, "Profile rename failed; NPC name was not changed.");
         villager.setCustomName(Component.literal(newName));
         NpcData data = database(source).getData(villager.getUUID());
         if (data != null) {
@@ -362,10 +401,13 @@ public final class NpcCommand {
 
     public static int setForeverKid(CommandSourceStack source, String name, boolean foreverKid) {
         Villager villager = namedVillager(source, name);
-        if (villager == null) return fail(source, "No villager named '" + name + "' found within 320 blocks.");
+        if (villager == null)
+            return fail(source, "No villager named '" + name + "' found within 320 blocks.");
         NpcData data = database(source).getData(villager.getUUID());
-        if (data == null) return fail(source, "No NPC data found for '" + name + "'.");
-        if (foreverKid) villager.setBaby(true);
+        if (data == null)
+            return fail(source, "No NPC data found for '" + name + "'.");
+        if (foreverKid)
+            villager.setBaby(true);
         data.setForeverKid(foreverKid);
         database(source).putData(data.getUUID(), data);
         success(source, "[NPC] " + name + " is now " + (foreverKid ? "forever kid" : "normal (can grow up)") + ".");
@@ -375,7 +417,8 @@ public final class NpcCommand {
     public static int setVillagerNamesVisible(CommandSourceStack source, boolean visible) {
         ServerPlayer player = player(source);
         var villagers = VillageCommand.getVillagersInVillage(player, player.level(), 10);
-        if (villagers.isEmpty()) return fail(source, "No villagers found in your village.");
+        if (villagers.isEmpty())
+            return fail(source, "No villagers found in your village.");
         int count = 0;
         for (LivingEntity entity : villagers) {
             if (entity instanceof Villager villager) {
@@ -383,13 +426,15 @@ public final class NpcCommand {
                 count++;
             }
         }
-        success(source, "[NPC] Villager names " + (visible ? "shown" : "hidden") + " on minimap for " + count + " villager(s).");
+        success(source, "[NPC] Villager names " + (visible ? "shown" : "hidden") + " on minimap for " + count
+                + " villager(s).");
         return 1;
     }
 
     public static int setOneVillagerNameVisible(CommandSourceStack source, String name, boolean visible) {
         Villager villager = namedVillager(source, name);
-        if (villager == null) return fail(source, "No villager named '" + name + "' found within 320 blocks.");
+        if (villager == null)
+            return fail(source, "No villager named '" + name + "' found within 320 blocks.");
         villager.setCustomNameVisible(visible);
         success(source, "[NPC] " + name + "'s name tag is now " + (visible ? "shown" : "hidden") + ".");
         return 1;
@@ -402,7 +447,8 @@ public final class NpcCommand {
                 e -> e.isAlive() && !(e instanceof Player)
                         && (e instanceof Villager || db.getData(e.getUUID()) != null))
                 .stream().sorted(Comparator.comparingDouble(e -> e.distanceToSqr(player))).toList();
-        if (matches.isEmpty()) return fail(source, "No nearby NPCs found within " + radius + " blocks.");
+        if (matches.isEmpty())
+            return fail(source, "No nearby NPCs found within " + radius + " blocks.");
         success(source, "[NPC] Nearby NPCs (" + matches.size() + ") within " + radius + " blocks:");
         for (LivingEntity entity : matches.stream().limit(20).toList()) {
             NpcData data = db.getData(entity.getUUID());
@@ -412,7 +458,8 @@ public final class NpcCommand {
                     + " | dist=" + Math.round(Math.sqrt(entity.distanceToSqr(player)))
                     + (data == null ? "" : " | behavior=" + data.getBehavior()));
         }
-        if (matches.size() > 20) success(source, "[NPC] ... and " + (matches.size() - 20) + " more.");
+        if (matches.size() > 20)
+            success(source, "[NPC] ... and " + (matches.size() - 20) + " more.");
         return 1;
     }
 
@@ -423,35 +470,40 @@ public final class NpcCommand {
     }
 
     private static List<String> biomeNames(@Nullable VillageData village, ServerLevel level) {
-        if (village == null) return List.of();
+        if (village == null)
+            return List.of();
         return VillageCommand.getVillageBiomes(village, level).entrySet().stream()
                 .sorted(Map.Entry.<String, Integer>comparingByValue().reversed()).limit(2)
                 .map(Map.Entry::getKey).toList();
     }
 
     private static List<String> structureNames(@Nullable VillageData village, ServerLevel level) {
-        if (village == null) return List.of();
+        if (village == null)
+            return List.of();
         return VillageCommand.getVillageStructuresList(village, level).stream()
                 .map(e -> e.getValue().getName()).filter(n -> n != null && !n.isBlank()).toList();
     }
 
     private static ProfileRequest request(Villager villager, @Nullable VillageData village, List<String> names,
-                                           List<String> biomes, @Nullable String curiosity, boolean regen) {
+            List<String> biomes, @Nullable String curiosity, boolean regen) {
         var existing = regen ? NpcDataLoader.readRawProfile(villager.level(), villager.getName().getString(),
                 villager.getUUID()) : null;
         return new ProfileRequest(villager.getName().getString(), villager.getUUID(),
                 villager.getVillagerData().profession().unwrapKey().map(k -> k.identifier().toString()).orElse("none"),
                 names, village == null ? "" : village.getName(), biomes, curiosity,
-                village == null ? new UUID(0, 0) : village.getUUID(), regen, existing == null ? null : existing.toString());
+                village == null ? new UUID(0, 0) : village.getUUID(), regen,
+                existing == null ? null : existing.toString());
     }
 
     public static int initVillagers(CommandSourceStack source) {
         ServerPlayer player = player(source);
         VillageData village = homeVillage(source);
-        if (village == null) return fail(source, "You are not a member of any village.");
+        if (village == null)
+            return fail(source, "You are not a member of any village.");
         var villagers = VillageCommand.getVillagersList(player.blockPosition(), player.level(), 10).stream()
                 .filter(Villager.class::isInstance).map(Villager.class::cast).toList();
-        if (villagers.isEmpty()) return fail(source, "No villagers found nearby.");
+        if (villagers.isEmpty())
+            return fail(source, "No villagers found nearby.");
         queueMissingProfiles(source, village, villagers, false);
         return 1;
     }
@@ -471,7 +523,7 @@ public final class NpcCommand {
     }
 
     private static int queueMissingProfiles(CommandSourceStack source, VillageData village,
-                                           List<Villager> villagers, boolean automatic) {
+            List<Villager> villagers, boolean automatic) {
         var names = villagers.stream().map(v -> v.getName().getString()).toList();
         var biomes = biomeNames(village, source.getLevel());
         var structures = new ArrayList<>(structureNames(village, source.getLevel()));
@@ -481,31 +533,39 @@ public final class NpcCommand {
         long initialDelay = automatic ? Math.max(1, jobs.requests.size()) * 60L : 0;
         for (Villager villager : villagers) {
             if (NpcDataLoader.hasProfile(source.getLevel(), villager.getName().getString(), villager.getUUID())) {
-                if (!automatic) success(source, "[NPC] Skipped " + villager.getName().getString() + " — profile already exists.");
+                if (!automatic)
+                    success(source, "[NPC] Skipped " + villager.getName().getString() + " — profile already exists.");
                 continue;
             }
-            if (jobs.requests.containsKey(villager.getUUID())) continue;
+            if (jobs.requests.containsKey(villager.getUUID()))
+                continue;
             ProfileRequest request = request(villager, village, names, biomes,
                     structures.isEmpty() ? null : structures.get(queued % structures.size()), false);
             schedule(source, jobs, request, initialDelay + queued * 60L);
             queued++;
         }
-        if (!automatic || queued > 0) success(source, queued == 0 ? "All nearby villagers already have profiles or pending requests."
-                : "Queued AI profile generation for " + queued + " villager(s). Profiles will appear as each finishes.");
+        if (!automatic || queued > 0)
+            success(source, queued == 0 ? "All nearby villagers already have profiles or pending requests."
+                    : "Queued AI profile generation for " + queued
+                            + " villager(s). Profiles will appear as each finishes.");
         return queued;
     }
 
     public static int redoProfile(CommandSourceStack source, String name) {
         Villager villager = namedVillager(source, name);
-        if (villager == null) return fail(source, "No villager named '" + name + "' found within 320 blocks.");
+        if (villager == null)
+            return fail(source, "No villager named '" + name + "' found within 320 blocks.");
         Jobs jobs = jobs(source.getServer());
-        if (jobs.requests.containsKey(villager.getUUID())) return fail(source, "This NPC already has a pending profile request.");
+        if (jobs.requests.containsKey(villager.getUUID()))
+            return fail(source, "This NPC already has a pending profile request.");
         VillageData village = homeVillage(source);
         var names = source.getLevel().getEntitiesOfClass(Villager.class, player(source).getBoundingBox().inflate(320))
                 .stream().map(v -> v.getName().getString()).toList();
         var structures = structureNames(village, source.getLevel());
-        String curiosity = structures.isEmpty() ? null : structures.get(source.getLevel().getRandom().nextInt(structures.size()));
-        schedule(source, jobs, request(villager, village, names, biomeNames(village, source.getLevel()), curiosity, true), 0);
+        String curiosity = structures.isEmpty() ? null
+                : structures.get(source.getLevel().getRandom().nextInt(structures.size()));
+        schedule(source, jobs,
+                request(villager, village, names, biomeNames(village, source.getLevel()), curiosity, true), 0);
         success(source, "[NPC] Regenerating profile for " + name + "...");
         return 1;
     }
@@ -528,8 +588,10 @@ public final class NpcCommand {
             return;
         }
         CompletableFuture<Void> delayed = CompletableFuture.runAsync(() -> server.execute(() -> {
-            if (current(server, jobs, context.level)) generate(server, jobs, context);
-            else discard(jobs, context);
+            if (current(server, jobs, context.level))
+                generate(server, jobs, context);
+            else
+                discard(jobs, context);
         }), CompletableFuture.delayedExecutor(delaySeconds, TimeUnit.SECONDS));
         jobs.futures.add(delayed);
         delayed.whenComplete((unused, error) -> server.execute(() -> {
@@ -538,7 +600,8 @@ public final class NpcCommand {
                 discard(jobs, context);
                 return;
             }
-            if (error != null) retry(jobs, context, "Delayed request failed: " + error.getMessage());
+            if (error != null)
+                retry(jobs, context, "Delayed request failed: " + error.getMessage());
         }));
     }
 
@@ -556,14 +619,16 @@ public final class NpcCommand {
     private static void retry(Jobs jobs, RequestContext context, String reason) {
         UUID id = context.request.uuid();
         jobs.generating.remove(id);
-        if (PENDING_PROFILES.stream().noneMatch(r -> r.uuid().equals(id))) PENDING_PROFILES.offer(context.request);
+        if (PENDING_PROFILES.stream().noneMatch(r -> r.uuid().equals(id)))
+            PENDING_PROFILES.offer(context.request);
         LOGGER.warn("NPC profile {} queued for retry: {}", id, reason);
         fail(context.source, "[NPC] Profile failed for " + context.request.name() + " — queued for retry. " + reason);
     }
 
     private static void generate(MinecraftServer server, Jobs jobs, RequestContext context) {
         requireServerThread(server);
-        if (!current(server, jobs, context.level) || !jobs.generating.add(context.request.uuid())) return;
+        if (!current(server, jobs, context.level) || !jobs.generating.add(context.request.uuid()))
+            return;
         ProfileRequest r = context.request;
         CompletableFuture<String> future = r.isRegen()
                 ? AIManager.regenerateNpcPersonality(r.name(), r.profession(), r.existingText(),
@@ -581,14 +646,16 @@ public final class NpcCommand {
                 retry(jobs, context, error == null ? "Empty or invalid AI response." : error.getMessage());
                 return;
             }
-            String description = "A " + r.profession().replace("minecraft:", "") + " living in " + r.villageName() + ".";
+            String description = "A " + r.profession().replace("minecraft:", "") + " living in " + r.villageName()
+                    + ".";
             try {
                 var db = ModEvents.getNpcDatabase(context.level);
                 NpcData data = db.getData(r.uuid());
                 String assigned = data == null ? "" : NpcDataLoader.normalizeProfileFileName(data.getAiProfileFile());
                 boolean wrote = assigned.isBlank()
                         ? NpcDataLoader.writeProfile(r.name(), r.uuid(), description, personality, r.villageName())
-                        : NpcDataLoader.writeProfileToFile(assigned, r.name(), r.uuid(), description, personality, r.villageName());
+                        : NpcDataLoader.writeProfileToFile(assigned, r.name(), r.uuid(), description, personality,
+                                r.villageName());
                 if (!wrote) {
                     retry(jobs, context, "Could not write profile file.");
                     return;
@@ -601,15 +668,18 @@ public final class NpcCommand {
             }
             jobs.generating.remove(r.uuid());
             jobs.requests.remove(r.uuid());
-            success(context.source, "[NPC] Profile " + (r.isRegen() ? "updated" : "created") + " for " + r.name() + ".");
+            success(context.source,
+                    "[NPC] Profile " + (r.isRegen() ? "updated" : "created") + " for " + r.name() + ".");
         }));
     }
 
     static NpcData applyPersonality(@Nullable NpcData existing, ProfileRequest request,
-                                    String description, String personality) {
+            String description, String personality) {
         NpcData data = existing == null
-                ? new NpcData(request.uuid(), request.name(), request.villageUUID(), description) : existing;
-        // Mutate the existing entry: never drop behavior, assigned filename or forever-kid state.
+                ? new NpcData(request.uuid(), request.name(), request.villageUUID(), description)
+                : existing;
+        // Mutate the existing entry: never drop behavior, assigned filename or
+        // forever-kid state.
         data.setName(request.name());
         data.setHomeVillageId(request.villageUUID());
         data.setDescription(description);
@@ -618,11 +688,15 @@ public final class NpcCommand {
         return data;
     }
 
-    /** The scheduler calls this every five minutes: retry one failed request, not the whole queue. */
+    /**
+     * The scheduler calls this every five minutes: retry one failed request, not
+     * the whole queue.
+     */
     public static void tickRetryQueue(MinecraftServer server) {
         Jobs jobs = jobs(server);
         ProfileRequest request = PENDING_PROFILES.poll();
-        if (request == null) return;
+        if (request == null)
+            return;
         RequestContext context = jobs.requests.get(request.uuid());
         if (context == null) {
             LOGGER.error("Discarding orphan NPC retry request for {} (no originating world).", request.uuid());
@@ -638,7 +712,8 @@ public final class NpcCommand {
 
     public static void autoReplenishNotesIfNeeded(MinecraftServer server) {
         Jobs jobs = jobs(server);
-        if (!shouldReplenish(NpcDataLoader.getThreatNoteCacheSize(), jobs.replenishing)) return;
+        if (!shouldReplenish(NpcDataLoader.getThreatNoteCacheSize(), jobs.replenishing))
+            return;
         jobs.replenishing = true;
         requestNotes(server.createCommandSourceStack(), jobs, 5, true);
     }
@@ -649,7 +724,8 @@ public final class NpcCommand {
 
     public static int fillNotesCache(CommandSourceStack source, int count) {
         requireServerThread(source.getServer());
-        if (count < 1 || count > 20) return fail(source, "Note count must be between 1 and 20.");
+        if (count < 1 || count > 20)
+            return fail(source, "Note count must be between 1 and 20.");
         success(source, "[NPC] Requesting " + count + " threat notes from AI...");
         requestNotes(source, jobs(source.getServer()), count, false);
         return 1;
@@ -663,11 +739,14 @@ public final class NpcCommand {
         jobs.futures.add(future);
         future.whenComplete((notes, error) -> server.execute(() -> {
             jobs.futures.remove(future);
-            if (automatic) jobs.replenishing = false;
-            if (!current(server, jobs, level)) return;
+            if (automatic)
+                jobs.replenishing = false;
+            if (!current(server, jobs, level))
+                return;
             if (error != null || notes == null || notes.isEmpty()
                     || notes.stream().anyMatch(n -> shouldRetry(n, null))) {
-                LOGGER.warn("Threat notes request failed: {}", error == null ? "empty/invalid response" : error.getMessage());
+                LOGGER.warn("Threat notes request failed: {}",
+                        error == null ? "empty/invalid response" : error.getMessage());
                 fail(source, "[NPC] AI failed to return valid threat notes; will retry next cycle.");
                 return;
             }
@@ -682,38 +761,47 @@ public final class NpcCommand {
         }));
     }
 
-    /** Call on server stopping before OllamaService.shutdown(); invalidates delayed and in-flight callbacks. */
+    /**
+     * Call on server stopping before OllamaService.shutdown(); invalidates delayed
+     * and in-flight callbacks.
+     */
     public static void shutdown(MinecraftServer server) {
         requireServerThread(server);
         Jobs jobs = JOBS.remove(server);
-        if (jobs == null) return;
+        if (jobs == null)
+            return;
         jobs.stopped = true;
         PENDING_PROFILES.removeIf(r -> {
             RequestContext context = jobs.requests.get(r.uuid());
             return context != null && context.request == r;
         });
-        for (var future : List.copyOf(jobs.futures)) future.cancel(false);
+        for (var future : List.copyOf(jobs.futures))
+            future.cancel(false);
         jobs.futures.clear();
         jobs.requests.clear();
         jobs.generating.clear();
     }
 
     private static void requireServerThread(MinecraftServer server) {
-        if (!server.isSameThread()) throw new IllegalStateException("NPC mutation must run on the server thread");
+        if (!server.isSameThread())
+            throw new IllegalStateException("NPC mutation must run on the server thread");
     }
 
     private static void success(CommandSourceStack source, String message) {
-        if (!canReceiveFeedback(source)) return;
+        if (!canReceiveFeedback(source))
+            return;
         source.sendSuccess(() -> Component.literal(message).withStyle(ChatFormatting.GREEN), false);
     }
 
     private static int fail(CommandSourceStack source, String message) {
-        if (canReceiveFeedback(source)) source.sendFailure(Component.literal(message));
+        if (canReceiveFeedback(source))
+            source.sendFailure(Component.literal(message));
         return 0;
     }
 
     private static boolean canReceiveFeedback(CommandSourceStack source) {
-        if (!(source.getEntity() instanceof ServerPlayer player)) return true;
+        if (!(source.getEntity() instanceof ServerPlayer player))
+            return true;
         return source.getServer().getPlayerList().getPlayer(player.getUUID()) == player
                 && player.level() == source.getLevel();
     }

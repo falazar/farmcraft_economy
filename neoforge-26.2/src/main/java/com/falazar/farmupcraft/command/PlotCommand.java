@@ -48,12 +48,13 @@ import java.util.*;
 import static com.falazar.farmupcraft.neoforge.FarmUpCraftNeoForge.MOD_ID;
 
 public class PlotCommand {
-    public static final TicketController FARM_TICKETS =
-            new TicketController(Identifier.fromNamespaceAndPath(MOD_ID, "farm_plots"));
+    public static final TicketController FARM_TICKETS = new TicketController(
+            Identifier.fromNamespaceAndPath(MOD_ID, "farm_plots"));
 
     public static void registerTicketControllers(RegisterTicketControllersEvent event) {
         event.register(FARM_TICKETS);
     }
+
     public static final CustomLogger LOGGER = new CustomLogger(PlotCommand.class.getSimpleName());
     private static final List<String> VALID_PLOT_TYPES = Arrays.asList("plot", "farm", "nursery", "kitchen",
             "restaurant", "house", "trainstation", "graveyard", "pasture", "refinery", "library", "guardhouse",
@@ -67,6 +68,7 @@ public class PlotCommand {
         LiteralArgumentBuilder<CommandSourceStack> infoBuilder = Commands.literal("info")
                 .executes(PlotCommand::showPlotInfo)
                 .then(Commands.argument("biome", StringArgumentType.word())
+                        .suggests(CommandSuggestions::biomes)
                         .executes(context -> showPlotBiomeMap(
                                 context.getSource(),
                                 StringArgumentType.getString(context, "biome"))));
@@ -130,12 +132,14 @@ public class PlotCommand {
         LiteralArgumentBuilder<CommandSourceStack> visitorBuilder = Commands.literal("visitor")
                 .then(Commands.literal("add")
                         .then(Commands.argument("playerName", StringArgumentType.word())
+                                .suggests(CommandSuggestions::onlinePlayers)
                                 .executes(context -> {
                                     String name = StringArgumentType.getString(context, "playerName");
                                     return setPlotVisitor(context.getSource(), name, true);
                                 })))
                 .then(Commands.literal("remove")
                         .then(Commands.argument("playerName", StringArgumentType.word())
+                                .suggests(CommandSuggestions::onlinePlayers)
                                 .executes(context -> {
                                     String name = StringArgumentType.getString(context, "playerName");
                                     return setPlotVisitor(context.getSource(), name, false);
@@ -145,6 +149,7 @@ public class PlotCommand {
         // Founder utility: transfer ownership of current plot to another online player.
         LiteralArgumentBuilder<CommandSourceStack> setOwnerBuilder = Commands.literal("setowner")
                 .then(Commands.argument("playerName", StringArgumentType.word())
+                        .suggests(CommandSuggestions::onlinePlayers)
                         .executes(context -> {
                             String name = StringArgumentType.getString(context, "playerName");
                             return setPlotOwner(context.getSource(), name);
@@ -190,12 +195,21 @@ public class PlotCommand {
         for (String action : List.of("buy", "settype")) {
             gui.then(Commands.literal(action)
                     .then(Commands.argument("dimension", StringArgumentType.string())
-                    .then(Commands.argument("x", IntegerArgumentType.integer())
-                    .then(Commands.argument("z", IntegerArgumentType.integer())
-                    .then(Commands.argument("cost", IntegerArgumentType.integer(0))
-                    .then(Commands.argument("oldType", StringArgumentType.word())
-                    .then(Commands.argument("type", StringArgumentType.word())
-                            .executes(c -> applyGuiAction(c, action.equals("buy"))))))))));
+                            .suggests(CommandSuggestions::dimensions)
+                            .then(Commands.argument("x", IntegerArgumentType.integer())
+                                    .then(Commands.argument("z", IntegerArgumentType.integer())
+                                            .then(Commands.argument("cost", IntegerArgumentType.integer(0))
+                                                    .then(Commands.argument("oldType", StringArgumentType.word())
+                                                            .suggests((context,
+                                                                    suggestions) -> net.minecraft.commands.SharedSuggestionProvider
+                                                                            .suggest(VALID_PLOT_TYPES, suggestions))
+                                                            .then(Commands.argument("type", StringArgumentType.word())
+                                                                    .suggests((context,
+                                                                            suggestions) -> net.minecraft.commands.SharedSuggestionProvider
+                                                                                    .suggest(VALID_PLOT_TYPES,
+                                                                                            suggestions))
+                                                                    .executes(c -> applyGuiAction(c,
+                                                                            action.equals("buy"))))))))));
         }
         root.then(gui);
     }
@@ -213,11 +227,13 @@ public class PlotCommand {
         }
         var pos = ChunkPos.containing(player.blockPosition());
         var chunk = ModEvents.getChunkDataDatabase(source.getLevel()).getData(pos.pack());
-        if (!source.getLevel().dimension().identifier().toString().equals(StringArgumentType.getString(context, "dimension"))
+        if (!source.getLevel().dimension().identifier().toString()
+                .equals(StringArgumentType.getString(context, "dimension"))
                 || pos.x() != IntegerArgumentType.getInteger(context, "x")
                 || pos.z() != IntegerArgumentType.getInteger(context, "z") || chunk == null
                 || !Objects.equals(chunk.getType(), StringArgumentType.getString(context, "oldType"))) {
-            source.sendFailure(Component.literal("The plot changed or you moved. Reopen /plot info2 before confirming."));
+            source.sendFailure(
+                    Component.literal("The plot changed or you moved. Reopen /plot info2 before confirming."));
             return 0;
         }
         var village = chunk.getVillageId() == null ? null
@@ -228,7 +244,7 @@ public class PlotCommand {
         }
         int currentCost = player.isCreative() || !buy && target.equals(chunk.getType()) ? 0
                 : buy ? calculatePlotCost(village, target)
-                : com.falazar.farmupcraft.util.PlotView.typeChangeCost(calculatePlotCost(village, "plot"));
+                        : com.falazar.farmupcraft.util.PlotView.typeChangeCost(calculatePlotCost(village, "plot"));
         if (currentCost != IntegerArgumentType.getInteger(context, "cost")) {
             source.sendFailure(Component.literal("The price changed. Reopen /plot info2 to confirm the new cost."));
             return 0;
@@ -243,7 +259,8 @@ public class PlotCommand {
         var village = chunk == null || chunk.getVillageId() == null ? null
                 : ModEvents.getVillageDatabase(level).getData(chunk.getVillageId());
         var actor = ModEvents.getPlayerDatabase(level).getData(player.getUUID());
-        if (chunk != null && village == null) throw new IllegalArgumentException("Village data missing for claimed plot");
+        if (chunk != null && village == null)
+            throw new IllegalArgumentException("Village data missing for claimed plot");
         var entries = new ArrayList<com.falazar.farmupcraft.util.VillageView.Entry>();
         int normal = com.falazar.farmupcraft.util.VillageView.NORMAL;
         String type = chunk == null ? "wilderness" : chunk.getType();
@@ -253,17 +270,25 @@ public class PlotCommand {
         if (chunk != null) {
             if (!type.equals("plot") && !type.equals("village"))
                 entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Plot level",
-                    chunk.getPlotLevel() + " (max upgrade: " + (village == null ? 0 : Math.min(4, village.getLevel() / 2)) + ")", normal));
-            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Owner", getPlotOwnerDisplayName(level, chunk), normal));
-            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Visitors", formatVisitors(chunk.getVisitors()), normal));
+                        chunk.getPlotLevel() + " (max upgrade: "
+                                + (village == null ? 0 : Math.min(4, village.getLevel() / 2)) + ")",
+                        normal));
+            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Owner",
+                    getPlotOwnerDisplayName(level, chunk), normal));
+            entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Visitors",
+                    formatVisitors(chunk.getVisitors()), normal));
             entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Protection height",
-                    "Y >= " + com.falazar.farmupcraft.ChunkManager.protectionMinY(chunk) + " (Creative bypass)", normal));
+                    "Y >= " + com.falazar.farmupcraft.ChunkManager.protectionMinY(chunk) + " (Creative bypass)",
+                    normal));
         }
         var biomes = getChunkBiomes(player.getOnPos(), level);
         entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Biomes", biomes.isEmpty() ? "None found"
-                : biomes.entrySet().stream().sorted(Map.Entry.comparingByKey()).map(e -> e.getKey() + " (" + e.getValue() + ")")
-                        .collect(java.util.stream.Collectors.joining(", ")), normal));
-        if (chunk != null) entries.addAll(specialPlotInfo(player, level, chunk, village));
+                : biomes.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                        .map(e -> e.getKey() + " (" + e.getValue() + ")")
+                        .collect(java.util.stream.Collectors.joining(", ")),
+                normal));
+        if (chunk != null)
+            entries.addAll(specialPlotInfo(player, level, chunk, village));
         boolean member = village != null && actor != null && village.getUUID().equals(actor.getHomeVillageUUID());
         boolean canBuy = member && (player.isCreative() || village.getCoins() >= 0 && chunk.getOwnerUUID() == null
                 && (type.equals("village") || type.equals("plot")));
@@ -310,10 +335,13 @@ public class PlotCommand {
             String species = village.getAnimalType();
             String grains = !village.hasAnimalGrainsAssigned() ? "Not assigned yet; assigned on first feed"
                     : species.isBlank() ? "Species-specific village grains; no species selected"
-                    : village.getGrainsForAnimal(species).isEmpty() ? "No assigned grain restriction for " + species
-                    : String.join(" or ", village.getGrainsForAnimal(species).stream()
-                            .map(com.falazar.farmupcraft.util.AnimalGrainAssigner::displayName).toList());
-            if (species.equals("duck")) grains += "; fish also accepted";
+                            : village.getGrainsForAnimal(species).isEmpty()
+                                    ? "No assigned grain restriction for " + species
+                                    : String.join(" or ", village.getGrainsForAnimal(species).stream()
+                                            .map(com.falazar.farmupcraft.util.AnimalGrainAssigner::displayName)
+                                            .toList());
+            if (species.equals("duck"))
+                grains += "; fish also accepted";
             entries.addAll(com.falazar.farmupcraft.util.PlotSpecialInfo.pasture(
                     com.falazar.farmupcraft.AnimalsManager.countAnimalsInChunk(level, player.blockPosition()),
                     com.falazar.farmupcraft.AnimalsManager.MAX_ANIMALS_PER_PASTURE,
@@ -327,8 +355,9 @@ public class PlotCommand {
             entries.add(new com.falazar.farmupcraft.util.VillageView.Entry("Next upgrade",
                     plotLevel < max ? "Level " + (plotLevel + 1) + ": "
                             + (player.isCreative() ? 0 : calculatePlotCost(village, chunk.getType()))
-                            + " coins; /plot upgrade" : plotLevel >= 4 ? "At maximum plot level (4)"
-                            : "At village upgrade limit (" + max + "); level up village first",
+                            + " coins; /plot upgrade"
+                            : plotLevel >= 4 ? "At maximum plot level (4)"
+                                    : "At village upgrade limit (" + max + "); level up village first",
                     com.falazar.farmupcraft.util.VillageView.NORMAL));
         }
         return entries;
@@ -439,7 +468,8 @@ public class PlotCommand {
 
             for (var entry : specialPlotInfo(playerSource, serverLevel, chunkData, villageData))
                 response.append(Component.literal(entry.label() + ": ").withStyle(ChatFormatting.GOLD))
-                        .append(Component.literal(entry.value() + "\n").withStyle(style -> style.withColor(entry.color())));
+                        .append(Component.literal(entry.value() + "\n")
+                                .withStyle(style -> style.withColor(entry.color())));
 
             MutableComponent finalResponse = response;
 
@@ -550,7 +580,8 @@ public class PlotCommand {
             }
             ServerLevel serverLevel = source.getLevel();
             ChunkPos chunkPos = ChunkPos.containing(playerSource.blockPosition());
-            // Farmland is shorter than a full block; blockPosition().below() can be too low.
+            // Farmland is shorter than a full block; blockPosition().below() can be too
+            // low.
             int playerY = playerSource.blockPosition().getY();
             int biomeY = playerSource.getOnPos().getY();
             LOGGER.info("DEBUGGER showPlotBiomeMap using biomeY=" + biomeY + " (playerY=" + playerY + ")");
@@ -787,7 +818,8 @@ public class PlotCommand {
                 boolean chunkForced = FARM_TICKETS.forceChunk((ServerLevel) level, playerSource.getUUID(),
                         chunkPos.x(), chunkPos.z(), true, true);
                 LOGGER.info("DEBUG1: forceChunk result for " + chunkPos + " = " + chunkForced);
-                // NeoForge returns false only when this owner's identical ticket already exists.
+                // NeoForge returns false only when this owner's identical ticket already
+                // exists.
             }
             LOGGER.info("Plot bought at " + playerSource.blockPosition().toShortString());
 
@@ -838,8 +870,8 @@ public class PlotCommand {
 
             // Only the owner (or creative/admin) can manage the visitor list.
             if (!canManageVisitors(playerSource.isCreative(), playerSource.getUUID(), chunk)) {
-                    source.sendFailure(Component.literal("Only the plot owner can manage visitors."));
-                    return 0;
+                source.sendFailure(Component.literal("Only the plot owner can manage visitors."));
+                return 0;
             }
 
             if (add) {

@@ -3,20 +3,16 @@ package com.falazar.farmupcraft.client;
 import java.util.concurrent.TimeUnit;
 
 public final class SoundRetryCooldown {
-    private static final long INTERVAL = TimeUnit.MINUTES.toNanos(5);
-    private boolean failed;
-    private long failedAt;
+    private static final long INTERVAL = TimeUnit.HOURS.toNanos(1);
+    private boolean loggedFailure;
+    private long lastLoggedAt;
 
-    public void recordAttempt(boolean loaded, long now) {
-        failed = !loaded;
-        failedAt = now;
-    }
-
-    public boolean hasFailed() {
-        return failed;
-    }
-
-    public boolean retryDue(long now) {
-        return failed && now - failedAt >= INTERVAL;
+    public boolean shouldLogFailure(long now) {
+        if (loggedFailure && now - lastLoggedAt < INTERVAL) {
+            return false;
+        }
+        loggedFailure = true;
+        lastLoggedAt = now;
+        return true;
     }
 }

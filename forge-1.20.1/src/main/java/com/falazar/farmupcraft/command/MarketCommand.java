@@ -1102,8 +1102,8 @@ public class MarketCommand {
                 response = response.append(Component.literal("+ " + itemName + "\n"));
                 // Add to market, set active and cost.
                 good.setActive(Boolean.valueOf(true)); // Set active status
-                // Set at 4, cause we add one to all afterwards.
-                good.setCost(4); // Set a default cost, can be changed later.
+                // Set at basePrice - 1, cause we add one to all afterwards.
+                good.setCost(initialMarketPrice(good.getItemId()) - 1);
                 good.setDateAddedToMarket(java.time.LocalDate.now().toString());
                 ModEvents.getGoodsDataDatabase().putData(good.getItemId(), good);
             }
@@ -1161,8 +1161,13 @@ public class MarketCommand {
         var database = ModEvents.getGoodsDataDatabase();
         for (var entry : com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES.entrySet()) {
             String id = "farmupcraft:" + entry.getKey();
-            if (database.getData(id) == null) {
+            GoodsData existing = database.getData(id);
+            if (existing == null) {
                 database.putData(id, new GoodsData(id, entry.getValue(), 0, "rare", false, "general", ""));
+                database.setDirty();
+            } else if (!existing.isActive() && existing.getAmountSold() == 0 && existing.getCost() > entry.getValue()) {
+                existing.setCost(entry.getValue());
+                database.putData(id, existing);
                 database.setDirty();
             }
         }
@@ -1204,7 +1209,8 @@ public class MarketCommand {
                         }
                         // STEP 3: Insert into DB, ignore if an old one exists.
                         // Dont create dupes, just insert new ones.
-                        goodsData = new GoodsData(trimmedItem, 5, 0, "common", false, type, "");
+                        goodsData = new GoodsData(trimmedItem, initialMarketPrice(trimmedItem), 0,
+                                isGemMarketItem(trimmedItem) ? "rare" : "common", false, type, "");
                         goodsDataDataBase.putData(trimmedItem, goodsData);
                         importedCount++;
                     } else {
@@ -1374,6 +1380,18 @@ public class MarketCommand {
         }
     }
 
+    static boolean isGemMarketItem(String itemId) {
+        return itemId != null && itemId.startsWith("farmupcraft:")
+                && com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES.containsKey(itemId.substring("farmupcraft:".length()));
+    }
+
+    static int initialMarketPrice(String itemId) {
+        if (isGemMarketItem(itemId)) {
+            return com.falazar.farmupcraft.gems.GemRules.MARKET_PRICES.get(itemId.substring("farmupcraft:".length()));
+        }
+        return 5;
+    }
+
     public static void addRandomItemToMarket(CommandSourceStack source, String type) {
         addRandomItemToMarket(source, type, true);
     }
@@ -1401,7 +1419,7 @@ public class MarketCommand {
 
             if (randomGood != null) {
                 randomGood.setActive(true); // Set it active
-                if (resetPrice) randomGood.setCost(5);
+                if (resetPrice) randomGood.setCost(initialMarketPrice(randomGood.getItemId()));
                 ModEvents.getGoodsDataDatabase().putData(randomGood.getItemId(), randomGood);
                 source.sendSuccess(
                         () -> Component.literal(

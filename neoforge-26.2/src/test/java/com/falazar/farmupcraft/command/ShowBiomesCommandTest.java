@@ -35,9 +35,12 @@ class ShowBiomesCommandTest {
         manager.setItemBiomeList(Items.CARROT, desert);
         manager.setItemBiomeList(Items.CARROT, plains);
         List<String> expected = List.of(plains, desert).stream()
-                .map(biome -> Component.translatable(CropsManager.getBiomeLangKey(biome.unwrapKey().orElseThrow().identifier())).getString())
+                .map(biome -> Component
+                        .translatable(CropsManager.getBiomeLangKey(biome.unwrapKey().orElseThrow().identifier()))
+                        .getString())
                 .sorted().toList();
-        assertEquals(String.join(", ", expected), ShowBiomesCommand.getBiomeCropsChat(null, manager, Items.CARROT).getString());
+        assertEquals(String.join(", ", expected),
+                ShowBiomesCommand.getBiomeCropsChat(null, manager, Items.CARROT).getString());
         assertEquals("None", ShowBiomesCommand.getBiomeCropsChat(null, manager, Items.POTATO).getString());
     }
 
@@ -52,7 +55,8 @@ class ShowBiomesCommandTest {
         assertNotNull(show.getChild("cropbiomes").getChild("crop").getCommand());
         assertNotNull(show.getChild("biomecrops").getChild("biome").getCommand());
         assertNotNull(show.getChild("biomecrops").getCommand());
-        var radius = assertInstanceOf(ArgumentCommandNode.class, show.getChild("biomes").getChild("pos").getChild("radius"));
+        var radius = assertInstanceOf(ArgumentCommandNode.class,
+                show.getChild("biomes").getChild("pos").getChild("radius"));
         assertNotNull(radius.getCommand());
         assertEquals(0, assertInstanceOf(IntegerArgumentType.class, radius.getType()).getMinimum());
     }
@@ -80,5 +84,18 @@ class ShowBiomesCommandTest {
         assertSame(Items.POTATO, ShowBiomesCommand.resolveCrop("minecraft:potato"));
         assertSame(Items.AIR, ShowBiomesCommand.resolveCrop("missing_crop"));
         assertSame(Items.AIR, ShowBiomesCommand.resolveCrop("Not an identifier!"));
+    }
+
+    @Test
+    void harvestedCropItemsResolveToTheirPlantingSeeds(MinecraftServer server) {
+        var biomes = server.registryAccess().lookupOrThrow(Registries.BIOME);
+        var plains = biomes.getOrThrow(ResourceKey.create(Registries.BIOME, Identifier.parse("minecraft:plains")));
+        var manager = new BiomeRulesManager();
+        manager.setItemBiomeList(Items.WHEAT_SEEDS, plains);
+        var onion = BuiltInRegistries.ITEM.getValue(Identifier.parse("pamhc2crops:onionitem"));
+        var onionSeed = BuiltInRegistries.ITEM.getValue(Identifier.parse("pamhc2crops:onionseeditem"));
+        manager.setItemBiomeList(onionSeed, plains);
+        assertSame(Items.WHEAT_SEEDS, ShowBiomesCommand.resolveBiomeLookupItem(Items.WHEAT, manager));
+        assertSame(onionSeed, ShowBiomesCommand.resolveBiomeLookupItem(onion, manager));
     }
 }
