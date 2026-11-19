@@ -117,7 +117,7 @@ public final class BuildCommand {
                         + (building ? "Costs 1 gp per 4 non-air source blocks, rounded up. "
                                 : "Costs 1 gp per non-air source block. ")
                         + "The move overwrites destination blocks, "
-                        + "but not block entities. The second click previews only; /build confirm to move, /build cancel to cancel."), false);
+                        + "but not containers. The second click previews only; /build confirm to move, /build cancel to cancel."), false);
         return 1;
     }
 
@@ -306,7 +306,7 @@ public final class BuildCommand {
                         level.getBlockEntity(destination).getType(), source.containsKey(destination),
                         entry.getKey().toShortString(), entry.getValue());
             }
-            if (!source.containsKey(destination) && level.getBlockEntity(destination) != null) {
+            if (!source.containsKey(destination) && hasContainerStorage(level, destination)) {
                 throw new IllegalArgumentException("Destination "
                         + level.getBlockState(destination).getBlock().getName().getString()
                         + " would be overwritten at " + destination.toShortString());
@@ -318,6 +318,13 @@ public final class BuildCommand {
         for (var entry : source.entrySet()) {
             BlockPos destination = entry.getKey().offset(offset);
             if (!entry.getValue().isAir() && !entry.getValue().canSurvive(destinationView, destination)) {
+                if (building && entry.getKey().getY() == min.getY()) {
+                    var bottomSupport = new LinkedHashMap<>(changes);
+                    bottomSupport.put(destination.below(), level.getBlockState(entry.getKey().below()));
+                    if (entry.getValue().canSurvive(new PlannedBlockView(level, bottomSupport), destination)) {
+                        continue;
+                    }
+                }
                 throw new IllegalArgumentException("Moved attachment would lose its support at "
                         + destination.toShortString() + ". Include its supporting blocks in the selection.");
             }
@@ -541,13 +548,31 @@ public final class BuildCommand {
         }
     }
 
+    private static boolean hasContainerStorage(ServerLevel level, BlockPos pos) {
+        var entity = level.getBlockEntity(pos);
+        if (entity instanceof net.minecraft.world.Container) return true;
+        if (entity == null) return false;
+        if (entity.getCapability(net.minecraftforge.common.capabilities.ForgeCapabilities.ITEM_HANDLER).isPresent()
+                || entity.getCapability(net.minecraftforge.common.capabilities.ForgeCapabilities.FLUID_HANDLER).isPresent()) {
+            return true;
+        }
+        for (Direction side : Direction.values()) {
+            if (entity.getCapability(net.minecraftforge.common.capabilities.ForgeCapabilities.ITEM_HANDLER, side).isPresent()
+                    || entity.getCapability(net.minecraftforge.common.capabilities.ForgeCapabilities.FLUID_HANDLER, side)
+                            .isPresent()) return true;
+        }
+        return false;
+    }
+
     private static void sendPreview(ServerPlayer player, Plan plan, long expires) {
         if (player.connection == null || player.connection.connection == null) return;
         List<com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry> src = new ArrayList<>();
         List<com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry> dst = new ArrayList<>();
+        List<BlockState> states = new ArrayList<>();
         for (BlockPos pos : plan.source) {
             BlockState state = plan.level.getBlockState(pos);
             if (state.isAir()) continue;
+            states.add(state);
             int rgb = state.getMapColor(plan.level, pos).col & 0xFFFFFF;
             if (rgb == 0) rgb = 0x55FF88;
             src.add(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(
@@ -558,7 +583,7 @@ public final class BuildCommand {
         }
         com.falazar.farmupcraft.database.message.EDBMessages.sendToPlayer(
                 new com.falazar.farmupcraft.database.message.BuildPreviewPacket(
-                        plan.level.dimension().location().toString(), src, dst, expires),
+                        plan.level.dimension().location().toString(), src, dst, states, expires),
                 player);
     }
 

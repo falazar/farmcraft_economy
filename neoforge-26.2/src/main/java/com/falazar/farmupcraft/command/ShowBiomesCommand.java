@@ -68,7 +68,7 @@ public final class ShowBiomesCommand {
                         .executes(c -> showCurrentBiomeCrops(c.getSource()))
                         .then(Commands.argument("biome", StringArgumentType.greedyString())
                                 .suggests((context, builder) -> SharedSuggestionProvider.suggest(
-                                    biomeAliases(context.getSource()).keySet(), builder))
+                                        biomeAliases(context.getSource()).keySet(), builder))
                                 .executes(c -> {
                                     showBiomeCrops(c.getSource(), StringArgumentType.getString(c, "biome"));
                                     return 0;
@@ -159,8 +159,11 @@ public final class ShowBiomesCommand {
     }
 
     static Map<String, String> biomeAliases(CommandSourceStack source) {
-        return ShowNameAliases.create(source.registryAccess().lookupOrThrow(Registries.BIOME)
-                .listElementIds().map(key -> key.identifier().toString()).toList(), false);
+        List<String> identifiers = source.registryAccess().lookupOrThrow(Registries.BIOME)
+                .listElementIds().map(key -> key.identifier().toString()).toList();
+        Map<String, String> aliases = new TreeMap<>(ShowNameAliases.create(identifiers, false));
+        identifiers.forEach(id -> aliases.putIfAbsent(id, id));
+        return aliases;
     }
 
     public static void showCropBiomes(CommandSourceStack source, String cropName) {

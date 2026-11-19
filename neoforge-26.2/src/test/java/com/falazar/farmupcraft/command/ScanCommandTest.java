@@ -26,7 +26,7 @@ class ScanCommandTest {
         ScanCommand.register(dispatcher);
         var scan = dispatcher.getRoot().getChild("scan");
         assertNotNull(scan);
-        assertEquals(Set.of("islands", "point", "clear"),
+        assertEquals(Set.of("islands", "point", "clear", "rename", "rename-lakes"),
                 scan.getChildren().stream().map(node -> node.getName()).collect(Collectors.toSet()));
         assertNull(scan.getChild("islands").getCommand());
         var radius = assertInstanceOf(ArgumentCommandNode.class, scan.getChild("islands").getChild("chunkradius"));
@@ -38,13 +38,16 @@ class ScanCommandTest {
         assertNull(scan.getChild("point").getChild("x").getCommand());
         assertNotNull(scan.getChild("point").getChild("x").getChild("z").getCommand());
         assertNotNull(scan.getChild("clear").getCommand());
+        assertNotNull(scan.getChild("rename").getChild("confirm").getCommand());
+        assertSame(scan.getChild("rename"), scan.getChild("rename-lakes").getRedirect());
 
         // Vanilla's compilation context deliberately has no level; no fake world is needed.
         var operator = Commands.createCompilationContext(LevelBasedPermissionSet.GAMEMASTER);
         assertTrue(scan.getRequirement().test(operator));
         assertFalse(scan.getRequirement().test(Commands.createCompilationContext(PermissionSet.NO_PERMISSIONS)));
         assertFalse(scan.getRequirement().test(Commands.createCompilationContext(LevelBasedPermissionSet.MODERATOR)));
-        for (String command : Set.of("scan islands 1", "scan islands 128", "scan point", "scan point -5 9", "scan clear")) {
+        for (String command : Set.of("scan islands 1", "scan islands 128", "scan point", "scan point -5 9",
+                "scan clear", "scan rename", "scan rename confirm", "scan rename-lakes confirm")) {
             assertFalse(dispatcher.parse(command, operator).getReader().canRead(), command);
         }
         for (String command : Set.of("scan islands 0", "scan islands 129", "scan point invalid 9")) {

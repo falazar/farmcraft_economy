@@ -228,7 +228,7 @@ public final class BuildMoveGameTests {
                 var destinationChest = (ChestBlockEntity) level.getBlockEntity(p.north(2));
                 destinationChest.setItem(0, new ItemStack(Items.EMERALD, 9));
                 helper.assertValueEqual(move(player, p, p.east(), false, 2), 0,
-                        "Destination block entities must cancel the whole move");
+                        "Destination containers must cancel the whole move");
                 helper.assertTrue(messages.stream().anyMatch(text -> text.contains("Destination Chest would be overwritten at "
                                 + p.north(2).toShortString())),
                         "Collision error names the block and its coordinates");
@@ -237,6 +237,7 @@ public final class BuildMoveGameTests {
                 helper.assertValueEqual(destinationChest.getItem(0).getCount(), 9,
                         "Rejected collision must preserve destination inventory");
                 helper.assertValueEqual(wallet.getCoins(), 100000, "Collision failures must not charge gold");
+                destinationOverwriteRules(helper, player, p, wallet, clear);
 
                 clear.run();
                 for (int z = 0; z < 3; z++) {
@@ -545,6 +546,7 @@ public final class BuildMoveGameTests {
                         }
                     }
                 }
+                bottomSupportPreview(helper, player, p, clear);
             } finally {
                 original.forEach((pos, state) -> {
                     level.removeBlockEntity(pos);
@@ -565,6 +567,72 @@ public final class BuildMoveGameTests {
     private static int move(net.minecraft.server.level.ServerPlayer player, BlockPos first, BlockPos second,
                             boolean building, int distance) {
         return BuildCommand.preview(player, first, second, building, distance) == 0 ? 0 : BuildCommand.confirm(player);
+    }
+
+    private static void bottomSupportPreview(GameTestHelper helper, FakePlayer player, BlockPos base, Runnable clear) {
+        var level = player.level();
+        clear.run();
+        player.setPos(base.getX() + 0.5, base.getY(), base.getZ() - 3);
+        level.setBlock(base, Blocks.TORCH.defaultBlockState(), 2);
+        level.setBlock(base.east(), Blocks.COBBLESTONE.defaultBlockState(), 2);
+        level.setBlock(base.south(2).below(), Blocks.AIR.defaultBlockState(), 2);
+        helper.assertValueEqual(BuildCommand.preview(player, base, base.east(), true, 2), 1,
+                "Pushing a building must not require ground beneath its bottom layer");
+        helper.assertTrue(level.getBlockState(base).is(Blocks.TORCH)
+                        && level.getBlockState(base.south(2)).isAir(),
+                "Ignoring bottom support must not mutate the source or fabricate destination ground");
+
+        level.setBlock(base.north(2).below(), Blocks.AIR.defaultBlockState(), 2);
+        helper.assertValueEqual(BuildCommand.preview(player, base, base.east(), false, 2), 0,
+                "Pulling a wall must retain its existing support checks");
+
+        clear.run();
+        level.setBlock(base.south(), Blocks.STONE.defaultBlockState(), 2);
+        level.setBlock(base, Blocks.WALL_TORCH.defaultBlockState()
+                .setValue(BlockStateProperties.HORIZONTAL_FACING, Direction.NORTH), 2);
+        level.setBlock(base.east(), Blocks.COBBLESTONE.defaultBlockState(), 2);
+        helper.assertValueEqual(BuildCommand.preview(player, base, base.east(), true, 2), 0,
+                "A bottom-layer wall attachment must still retain its side support");
+    }
+
+    private static void destinationOverwriteRules(GameTestHelper helper, FakePlayer player, BlockPos base,
+            PlayerData wallet, Runnable clear) {
+        var level = player.level();
+        player.setPos(base.getX() + 0.5, base.getY(), base.getZ() - 3);
+        for (boolean building : new boolean[] {false, true}) {
+            BlockPos destination = building ? base.south(2) : base.north(2);
+            for (var sign : List.of(Blocks.OAK_SIGN, Blocks.OAK_HANGING_SIGN)) {
+                clear.run();
+                level.setBlock(base, Blocks.COBBLESTONE.defaultBlockState(), 2);
+                BlockPos signPos = sign == Blocks.OAK_SIGN ? destination : destination.above();
+                if (sign == Blocks.OAK_HANGING_SIGN) {
+                    level.setBlock(signPos.above(), Blocks.STONE.defaultBlockState(), 2);
+                }
+                level.setBlock(signPos, sign.defaultBlockState(), 2);
+                var signEntity = (SignBlockEntity) level.getBlockEntity(signPos);
+                helper.assertTrue(signEntity != null, "Overwrite fixture must contain a destination sign");
+                signEntity.setText(signEntity.getFrontText().setMessage(0, Component.literal("Replace me")), true);
+                helper.assertTrue(move(player, base, base.east(), building, 2) > 0,
+                        "Both building pushes and wall pulls may overwrite destination signs");
+                helper.assertTrue(level.getBlockState(destination).is(Blocks.COBBLESTONE)
+                                && level.getBlockEntity(signPos) == null,
+                        "Destination signs and their text must be replaced, including beneath source air");
+            }
+            for (var container : List.of(Blocks.BARREL, Blocks.HOPPER, Blocks.FURNACE, Blocks.SHULKER_BOX)) {
+                clear.run();
+                level.setBlock(base, Blocks.COBBLESTONE.defaultBlockState(), 2);
+                level.setBlock(destination, container.defaultBlockState(), 2);
+                int coinsBefore = wallet.getCoins();
+                helper.assertValueEqual(move(player, base, base.east(), building, 2), 0,
+                        "Both moves must protect even empty destination containers");
+                helper.assertTrue(level.getBlockState(destination).is(container)
+                                && level.getBlockState(base).is(Blocks.COBBLESTONE),
+                        "Rejected container overwrite must leave both regions unchanged");
+                helper.assertValueEqual(wallet.getCoins(), coinsBefore,
+                        "Rejected container overwrite must not charge coins");
+            }
+        }
+        wallet.setCoins(100000);
     }
 
     private static void attachmentMove(GameTestHelper helper, FakePlayer player, BlockPos base, Direction along,

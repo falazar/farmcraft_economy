@@ -39,7 +39,7 @@ import static com.falazar.farmupcraft.visualtest.VisualAcceptance.require;
 @EventBusSubscriber(modid = "farmupcraft", value = Dist.CLIENT)
 public final class VisualAcceptanceClient {
     private static final String[] STAGES = {"hud-borders", "crop-tooltip", "cookware", "pause-weather",
-            "jei-output-focus", "journeymap-waypoints", "journeymap-editor", "journeymap-polygons",
+            "jei-item-recipes", "journeymap-waypoints", "journeymap-editor", "journeymap-polygons",
             "journeymap-cleanup"};
     private static int stage = -1;
     private static int stableFrames;

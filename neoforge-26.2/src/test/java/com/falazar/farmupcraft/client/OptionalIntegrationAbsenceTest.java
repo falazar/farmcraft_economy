@@ -73,7 +73,8 @@ class OptionalIntegrationAbsenceTest {
             CLIENT + "ClientDatabaseEvents", CLIENT + "ClientRecipeCommand",
             CLIENT + "CommandPayloadHandler", CLIENT + "WaypointPayloadHandler",
             CLIENT + "JeiIntegration", CLIENT + "JourneyMapIntegration",
-            CLIENT + "JourneyMapChunkOverlays");
+            CLIENT + "JourneyMapChunkOverlays", CLIENT + "JourneyMapWorldBorder",
+            CLIENT + "JourneyMapExploration");
 
     @Test
     void optionalApisAreActuallyUnavailableAndUnguardedPluginsFailToLink() throws Exception {
@@ -104,7 +105,7 @@ class OptionalIntegrationAbsenceTest {
         assertDoesNotThrow(() -> bootstrap
                 .getMethod("registerPayloadHandlers", RegisterClientPayloadHandlersEvent.class)
                 .invoke(null, registration));
-        assertEquals(8, registration.handlers.size());
+        assertEquals(18, registration.handlers.size());
 
         IPayloadContext context = (IPayloadContext) Proxy.newProxyInstance(
                 IPayloadContext.class.getClassLoader(), new Class<?>[]{IPayloadContext.class},
@@ -127,6 +128,32 @@ class OptionalIntegrationAbsenceTest {
             assertDoesNotThrow(() -> type.getMethod("loggedOut").invoke(null));
         }
         assertTrue(loader.optionalLoads.isEmpty(), () -> "Optional classes requested: " + loader.optionalLoads);
+        assertNoIntegrationWasLoaded(loader);
+    }
+
+    @Test
+    void explorationRequestsReportUnavailableWithoutJourneyMap() throws Exception {
+        var loader = new AbsentIntegrationLoader();
+        assertApisUnavailable(loader);
+        loader.optionalLoads.clear();
+        List<Object> replies = new ArrayList<>();
+        IPayloadContext context = (IPayloadContext) Proxy.newProxyInstance(
+                IPayloadContext.class.getClassLoader(), new Class<?>[]{IPayloadContext.class},
+                (proxy, method, arguments) -> {
+                    if (method.getName().equals("reply")) {
+                        replies.add(arguments[0]);
+                        return null;
+                    }
+                    throw new AssertionError("Unexpected exploration context call: " + method);
+                });
+        var request = new com.falazar.farmupcraft.database.message.ExplorationRequestPacket(1234L,
+                new com.falazar.farmupcraft.data.ExplorationStats.Area(0, 0, 16, 16));
+        Class<?> handler = Class.forName(isolatedName(CLIENT + "JourneyMapExploration"), true, loader);
+        assertDoesNotThrow(() -> handler.getMethod("handle", request.getClass(), IPayloadContext.class)
+                .invoke(null, request, context));
+        assertEquals(List.of(new com.falazar.farmupcraft.database.message.ExplorationResultPacket(1234L, false, 0)),
+                replies);
+        assertTrue(loader.optionalLoads.isEmpty());
         assertNoIntegrationWasLoaded(loader);
     }
 
@@ -168,7 +195,8 @@ class OptionalIntegrationAbsenceTest {
     }
 
     private static void assertNoIntegrationWasLoaded(AbsentIntegrationLoader loader) {
-        for (String integration : List.of("JeiIntegration", "JourneyMapIntegration", "JourneyMapChunkOverlays")) {
+        for (String integration : List.of("JeiIntegration", "JourneyMapIntegration", "JourneyMapChunkOverlays",
+                "JourneyMapWorldBorder")) {
             assertFalse(loader.defined.contains(CLIENT + integration), integration);
         }
     }

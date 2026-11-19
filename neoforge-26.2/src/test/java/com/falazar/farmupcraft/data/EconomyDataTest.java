@@ -92,6 +92,23 @@ class EconomyDataTest {
     }
 
     @Test
+    void explorationCacheSurvivesPlayerJsonAndNbtRoundTrips(MinecraftServer server) {
+        var player = new PlayerData(17, PLAYER, null, 42);
+        assertTrue(player.getExploration().isEmpty());
+        var stats = new ExplorationStats(new ExplorationStats.Area(-32, -16, 32, 16), 3, 1_700_000_000_000L);
+        player.setExploration(stats);
+        var jsonOps = server.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+        var nbtOps = server.registryAccess().createSerializationContext(NbtOps.INSTANCE);
+
+        var json = PlayerData.CODEC.encodeStart(jsonOps, player).getOrThrow();
+        var nbt = PlayerData.CODEC.encodeStart(nbtOps, player).getOrThrow();
+        assertEquals(stats, PlayerData.CODEC.parse(jsonOps, json).getOrThrow().getExploration().orElseThrow());
+        assertEquals(stats, PlayerData.CODEC.parse(nbtOps, nbt).getOrThrow().getExploration().orElseThrow());
+        json.getAsJsonObject().remove("exploration");
+        assertTrue(PlayerData.CODEC.parse(jsonOps, json).getOrThrow().getExploration().isEmpty());
+    }
+
+    @Test
     void playerMutationsPreserveClampingRejectionAndIntegerArithmetic() {
         PlayerData player = new PlayerData(7, PLAYER, null, -5);
         assertEquals(0, player.getCoins());

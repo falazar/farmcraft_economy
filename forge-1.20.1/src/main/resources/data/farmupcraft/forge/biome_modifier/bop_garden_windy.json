@@ -1,0 +1,13 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2crops" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": ["biomesoplenty:origin_valley", { "type": "forge:not", "value": "#forge:is_plains" }]
+  },
+  "features": "pamhc2crops:windy_garden_placed_plains",
+  "step": "vegetal_decoration"
+}

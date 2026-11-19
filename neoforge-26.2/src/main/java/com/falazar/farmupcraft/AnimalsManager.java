@@ -9,6 +9,7 @@ import com.falazar.farmupcraft.neoforge.FarmUpCraftNeoForge;
 import com.falazar.farmupcraft.util.AnimalGrainAssigner;
 import com.falazar.farmupcraft.util.CustomLogger;
 import com.falazar.farmupcraft.util.FUCTags;
+import com.falazar.farmupcraft.util.PlotSpawnExemptions;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -253,6 +254,28 @@ public class AnimalsManager {
         return isActivePasture(level, hatchling.blockPosition())
                 && countAnimalsInChunk(level, hatchling.blockPosition()) < MAX_ANIMALS_PER_PASTURE
                 && level.addFreshEntity(hatchling);
+    }
+
+    public static boolean addEmuEggHatchling(Level level, net.minecraft.world.entity.Entity hatchling) {
+        BlockPos pos = hatchling.blockPosition();
+        ChunkData chunk = ChunkManager.getPlot(pos, level);
+        if (chunk != null && (!chunk.isActivePasture(pos.getY())
+                || countAnimalsInChunk(level, pos) >= MAX_ANIMALS_PER_PASTURE))
+            return false;
+        // Hatched offspring need the same persistent spawn exemption as bred offspring.
+        hatchling.getPersistentData().putBoolean(PlotSpawnExemptions.BRED_OFFSPRING, true);
+        return level.addFreshEntity(hatchling);
+    }
+
+    public static void warnBlockedEmuEgg(net.minecraft.world.entity.projectile.Projectile egg) {
+        Level level = egg.level();
+        if (level.isClientSide() || !(egg.getOwner() instanceof Player player)) return;
+        ChunkData chunk = ChunkManager.getPlot(egg.blockPosition(), level);
+        if (chunk != null && !chunk.isActivePasture(egg.blockPosition().getY())) {
+            player.sendSystemMessage(Component.literal(
+                    "Emu eggs can only hatch in an active pasture or wilderness outside all village boundaries.")
+                    .withStyle(ChatFormatting.RED));
+        }
     }
 
     public static int eggLayingTime(Animal animal, int remaining) {

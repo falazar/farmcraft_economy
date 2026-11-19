@@ -30,6 +30,7 @@ public final class FarmUpCraftNeoForge {
     public FarmUpCraftNeoForge(IEventBus modEventBus) {
         com.falazar.farmupcraft.gems.GemEvents.register(modEventBus);
         com.falazar.farmupcraft.GemContent.register(modEventBus);
+        com.falazar.farmupcraft.HarvestCraftFeatureOrder.register(modEventBus);
         if (net.neoforged.fml.ModList.get().isLoaded("solonion")) {
             try {
                 if (com.falazar.farmupcraft.util.StartupDefaults.installOnion(

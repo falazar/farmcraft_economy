@@ -13,7 +13,7 @@ public final class ScanCommand {
     }
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        dispatcher.register(Commands.literal("scan")
+        var scan = dispatcher.register(Commands.literal("scan")
                 .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
                 .then(Commands.literal("islands")
                         .then(Commands.argument("chunkradius", IntegerArgumentType.integer(1, 128))
@@ -26,7 +26,24 @@ public final class ScanCommand {
                                         .executes(context -> point(context.getSource(),
                                                 IntegerArgumentType.getInteger(context, "x"),
                                                 IntegerArgumentType.getInteger(context, "z"))))))
-                .then(Commands.literal("clear").executes(context -> clear(context.getSource()))));
+                .then(Commands.literal("clear").executes(context -> clear(context.getSource())))
+                .then(Commands.literal("rename")
+                        .executes(context -> {
+                            context.getSource().sendSuccess(() -> Component.literal(
+                                    "Randomly rename all saved lakes/islands in this dimension? "
+                                            + "Run /scan rename-lakes confirm. A backup will be saved."), false);
+                            return 1;
+                        })
+                        .then(Commands.literal("confirm").executes(context -> {
+                            IslandScanManager.renameDiscoveriesAsync(context.getSource().getLevel(),
+                                    message -> feedback(context.getSource(), message));
+                            context.getSource().sendSuccess(() -> Component.literal(
+                                    "Requested lake/island renaming; it queues behind any active scan."), false);
+                            return 1;
+                        }))));
+        scan.addChild(Commands.literal("rename-lakes")
+                .executes(scan.getChild("rename").getCommand())
+                .redirect(scan.getChild("rename")).build());
     }
 
     private static int islands(CommandSourceStack source, int chunkRadius) {

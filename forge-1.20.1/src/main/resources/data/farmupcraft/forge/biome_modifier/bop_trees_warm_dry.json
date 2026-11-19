@@ -1,0 +1,18 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2trees" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": [
+      ["biomesoplenty:lush_desert", "biomesoplenty:dryland", "biomesoplenty:scrubland", "biomesoplenty:lush_savanna"],
+      { "type": "forge:not", "value": "#forge:is_wet" }
+    ]
+  },
+  "features": [
+    "pamhc2trees:almond_placed", "pamhc2trees:date_placed", "pamhc2trees:olive_placed", "pamhc2trees:pistachio_placed"
+  ],
+  "step": "vegetal_decoration"
+}

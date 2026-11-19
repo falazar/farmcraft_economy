@@ -120,6 +120,20 @@ class AIManagerTest {
     }
 
     @Test
+    void childConversationOverridesAdultProfileAndProfessionWithoutChangingAdults() {
+        var profile = new NpcData(UUID.randomUUID(), "Ada", null, "A veteran farmer.", "friendly");
+        String child = AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello", "farmer", true);
+        assertTrue(child.contains("You are an 8-year-old child. Always respond as a kid"));
+        assertTrue(child.contains("even if your profile or past dialogue suggests otherwise"));
+        assertTrue(child.contains("A veteran farmer."));
+        assertFalse(child.contains("Their current villager profession"));
+        assertTrue(AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello", null, true)
+                .contains("You are an 8-year-old child."));
+        assertEquals(AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello", "farmer"),
+                AIManager.buildNpcSystemPrompt(profile, "Robin", "Hello", "farmer", false));
+    }
+
+    @Test
     void cachedNotesAreConsumedFifoUsingExistingDiskFormatAndKeepOtherFields() throws IOException {
         Path file = fixture();
         assertNull(AIManager.popCachedThreatNote(file));

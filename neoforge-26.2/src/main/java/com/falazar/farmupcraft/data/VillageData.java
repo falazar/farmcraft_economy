@@ -2,14 +2,17 @@ package com.falazar.farmupcraft.data;
 
 import com.falazar.farmupcraft.util.CodecUtils;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
+import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.UUIDUtil;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.ChunkPos;
 
 import java.util.*;
 
 public class VillageData {
-    public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+    private static final MapCodec<VillageData> BASE_CODEC = RecordCodecBuilder.mapCodec(instance -> instance.group(
             UUIDUtil.STRING_CODEC.fieldOf("uuid").forGetter(VillageData::getUUID),
             Codec.STRING.fieldOf("name").forGetter(VillageData::getName),
             CodecUtils.CHUNK_POS_CODEC.fieldOf("position").forGetter(VillageData::getPosition),
@@ -30,6 +33,17 @@ public class VillageData {
             Codec.intRange(0, Integer.MAX_VALUE).optionalFieldOf("villager_count", 0).forGetter(VillageData::getVillagerCount),
             Codec.LONG.optionalFieldOf("last_villager_scan", 0L).forGetter(VillageData::getLastVillagerScan))
             .apply(instance, VillageData::new));
+    private static final Codec<String> UPGRADE_LEVEL = Codec.STRING.validate(level ->
+            Set.of("7", "8", "9", "10").contains(level) ? DataResult.success(level)
+                    : DataResult.error(() -> "Invalid village upgrade item level: " + level));
+    public static final Codec<VillageData> CODEC = RecordCodecBuilder.create(instance -> instance.group(
+            BASE_CODEC.forGetter((VillageData village) -> village),
+            Codec.unboundedMap(UPGRADE_LEVEL, Identifier.CODEC.xmap(Identifier::toString, Identifier::parse))
+                    .optionalFieldOf("upgrade_items", Map.of()).forGetter(VillageData::getUpgradeItems))
+            .apply(instance, (village, items) -> {
+                village.upgradeItems.putAll(items);
+                return village;
+            }));
 
     private final UUID uuid;
     private String name;
@@ -48,6 +62,17 @@ public class VillageData {
     private List<VillagerRecord> reincarnationPool;
     private int villagerCount;
     private long lastVillagerScan;
+    private final Map<String, String> upgradeItems = new LinkedHashMap<>();
+
+    public Map<String, String> getUpgradeItems() { return Map.copyOf(upgradeItems); }
+
+    public void setUpgradeItem(int targetLevel, String itemId) {
+        if (targetLevel < 7 || targetLevel > 10 || Identifier.tryParse(itemId) == null)
+            throw new IllegalArgumentException("Invalid village upgrade item");
+        String old = upgradeItems.putIfAbsent(Integer.toString(targetLevel), itemId);
+        if (old != null && !old.equals(itemId))
+            throw new IllegalStateException("Village upgrade item is already assigned");
+    }
 
     public VillageData(UUID uuid, String name, ChunkPos position, int level, List<ChunkPos> claimedChunks,
                        boolean bought, int coins, String lastRanDaily, String animalType, String lastAnimalTypeChange,

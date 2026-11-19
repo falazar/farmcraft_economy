@@ -5,6 +5,9 @@
   "compatibilityLevel": "JAVA_25",
   "client": [
     "SoundEngineRetryMixin",
+    "JourneyMapWaypointRenderMixin",
+    "JourneyMapWaypointHoverMixin",
+    "MinecartSoundVolumeMixin",
     "IceAndFireStoneStatueMixin",
     "SpeechDisplayAccessor",
     "SpeechTextAccessor"
@@ -30,7 +33,8 @@
     "VillagerSleepMixin",
     "VillagerLadderMixin",
     "NpcConversationMixin",
-    "VillagerConversationBrainMixin"
+    "VillagerConversationBrainMixin",
+    "GravestoneOverflowMixin"
   ],
   "injectors": {
     "defaultRequire": 1

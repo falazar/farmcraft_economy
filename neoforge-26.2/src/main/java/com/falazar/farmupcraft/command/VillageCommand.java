@@ -788,6 +788,21 @@ public class VillageCommand {
                 response = response.append(Component.literal(" Members: none\n").withStyle(ChatFormatting.GRAY));
             }
 
+            VillageUpgradeItems.Requirement upgradeItems = null;
+            if (village.getLevel() < 10 && village.getUUID().equals(playerData.getHomeVillageUUID())) {
+                try {
+                    if (VillageUpgradeItems.ensureChoices(village))
+                        ModEvents.getVillageDatabase().putData(village.getUUID(), village);
+                    upgradeItems = VillageUpgradeItems.requirement(village, village.getLevel() + 1);
+                    if (upgradeItems != null)
+                        response.append(Component.literal("Next level items: "
+                                + upgradeItems.description(playerSource.getInventory()) + "\n"));
+                } catch (IllegalArgumentException | IllegalStateException error) {
+                    LOGGER.error("Cannot load village upgrade items", error);
+                    source.sendFailure(Component.literal("Cannot load village upgrade items. See the server log."));
+                    return 0;
+                }
+            }
             MutableComponent finalResponse = response;
             if (graphical) {
                 try {
@@ -801,6 +816,12 @@ public class VillageCommand {
                         fields.add(new com.falazar.farmupcraft.util.VillageView.Entry("Level-up action",
                                 "village levelup confirm " + village.getUUID() + " " + village.getLevel(),
                                 com.falazar.farmupcraft.util.VillageView.NORMAL));
+                        if (upgradeItems != null)
+                            fields.add(new com.falazar.farmupcraft.util.VillageView.Entry("Level-up items",
+                                    upgradeItems.description(playerSource.getInventory()),
+                                    upgradeItems.available(playerSource.getInventory()) >= upgradeItems.count()
+                                            ? com.falazar.farmupcraft.util.VillageView.POSITIVE
+                                            : com.falazar.farmupcraft.util.VillageView.NEGATIVE));
                         view = new com.falazar.farmupcraft.util.VillageView(view.name(), fields);
                     }
                     if (!village.getUUID().equals(playerData.getHomeVillageUUID())) {
@@ -1688,6 +1709,20 @@ public class VillageCommand {
                 return 0;
             }
 
+            VillageUpgradeItems.Requirement upgradeItems;
+            try {
+                if (VillageUpgradeItems.ensureChoices(village))
+                    villageDatabase.putData(village.getUUID(), village);
+                upgradeItems = VillageUpgradeItems.requirement(village, newLevel);
+            } catch (IllegalArgumentException | IllegalStateException error) {
+                LOGGER.error("Cannot load village upgrade items", error);
+                String message = "Cannot load village upgrade items. See the server log.";
+                source.sendFailure(Component.literal(message));
+                if (playerSource instanceof ServerPlayer serverPlayer)
+                    sendLevelUpGuiResult(serverPlayer, message, false);
+                return 0;
+            }
+
             // STEP 3: Check all requirements for leveling up.
             boolean failedChecks = false;
             MutableComponent failureMessages = Component.literal("");
@@ -1723,6 +1758,12 @@ public class VillageCommand {
                                 + requiredStructures + " claimed structures, have " + currentClaimedStructures + "\n"));
             }
 
+            if (upgradeItems != null && upgradeItems.available(playerSource.getInventory()) < upgradeItems.count()) {
+                failedChecks = true;
+                failureMessages.append(Component.literal("Missing upgrade items: "
+                        + upgradeItems.description(playerSource.getInventory()) + "\n"));
+            }
+
             // d. If any checks failed, show all messages and return
             if (failedChecks) {
                 source.sendFailure(failureMessages);
@@ -1731,13 +1772,14 @@ public class VillageCommand {
                 return 0;
             }
 
-            if (!payLevelUpCost(village, player, levelUpCost)) {
-                String message = "Failed to deduct coins for village level up.";
+            if (!VillageUpgradeItems.pay(village, player, playerSource.getInventory(), levelUpCost, upgradeItems)) {
+                String message = "Could not pay village level-up costs. No coins or items were consumed.";
                 source.sendFailure(Component.literal(message));
                 if (playerSource instanceof ServerPlayer serverPlayer)
                     sendLevelUpGuiResult(serverPlayer, message, false);
                 return 0;
             }
+            playerSource.inventoryMenu.broadcastChanges();
             ModEvents.getPlayerDatabase().putData(playerSource.getUUID(), player);
 
             // STEP 5: Update level in db.

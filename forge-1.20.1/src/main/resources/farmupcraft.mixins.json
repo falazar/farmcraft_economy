@@ -23,6 +23,10 @@
     "VillagerConversationBrainMixin"
   ],
   "client": [
+    "client.MinecartSoundVolumeMixin",
+    "client.PreviewRenderTypeAccess$Type",
+    "client.PreviewRenderTypeAccess$State",
+    "client.PreviewRenderTypeAccess$Texture",
     "client.LevelRendererMixin",
     "client.CookwareItemStackMixin"
   ],

@@ -1,0 +1,10 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "pamhc2crops" },
+    { "type": "neoforge:mod_loaded", "modid": "biomesoplenty" }
+  ],
+  "type": "neoforge:add_features",
+  "biomes": ["biomesoplenty:lush_desert"],
+  "features": "pamhc2crops:arid_garden_placed",
+  "step": "vegetal_decoration"
+}

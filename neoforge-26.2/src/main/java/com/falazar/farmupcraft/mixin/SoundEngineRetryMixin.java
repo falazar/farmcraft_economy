@@ -9,6 +9,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(SoundEngine.class)
 public abstract class SoundEngineRetryMixin {
@@ -17,11 +18,19 @@ public abstract class SoundEngineRetryMixin {
     @Unique
     private final SoundRetryCooldown farmupcraft$failureLogCooldown = new SoundRetryCooldown();
 
+    @Inject(method = "shouldChangeDevice", at = @At("HEAD"), cancellable = true)
+    private void farmupcraft$deferAutomaticRetry(CallbackInfoReturnable<Boolean> ci) {
+        if (!farmupcraft$failureLogCooldown.allowsAutomaticRetry(System.nanoTime()))
+            ci.setReturnValue(false);
+    }
+
     @Inject(method = "loadLibrary", at = @At("RETURN"))
     private void farmupcraft$recordAudioAttempt(CallbackInfo ci) {
-        if (!loaded && farmupcraft$failureLogCooldown.shouldLogFailure(System.nanoTime())) {
+        long now = System.nanoTime();
+        farmupcraft$failureLogCooldown.recordAttempt(loaded, now);
+        if (!loaded && farmupcraft$failureLogCooldown.shouldLogFailure(now)) {
             LogUtils.getLogger()
-                    .warn("FarmUpCraft: sound initialization failed; automatic retry checks remain enabled. "
+                    .warn("FarmUpCraft: sound initialization failed; automatic retries delayed for five minutes. "
                             + "Manual sound/resource reload can retry immediately.");
         }
     }

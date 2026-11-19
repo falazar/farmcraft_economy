@@ -166,6 +166,7 @@ public class PlayerCommand {
 
             // STEP 3: Pull home village info if set.
             sendHomeVillageInfo(source, serverLevel, player);
+            com.falazar.farmupcraft.PlayerExploration.showInfo(source, playerSource.getUUID(), player);
         } catch (IllegalArgumentException | IllegalStateException | ArithmeticException ex) {
             LOGGER.error("Player info error for " + source.getTextName() + ": " + ex.getMessage(), ex);
             source.sendFailure(
@@ -221,6 +222,7 @@ public class PlayerCommand {
 
             // Village
             sendHomeVillageInfo(source, serverLevel, player);
+            com.falazar.farmupcraft.PlayerExploration.showInfo(source, targetUUID, player);
 
             // Online status
             boolean isOnline = online != null;

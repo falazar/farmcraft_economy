@@ -35,8 +35,6 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.crafting.RecipeType;
-import net.minecraft.world.item.crafting.display.SlotDisplayContext;
 
 import java.io.FileNotFoundException;
 import java.io.InputStream;
@@ -51,6 +49,8 @@ import java.text.NumberFormat;
 
 public class MarketCommand {
     public static final CustomLogger LOGGER = new CustomLogger(MarketCommand.class.getSimpleName());
+    private static final Set<net.minecraft.server.MinecraftServer> UPDATED_CATALOGS =
+            Collections.newSetFromMap(new WeakHashMap<>());
 
     public static void register(CommandDispatcher<CommandSourceStack> pDispatcher) {
         // Define the base command "market"
@@ -1171,6 +1171,17 @@ public class MarketCommand {
         return result;
     }
 
+    public static void updateCatalogsOnLogin(net.minecraft.server.MinecraftServer server) {
+        if (UPDATED_CATALOGS.contains(server))
+            return;
+        if (importAllMarketItems(server.createCommandSourceStack()) == 1) {
+            UPDATED_CATALOGS.add(server);
+            LOGGER.info("Market catalogs checked for missing entries; existing goods preserved.");
+        } else {
+            LOGGER.error("Automatic market catalog update failed; will retry on the next login.");
+        }
+    }
+
     public static void initializeMarket(CommandSourceStack source) {
         for (String type : List.of("food", "wood", "stone", "general")) {
             if (getFilteredGoods(source, type).isEmpty() && !importMarketItemsTXT(source, type))
@@ -1522,8 +1533,8 @@ public class MarketCommand {
 
     /**
      * Builds a single styled chat line for a market item.
-     * If the item has a crafting recipe: teal/green + underlined + JEI click.
-     * If no recipe (e.g. oxidized copper): plain white/green + hover only.
+     * If the item is used by a recipe: teal/green + underlined + JEI click.
+     * If it has no uses: plain white/green + hover only.
      */
     static MutableComponent buildItemLine(CommandSourceStack source, Item item, String itemId, int cost,
             @Nullable Player playerSource) {
@@ -1536,16 +1547,12 @@ public class MarketCommand {
                 ? itemName + ": " + costStr + " coins (" + inventoryCount + " cnt)\n"
                 : itemName + ": " + costStr + " coins\n";
 
-        // Check if item has any crafting recipe.
-        boolean hasRecipe = source.getServer() != null && source.getServer().getRecipeManager()
+        boolean hasUses = source.getServer() != null && source.getServer().getRecipeManager()
                 .getRecipes().stream()
-                .filter(recipe -> recipe.value().getType() == RecipeType.CRAFTING)
-                .flatMap(recipe -> recipe.value().display().stream())
-                .flatMap(display -> display.result().resolveForStacks(SlotDisplayContext.fromLevel(source.getLevel()))
-                        .stream())
-                .anyMatch(stack -> stack.is(item));
+                .flatMap(recipe -> recipe.value().placementInfo().ingredients().stream())
+                .anyMatch(ingredient -> ingredient.items().anyMatch(holder -> holder.value() == item));
 
-        Style style = itemLineStyle(item, itemId, inInventory, hasRecipe);
+        Style style = itemLineStyle(item, itemId, inInventory, hasUses);
 
         // Strip trailing newline from label so we can append the [x] on the same line.
         String labelNoNewline = label.endsWith("\n") ? label.substring(0, label.length() - 1) : label;
@@ -1576,15 +1583,15 @@ public class MarketCommand {
         return line.append(Component.literal("\n"));
     }
 
-    static Style itemLineStyle(Item item, String itemId, boolean inInventory, boolean hasRecipe) {
-        if (hasRecipe) {
+    static Style itemLineStyle(Item item, String itemId, boolean inInventory, boolean hasUses) {
+        if (hasUses) {
             // Item tooltips can consume chat clicks; recipe links use text tooltips
             // instead.
             return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA)
                     .withUnderlined(true)
                     .withClickEvent(new ClickEvent.RunCommand("/frecipe " + itemId))
                     .withHoverEvent(new HoverEvent.ShowText(
-                            Component.literal("Click to view recipe in JEI\n" + itemId)));
+                            Component.literal("Click to view item uses in JEI\n" + itemId)));
         }
         return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE)
                 .withHoverEvent(new HoverEvent.ShowItem(new ItemStackTemplate(item)));

@@ -1,0 +1,67 @@
+FARM EXPANSION PLAN
+Saved from the November 18, 2026 world-specific farm analysis.
+
+Goal: Add crops that your main-city farms cannot grow, prioritizing crops
+used in many food recipes. These recommendations use your world's saved
+crop assignments, not the biomes' usual real-world climates.
+
+These are the earlier analysis results, not a fresh scan of today's farms.
+Recipe-use reference: crop-recipe-counts.txt in this directory.
+
+BEST TARGETS, IN PRIORITY ORDER
+
+Each target's new-crop count excludes both your home crops and crops added
+by preceding targets. The named crops below are highlights, not full lists.
+
+1. TUNDRA
+   Adds 8 crop types; total coverage becomes 65.
+   Highlights: spiceleaf (72 recipes), tomato (45), garlic (42),
+   tealeaf, raspberry, cassava, and beetroot.
+
+2. OLD GROWTH SPRUCE TAIGA
+   Adds 7 more crop types; total coverage becomes 72.
+   Highlights: potato (33 recipes), ginger (19), mustard seeds (11),
+   and cranberry.
+
+3. SNOWY SLOPES
+   Adds 8 more crop types; total coverage becomes 80.
+   Highlights: cabbage, peas, green grape, zucchini, arrowroot, nettles,
+   and cauliflower.
+
+4. PLAINS
+   Adds 4 more crop types; total coverage becomes 84.
+   Adds cucumber, broccoli, blackberry, and cattail.
+
+5. DARK FOREST
+   Adds 7 more crop types; total coverage becomes 91.
+   Highlights: celery, cactusfruit, barley, canola, chickpea, and alfalfa.
+
+PRACTICAL FIRST TRIP
+
+Scout a cold region for Tundra, Old Growth Spruce Taiga, and Snowy Slopes.
+Together, those raise the earlier home baseline from 57 to 80 crop types.
+Start with Tundra, then Old Growth Spruce Taiga.
+
+HOME-FARM OPPORTUNITY
+
+The earlier analysis found one farmland block in Shrubland. Including it,
+your city technically supports 57 crop types, not the initial estimate of 45.
+That tiny patch adds lettuce, blueberry, parsnip, kohlrabi, waterchestnut,
+and other crops, but sharing one block is impractical.
+
+Village level 6 unlocks farm plot level 3. Upgrade the relevant farm chunk
+to level 3 to use crop permissions from any biome present in that chunk
+at planting height, throughout that chunk. This is not village-wide.
+Below farm level 3, the exact planting block's biome still matters.
+
+WHERE BOG FITS
+
+Bog adds broccoli, cranberry, oats, arrowroot, and several minor crops
+relative to the home baseline. It is a gap-filler, not the best first
+expansion. Its additions overlap some of the priority targets above.
+
+COVERAGE LIMITS
+
+All five targets give access to 91 of 101 biome-controlled crop types,
+including non-food crops. This does NOT mean 90% of all food recipes:
+tree ingredients, processed ingredients, and other requirements still matter.

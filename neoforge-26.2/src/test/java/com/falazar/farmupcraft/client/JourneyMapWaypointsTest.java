@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class JourneyMapWaypointsTest {
     @AfterEach
     void reset() {
+        JourneyMapFeatureFilter.reset();
         JourneyMapIntegration.clearScanWaypoints();
         new JourneyMapIntegration().initialize(null);
     }
@@ -58,6 +59,28 @@ class JourneyMapWaypointsTest {
         JourneyMapIntegration.addWaypoint(new AddJMWaypointPacket(0, 64, 0, "Ordinary", "minecraft:overworld"),
                 fixture.api, fixture, opened::add);
         assertEquals(List.of(structure), opened);
+    }
+
+    @Test
+    void structureMapExplicitlyOpensOverChatAndCentersOnTheWaypoint() throws ReflectiveOperationException {
+        MapManager.INSTANCE = new MapManager();
+
+        JourneyMapIntegration.openMapAt(449, -137, MapManager.class, FullscreenMap.class);
+
+        assertSame(FullscreenMap.class, MapManager.INSTANCE.openedType);
+        assertEquals(449.0, MapManager.INSTANCE.map.x);
+        assertEquals(-137.0, MapManager.INSTANCE.map.z);
+    }
+
+    @Test
+    void mapCreationFailureIsReportedInsteadOfDereferencingNull() {
+        MapManager.INSTANCE = new MapManager();
+        MapManager.INSTANCE.map = null;
+
+        var error = assertThrows(ReflectiveOperationException.class,
+                () -> JourneyMapIntegration.openMapAt(449, -137, MapManager.class, FullscreenMap.class));
+
+        assertEquals("JourneyMap did not open its fullscreen map", error.getMessage());
     }
 
     @Test
@@ -195,6 +218,96 @@ class JourneyMapWaypointsTest {
                 new ScanWaypointsPacket.Entry("Mist Lake", 5, 70, -8, 1))),
                 fixture.api, fixture, "minecraft:the_nether");
         assertEquals("minecraft:the_nether", fixture.added.getFirst().getPrimaryDimension());
+    }
+
+    @Test
+    void mapFilterShowsOnlyTaggedScanMarkersWithoutChangingTheirSettings() {
+        var fixture = new Fixture();
+        var personal = fixture.create("journeymap", BlockPos.ZERO, "My lake", "minecraft:overworld", true);
+        var otherFarmMarker = fixture.create("farmupcraft", BlockPos.ZERO, "Other", "minecraft:overworld", false);
+        JourneyMapIntegration.scanWaypoints(new ScanWaypointsPacket(List.of(
+                new ScanWaypointsPacket.Entry("Mist Lake", 5, 70, -8, 1),
+                new ScanWaypointsPacket.Entry("Storm Island", 9, 70, -8, 2))), fixture.api, fixture);
+        var lake = fixture.added.getFirst();
+        var island = fixture.added.getLast();
+        JourneyMapFeatureFilter.setEnabled(true);
+
+        assertTrue(JourneyMapFeatureFilter.allows(lake));
+        assertTrue(JourneyMapFeatureFilter.allows(island));
+        assertFalse(JourneyMapFeatureFilter.allows(personal));
+        assertFalse(JourneyMapFeatureFilter.allows(otherFarmMarker));
+        JourneyMapFeatureFilter.setEnabled(false);
+        assertTrue(JourneyMapFeatureFilter.allows(personal));
+        assertNull(personal.getCustomData(JourneyMapFeatureFilter.FEATURE_KEY));
+        assertEquals(JourneyMapFeatureFilter.FEATURE_VALUE, lake.getCustomData(JourneyMapFeatureFilter.FEATURE_KEY));
+    }
+
+    @Test
+    void explicitModesAlwaysUndoPreviousHidingAndNeverLeaveBothKindsHidden() {
+        var fixture = new Fixture();
+        var personal = fixture.create("journeymap", BlockPos.ZERO, "Personal", "minecraft:overworld", true);
+        JourneyMapIntegration.scanWaypoints(new ScanWaypointsPacket(List.of(
+                new ScanWaypointsPacket.Entry("Mist Lake", 5, 70, 8, 1))), fixture.api, fixture);
+        var lake = fixture.added.getFirst();
+        for (boolean onlyLakes : List.of(true, false)) {
+            JourneyMapFeatureFilter.hideFeatures();
+            JourneyMapFeatureFilter.setEnabled(onlyLakes);
+            assertTrue(JourneyMapFeatureFilter.allows(lake));
+            assertEquals(!onlyLakes, JourneyMapFeatureFilter.allows(personal));
+        }
+        JourneyMapFeatureFilter.setEnabled(true);
+        JourneyMapFeatureFilter.hideFeatures();
+        assertFalse(JourneyMapFeatureFilter.allows(lake));
+        assertTrue(JourneyMapFeatureFilter.allows(personal));
+    }
+
+    @Test
+    void featureToggleHidesOnlyScansOnBothMapsSurvivesResyncAndResetsOnLogout() {
+        var fixture = new Fixture();
+        var personal = fixture.create("journeymap", BlockPos.ZERO, "Personal", "minecraft:overworld", true);
+        var packet = new ScanWaypointsPacket(List.of(new ScanWaypointsPacket.Entry("Mist Lake", 5, 70, 8, 1)));
+        JourneyMapIntegration.scanWaypoints(packet, fixture.api, fixture);
+        var lake = fixture.added.getFirst();
+        assertFalse(JourneyMapFeatureFilter.toggleFeatures());
+        assertFalse(JourneyMapFeatureFilter.allows(lake));
+        assertTrue(JourneyMapFeatureFilter.allows(personal));
+        JourneyMapIntegration.scanWaypoints(new ScanWaypointsPacket(), fixture.api, fixture);
+        JourneyMapIntegration.scanWaypoints(packet, fixture.api, fixture);
+        assertFalse(JourneyMapFeatureFilter.allows(fixture.added.getFirst()));
+        assertTrue(JourneyMapFeatureFilter.toggleFeatures());
+        assertTrue(JourneyMapFeatureFilter.allows(lake));
+        JourneyMapFeatureFilter.setEnabled(true);
+        assertFalse(JourneyMapFeatureFilter.allows(personal));
+        assertTrue(JourneyMapFeatureFilter.allows(lake));
+        JourneyMapFeatureFilter.toggleFeatures();
+        JourneyMapIntegration.loggedOut();
+        assertTrue(JourneyMapFeatureFilter.allows(lake));
+        assertTrue(JourneyMapFeatureFilter.allows(personal));
+    }
+
+    public static final class MapManager {
+        public static MapManager INSTANCE = new MapManager();
+        private Class<?> openedType;
+        private FullscreenMap map = new FullscreenMap();
+
+        public FullscreenMap open(Class<?> type) {
+            openedType = type;
+            return map;
+        }
+
+        public FullscreenMap getOrOpenFullscreenMap() {
+            return null;
+        }
+    }
+
+    public static final class FullscreenMap {
+        private double x;
+        private double z;
+
+        public void centerOn(double x, double z) {
+            this.x = x;
+            this.z = z;
+        }
     }
 
     private static final class Fixture implements JourneyMapIntegration.WaypointCreator {

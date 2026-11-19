@@ -34,6 +34,9 @@ public final class EDBMessages {
         registrar.playToClient(PlotViewPacket.TYPE, PlotViewPacket.STREAM_CODEC);
         registrar.playToClient(NpcSpeechPacket.TYPE, NpcSpeechPacket.STREAM_CODEC);
         registrar.optional().playToClient(BuildPreviewPacket.TYPE, BuildPreviewPacket.STREAM_CODEC);
+        registrar.optional().playToClient(ExplorationRequestPacket.TYPE, ExplorationRequestPacket.STREAM_CODEC);
+        registrar.optional().playToServer(ExplorationResultPacket.TYPE, ExplorationResultPacket.STREAM_CODEC,
+                com.falazar.farmupcraft.PlayerExploration::receive);
     }
 
     public static void sendToPlayer(CustomPacketPayload payload, ServerPlayer player) {

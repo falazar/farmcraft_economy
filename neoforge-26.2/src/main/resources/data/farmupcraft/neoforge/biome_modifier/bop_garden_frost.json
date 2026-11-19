@@ -1,0 +1,10 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "pamhc2crops" },
+    { "type": "neoforge:mod_loaded", "modid": "biomesoplenty" }
+  ],
+  "type": "neoforge:add_features",
+  "biomes": ["biomesoplenty:snowblossom_grove"],
+  "features": "pamhc2crops:frost_garden_placed",
+  "step": "vegetal_decoration"
+}

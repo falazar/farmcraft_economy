@@ -16,12 +16,18 @@ import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.minecraft.server.level.ServerLevel;
 
 @EventBusSubscriber(modid = FarmUpCraftNeoForge.MOD_ID)
 public final class GameplayEvents {
     private GameplayEvents() {
+    }
+
+    @SubscribeEvent
+    public static void serverTick(ServerTickEvent.Post event) {
+        IslandScanManager.tick(event.getServer());
     }
 
     @SubscribeEvent

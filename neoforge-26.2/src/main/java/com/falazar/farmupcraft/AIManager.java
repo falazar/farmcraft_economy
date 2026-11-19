@@ -171,8 +171,18 @@ public class AIManager {
 
     public static String buildNpcSystemPrompt(NpcData profile, String playerName, String playerMessage,
             String profession) {
+        return buildNpcSystemPrompt(profile, playerName, playerMessage, profession, false);
+    }
+
+    public static String buildNpcSystemPrompt(NpcData profile, String playerName, String playerMessage,
+            String profession, boolean child) {
         String prompt = NpcPrompts.base(com.falazar.farmupcraft.gems.GemPlatform.configDir(), profile.getName(),
                 profile.getDescription(), profile.getPersonality(), playerName, playerMessage);
+        if (child)
+            return prompt + "\nYou are an 8-year-old child. Always respond as a kid, using simple, age-appropriate "
+                    + "words and a child's perspective. Keep your personality, but do not speak as an adult "
+                    + "or claim an adult job, adult life experience, or adult responsibilities, even if your "
+                    + "profile or past dialogue suggests otherwise.";
         if (profession == null || profession.isBlank())
             return prompt;
         return prompt + " Their current villager profession is " + profession

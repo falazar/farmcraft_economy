@@ -4,6 +4,11 @@ import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.DecoderException;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.StairBlock;
+import net.neoforged.testframework.junit.EphemeralTestServerProvider;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -12,6 +17,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@ExtendWith(EphemeralTestServerProvider.class)
 class CommandPayloadTest {
     @Test
     void highlightAndRecipeRoundTripNamedPayloads() {
@@ -24,10 +30,41 @@ class CommandPayloadTest {
         var preview = new BuildPreviewPacket("minecraft:overworld",
                 List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(1, 64, 2, 0x808080)),
                 List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(3, 64, 2, 0x808080)),
+                List.of(Blocks.OAK_STAIRS.defaultBlockState().setValue(StairBlock.FACING, Direction.WEST)),
                 2400L);
         assertEquals(preview, roundTrip(BuildPreviewPacket.STREAM_CODEC, preview));
-        assertEquals("farmupcraft:build_preview", preview.type().id().toString());
+        assertEquals("farmupcraft:build_preview_v2", preview.type().id().toString());
         assertEquals(BuildPreviewPacket.clear(), roundTrip(BuildPreviewPacket.STREAM_CODEC, BuildPreviewPacket.clear()));
+    }
+
+    @Test
+    void explorationReportsRoundTripAndRejectInvalidCountsAndBounds() {
+        var area = new com.falazar.farmupcraft.data.ExplorationStats.Area(-5010, -5010, 5011, 5011);
+        var request = new ExplorationRequestPacket(1234L, area);
+        assertEquals(request, roundTrip(ExplorationRequestPacket.STREAM_CODEC, request));
+        var result = new ExplorationResultPacket(1234L, true, 140000);
+        assertEquals(result, roundTrip(ExplorationResultPacket.STREAM_CODEC, result));
+        var failed = new ExplorationResultPacket(1234L, false, 0);
+        assertEquals(failed, roundTrip(ExplorationResultPacket.STREAM_CODEC, failed));
+        rejects(ExplorationResultPacket.STREAM_CODEC, buffer ->
+                buffer.writeLong(1234L).writeBoolean(true).writeLong(-1));
+        rejects(ExplorationResultPacket.STREAM_CODEC, buffer ->
+                buffer.writeLong(1234L).writeBoolean(false).writeLong(10));
+        rejects(ExplorationRequestPacket.STREAM_CODEC, buffer ->
+                buffer.writeLong(1234L).writeInt(10).writeInt(0).writeInt(0).writeInt(16));
+    }
+
+    @Test
+    void buildPreviewRejectsMismatchedStatesAndInvalidWireStateIds() {
+        var entries = List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(0, 64, 0, 0x888888));
+        assertThrows(IllegalArgumentException.class,
+                () -> new BuildPreviewPacket("minecraft:overworld", entries, entries, List.of(), 1000L));
+        for (int id : new int[] {-1, Integer.MAX_VALUE}) {
+            rejects(BuildPreviewPacket.STREAM_CODEC, buffer -> {
+                buffer.writeUtf("minecraft:overworld").writeVarInt(0).writeVarInt(0);
+                buffer.writeVarInt(1).writeVarInt(id).writeVarLong(1000L);
+            });
+        }
     }
 
     @Test

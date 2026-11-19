@@ -2,11 +2,14 @@ package com.falazar.farmupcraft.client;
 
 import com.falazar.farmupcraft.util.VillageOverview;
 import com.falazar.farmupcraft.util.VillageView;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 public final class VillageOverviewScreen extends Screen {
@@ -19,7 +22,11 @@ public final class VillageOverviewScreen extends Screen {
     private boolean levelUpPending;
 
     public VillageOverviewScreen(VillageView view) {
-        super(Component.literal("FarmUpcraft Village Overview"));
+        this(view, Minecraft.getInstance(), Minecraft.getInstance().font);
+    }
+
+    VillageOverviewScreen(VillageView view, Minecraft minecraft, Font font) {
+        super(minecraft, font, Component.literal("FarmUpcraft Village Overview"));
         VillageOverview.level(view);
         this.view = view;
     }
@@ -64,6 +71,18 @@ public final class VillageOverviewScreen extends Screen {
         super.extractRenderState(graphics, mouseX, mouseY, tick);
     }
 
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        // The scrollable content is hit-tested first, even when it does not handle the click.
+        if (upgrade != null && upgrade.mouseClicked(event, doubleClick)) {
+            setFocused(upgrade);
+            if (event.button() == 0)
+                setDragging(true);
+            return true;
+        }
+        return super.mouseClicked(event, doubleClick);
+    }
+
     public static void showLevelUpResult(String message, boolean success) {
         if (net.minecraft.client.Minecraft.getInstance().gui.screen() instanceof VillageOverviewScreen screen) {
             screen.levelUpMessage = message;
@@ -76,7 +95,7 @@ public final class VillageOverviewScreen extends Screen {
     private void positionUpgrade() {
         if (upgrade == null || list.children().isEmpty())
             return;
-        var bounds = VillageOverview.levelUpBounds(list.getRowWidth());
+        var bounds = VillageOverview.levelUpBounds(view, list.getRowWidth());
         var row = list.children().getFirst();
         int y = row.getY() + bounds.y();
         upgrade.setPosition(row.getX() + bounds.x(), y);
@@ -107,7 +126,10 @@ public final class VillageOverviewScreen extends Screen {
                 Component.literal("Level " + level + " -> " + (level + 1) + " costs " + level * 300
                         + " coins. Village coins are used first, then your coins for any remainder. Requires "
                         + (level + 1) * 2 + " villagers and "
-                        + ((level + 1) * 2 - 2) + " claimed structures.")));
+                        + ((level + 1) * 2 - 2) + " claimed structures."
+                        + view.entries().stream().filter(entry -> entry.label().equals("Level-up items"))
+                                .map(entry -> " Required items from your inventory: " + entry.value() + ".")
+                                .findFirst().orElse(""))));
     }
 
     private final class OverviewList extends ObjectSelectionList<OverviewRow> {

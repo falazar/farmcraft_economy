@@ -1,0 +1,17 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2trees" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": [
+      ["biomesoplenty:coniferous_forest", "biomesoplenty:fir_clearing", "biomesoplenty:field",
+       "biomesoplenty:forested_field", "biomesoplenty:jade_cliffs", "biomesoplenty:snowblossom_grove"],
+      { "type": "forge:not", "value": "#forge:is_coniferous" }
+    ]
+  },
+  "features": ["pamhc2trees:maple_placed", "pamhc2trees:pinenut_placed"],
+  "step": "vegetal_decoration"
+}

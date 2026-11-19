@@ -1,0 +1,13 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2crops" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": ["biomesoplenty:old_growth_woodland", { "type": "forge:not", "value": "#minecraft:is_forest" }]
+  },
+  "features": "pamhc2crops:shaded_garden_placed",
+  "step": "vegetal_decoration"
+}

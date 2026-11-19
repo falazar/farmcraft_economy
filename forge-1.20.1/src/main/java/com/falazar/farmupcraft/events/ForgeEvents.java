@@ -194,7 +194,7 @@ public class ForgeEvents {
     @SubscribeEvent
     public static void onLoginEvent(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity().level() instanceof ServerLevel level) {
-
+            com.falazar.farmupcraft.command.MarketCommand.updateCatalogsOnLogin(level.getServer());
             DataBase<UUID, PlayerData> playerDatabase = ModEvents.getPlayerDatabase();
             UUID uuid = ((ServerPlayer) event.getEntity()).getUUID();
             boolean isFirstLogin = !playerDatabase.containsKey(uuid);

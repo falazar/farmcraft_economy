@@ -51,6 +51,8 @@ public final class ClientDatabaseEvents {
                                 (packet, context) -> PlotInfoScreen.open(packet.view()));
                 event.register(com.falazar.farmupcraft.database.message.BuildPreviewPacket.TYPE,
                                 (packet, context) -> BuildPreviewRenderer.receive(packet));
+                event.register(com.falazar.farmupcraft.database.message.ExplorationRequestPacket.TYPE,
+                                JourneyMapExploration::handle);
         }
 
         @SubscribeEvent

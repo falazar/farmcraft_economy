@@ -149,7 +149,7 @@ Both sides record readiness and barrier markers in their existing receipt files.
 | 3 | `crop-tooltip.png` | Ordinary inventory extraction, deterministic hover over wheat seeds; actual tooltip submission and production farm/biome source text |
 | 7 | `cookware.png` | Ordinary inventory extraction, pot hover and tooltip submission; synchronized 250/500 uses; production item-stack mixin returns visible 7/13 durability bar |
 | 15 | `pause-weather.png` | `Minecraft.pauseGame(false)` opens real `PauseScreen`; production screen hooks mute weather 0.625 -> 0.0, then restore 0.625 on real close; both option object and disposable `options.txt` checked |
-| 31 | `jei-output-focus.png` | Production OpenJeiRecipePacket opens actual JEI RecipesGui; its real lookup state contains exactly one OUTPUT focus for minecraft:bread and a nonempty visible recipe layout list |
+| 31 | `jei-item-recipes.png` | Production OpenJeiRecipePacket opens actual JEI RecipesGui; its real lookup state contains exactly one OUTPUT focus for minecraft:bread and nonempty visible recipes that produce bread |
 | 63 | `journeymap-waypoints.png` | Production AddJMWaypointPacket creates native owner=journeymap, origin tag=farmupcraft, persistent=true, gold waypoint at 8,81,8; production ScanWaypointsPacket creates tracked temporary green waypoint at 24,81,8; real native manager view model lists native GUID |
 | 127 | `journeymap-editor.png` | Actual native layered editor for that waypoint; real vanilla name EditBox changed to Visual Acceptance Edited; after PNG persistence, real Enter key/save handler must rename API state before receipt |
 | 255 | `journeymap-polygons.png` | Production highlight/village packets register red chunk 0,0 and blue chunk 1,0 polygons; exact 16-block source geometry/styles and API existence; active real fullscreen with both handles in prepared overlay draw steps; edited waypoint still has persistent flag |
@@ -232,7 +232,7 @@ Exact result paths relative to the neoforge-26.2 module:
   build\visual-acceptance\client\visual-shots\crop-tooltip.png
   build\visual-acceptance\client\visual-shots\cookware.png
   build\visual-acceptance\client\visual-shots\pause-weather.png
-  build\visual-acceptance\client\visual-shots\jei-output-focus.png
+  build\visual-acceptance\client\visual-shots\jei-item-recipes.png
   build\visual-acceptance\client\visual-shots\journeymap-waypoints.png
   build\visual-acceptance\client\visual-shots\journeymap-editor.png
   build\visual-acceptance\client\visual-shots\journeymap-polygons.png
@@ -290,7 +290,7 @@ EXPLICIT VISUAL LIMITATIONS
 `VISUAL_JUDGMENT=PENDING` is intentional, including after machine completion.
 A person must inspect PNGs for readable HUD/tooltip text, actual blue wall
 visibility, cookware texture/bar placement, clipping, overlap and pause layout.
-Inspect the JEI PNG for bread output recipe rendering and JourneyMap PNGs for
+Inspect the JEI PNG for bread recipe rendering and JourneyMap PNGs for
 native manager/editability, edited name, actual red/blue polygon visibility,
 map alignment and labels. Prepared overlay draw steps prove preparation, not
 GPU visibility or pixel correctness.

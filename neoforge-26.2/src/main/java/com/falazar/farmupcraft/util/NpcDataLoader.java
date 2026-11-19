@@ -269,8 +269,7 @@ public final class NpcDataLoader {
         String name = text(json, "name");
         String description = text(json, "description");
         String personality = text(json, "personality");
-        String full = personality.isEmpty() ? description : description + " Personality: " + personality;
-        return new NpcData(uuid, name, new UUID(0, 0), full, personality, text(json, "village_name"));
+        return new NpcData(uuid, name, new UUID(0, 0), description, personality, text(json, "village_name"));
     }
 
     private static String text(JsonObject json, String key) {

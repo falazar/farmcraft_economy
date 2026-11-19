@@ -7,18 +7,86 @@ import net.minecraft.network.chat.ClickEvent;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashSet;
+import java.util.ArrayDeque;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Tests the immutable terrain algorithm, not a fake Minecraft world. */
 class IslandScanManagerTest {
+    @Test
+    void renameReplacesLakeAndIslandNamesWithoutChangingGeometryOrOriginalRecords() {
+        JsonArray findings = com.google.gson.JsonParser.parseString("""
+                [
+                  {"type":"lake","name":"Mist-100","block_count":100,"center":{"x":5,"z":9},
+                   "bounding_box":{"min_x":0,"max_x":10,"min_z":0,"max_z":18},"custom":"kept"},
+                  {"type":"island","name":"Dawn-200","block_count":200},
+                  {"type":"other","name":"Leave alone","block_count":300}
+                ]
+                """).getAsJsonArray();
+        JsonArray renamed = IslandScanManager.renameFindings(findings);
+        for (int i = 0; i < 2; i++) {
+            JsonObject original = findings.get(i).getAsJsonObject();
+            JsonObject result = renamed.get(i).getAsJsonObject().deepCopy();
+            assertNotEquals(ScanFeatureRules.displayName(original.get("name").getAsString()),
+                    ScanFeatureRules.displayName(result.get("name").getAsString()));
+            assertTrue(result.get("name").getAsString().endsWith("-" + original.get("block_count").getAsInt()));
+            result.add("name", original.get("name"));
+            assertEquals(original, result);
+        }
+        assertEquals("Mist-100", findings.get(0).getAsJsonObject().get("name").getAsString());
+        assertEquals(findings.get(2), renamed.get(2));
+    }
+
     private static final IslandScanManager.Surface WATER =
             new IslandScanManager.Surface(63, true, false, "minecraft:water");
     private static final IslandScanManager.Surface LAND =
             new IslandScanManager.Surface(63, false, false, "minecraft:stone");
+
+    @Test
+    void workBudgetReplenishesAcrossBatchesInsteadOfAbortingTheScan() {
+        var ticks = new AtomicInteger();
+        var budget = new IslandScanManager.WorkBudget(ticks::incrementAndGet);
+        for (int i = 0; i < IslandScanManager.QUERIES_PER_BATCH - 1; i++)
+            budget.query();
+        assertEquals(0, ticks.get());
+        budget.query();
+        assertEquals(1, ticks.get());
+        for (int i = 0; i < IslandScanManager.QUERIES_PER_BATCH; i++)
+            budget.query();
+        assertEquals(2, ticks.get());
+    }
+
+    @Test
+    void eachTickRunsOnlyOneSnapshotEvenIfTheWorkerQueuesMoreImmediately() {
+        var tasks = new ArrayDeque<Runnable>();
+        var snapshots = new AtomicInteger();
+        tasks.add(() -> {
+            snapshots.incrementAndGet();
+            tasks.add(snapshots::incrementAndGet);
+        });
+        IslandScanManager.runSnapshotTask(tasks);
+        assertEquals(1, snapshots.get());
+        assertEquals(1, tasks.size());
+        IslandScanManager.runSnapshotTask(tasks);
+        assertEquals(2, snapshots.get());
+        IslandScanManager.runSnapshotTask(tasks);
+        assertEquals(2, snapshots.get());
+    }
+
+    @Test
+    void cancellationWhileWaitingForTheNextBudgetSliceStopsTheScan() {
+        var budget = new IslandScanManager.WorkBudget(() -> {
+            throw new CancellationException("Scan cancelled");
+        });
+        assertThrows(CancellationException.class, () -> {
+            for (int i = 0; i < IslandScanManager.QUERIES_PER_BATCH; i++)
+                budget.query();
+        });
+    }
 
     @Test
     void geometryIncludesCircleEdgeAndNegativeGridCoordinatesWithoutIntegerOverflow() {

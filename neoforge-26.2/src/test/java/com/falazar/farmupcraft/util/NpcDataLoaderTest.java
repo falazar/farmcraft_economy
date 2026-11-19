@@ -47,7 +47,7 @@ class NpcDataLoaderTest {
                 """);
         assertEquals(UUID.fromString("12345678-1234-5678-90ab-1234567890ab"), profile.getUUID());
         assertEquals("Alaina Fae", profile.getName());
-        assertEquals("A friendly farmer. Personality: warm, helpful", profile.getDescription());
+        assertEquals("A friendly farmer.", profile.getDescription());
         assertEquals("warm, helpful", profile.getPersonality());
         assertEquals("Rivière", profile.getVillageName());
         assertEquals(new UUID(0, 0), profile.getHomeVillageUUID());
@@ -57,6 +57,20 @@ class NpcDataLoaderTest {
         assertEquals("", minimal.getDescription());
         assertEquals("", minimal.getPersonality());
         assertEquals("", minimal.getVillageName());
+    }
+
+    @Test
+    void loadedProfileAppearsOnlyOnceInConversationPrompt() {
+        var profile = NpcDataLoader.parseProfile("""
+                {"uuid":"12345678-1234-5678-90ab-1234567890ab","name":"Eric",
+                 "description":"A village cleric.","personality":"He tends candles and collects old prayers."}
+                """);
+        String prompt = com.falazar.farmupcraft.AIManager.buildNpcSystemPrompt(
+                profile, "Player", "Hello", "cleric");
+        assertTrue(prompt.contains("Your description: A village cleric."));
+        assertTrue(prompt.contains("Your personality and background: " + profile.getPersonality()));
+        assertEquals(prompt.indexOf(profile.getPersonality()), prompt.lastIndexOf(profile.getPersonality()),
+                "Loading a JSON profile must not duplicate its personality into the description");
     }
 
     @Test

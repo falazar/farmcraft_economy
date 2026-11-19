@@ -48,10 +48,8 @@ public class JourneyMapIntegration implements IClientPlugin {
         if (requireApi() == null)
             return false;
         try {
-            Class<?> managerType = Class.forName("journeymap.client.ui.UIManager");
-            Object manager = managerType.getField("INSTANCE").get(null);
-            Object map = managerType.getMethod("getOrOpenFullscreenMap").invoke(manager);
-            map.getClass().getMethod("centerOn", double.class, double.class).invoke(map, (double) x, (double) z);
+            openMapAt(x, z, Class.forName("journeymap.client.ui.UIManager"),
+                    Class.forName("journeymap.client.ui.fullscreen.Fullscreen"));
             return true;
         } catch (ReflectiveOperationException | LinkageError error) {
             LOGGER.error("Cannot open JourneyMap at {}, {}", x, z, error);
@@ -61,6 +59,16 @@ public class JourneyMapIntegration implements IClientPlugin {
                         "Could not open JourneyMap. See the log for details.").withStyle(ChatFormatting.RED));
             return false;
         }
+    }
+
+    static void openMapAt(int x, int z, Class<?> managerType, Class<?> mapType)
+            throws ReflectiveOperationException {
+        Object manager = managerType.getField("INSTANCE").get(null);
+        // getOrOpenFullscreenMap refuses non-JourneyMap screens, including clickable chat.
+        Object map = managerType.getMethod("open", Class.class).invoke(manager, mapType);
+        if (map == null)
+            throw new ReflectiveOperationException("JourneyMap did not open its fullscreen map");
+        mapType.getMethod("centerOn", double.class, double.class).invoke(map, (double) x, (double) z);
     }
 
     public static List<Waypoint> getScanWaypoints() {
@@ -156,6 +164,7 @@ public class JourneyMapIntegration implements IClientPlugin {
                 Waypoint waypoint = factory.create(MOD_ID,
                         new BlockPos(entry.x(), entry.y(), entry.z()), entry.name(), dimension, false);
                 waypoint.setColor(entry.color());
+                JourneyMapFeatureFilter.tag(waypoint);
                 api.addWaypoint(MOD_ID, waypoint);
                 addScanWaypoint(waypoint);
             } catch (RuntimeException error) {
@@ -176,6 +185,7 @@ public class JourneyMapIntegration implements IClientPlugin {
     }
 
     public static void loggedOut() {
+        JourneyMapFeatureFilter.reset();
         if (jmAPI != null) {
             removeScanWaypoints(jmAPI);
         }

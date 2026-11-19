@@ -32,12 +32,18 @@ legacy-world migration warning are documented in the development notes below.
 
 ## Commands
 
+### Minecart sound volume
+
+On both targets, minecart rolling and passenger sounds (including underwater
+riding) play at 50% of their normal volume. Other sounds and saved volume
+settings are unchanged.
+
 ### NeoForge audio-device failure recovery
 
 NeoForge 26.2 delays automatic sound-engine retries for five real-time minutes after
 initialization fails (for example, an HDMI TV disconnecting while off). Vanilla's
-original error and stack trace remain visible, followed by one cooldown warning
-per failed attempt; repeated per-tick device-loss checks are suppressed during
+original error and stack trace remain visible, with an additional FarmUpCraft
+cooldown warning at most once per hour; repeated per-tick device-loss checks are suppressed during
 the cooldown. Sound output may remain unavailable until those five minutes expire.
 Manual sound-device/resource reloads bypass the automatic cooldown and can retry
 immediately. Successful initialization restores normal device monitoring; another
@@ -134,12 +140,37 @@ the same prompt; a second invalid reply shows an NPC error, never a canned
 successful gem fallback. Empty replies, service errors, and timeouts are logged
 and shown as "I'm a bit busy right now. Could we talk later?" without a retry.
 The busy response is delivered and logged like normal NPC speech. Each
-attempt has a 30-second timeout, and replies are discarded if the conversation
+attempt has a 42-second timeout on both targets, and replies are discarded if the conversation
 ends.
+
+Standalone local NPC timing comparison (Node.js, no packages or Minecraft launch required):
+```powershell
+node .\scripts\ollama-benchmark.mjs --models llama3.2:3b,qwen2.5:0.5b --log 'D:\MinecraftInstances\NeoForge-26.2\logs\latest.log' --npc Eric --message 'seen any gems around here?' --runs 3 --output "$env:TEMP\npc-llm-timing.json"
+```
+Use `--prompt-file <UTF-8 file>` instead of `--log`/`--npc` to supply a system prompt
+directly. The logged mode uses that NPC's latest logged system prompt; supply its matching
+player message. The benchmark reports wall-clock, model-load, prompt-processing and
+generation times, tokens/second, replies, and whether each result meets the 30/42-second
+limits. Only installed local models are allowed; it does not download models, change the
+game's selected model, or forcibly unload models. Repeated identical prompts benefit from
+Ollama caching, so distinguish the first run from repeats; a first run is only cold if the
+model was not already resident. Compare reply correctness as well as speed. Concurrent
+game/LLM activity affects results. Output can contain player dialogue; keep it private.
+For thinking-capable models, add `--think false` to test direct replies without
+reasoning overhead, or `--think true` to enable it. Omitting the flag preserves
+the model's default, matching the game's current request. The report records the
+requested setting and returned thinking-character count; changing this benchmark
+option does not change the game's LLM settings.
 
 Editable UTF-8 conversation prompts are copied on first use to
 `config/farmupcraft/prompts/npc-conversation.txt` and `npc-gems.txt`.
 Both are reread on every conversation request, without overwriting user edits.
+Both targets keep loaded profile descriptions and personalities separate, so the
+conversation prompt includes the personality only once; existing profile JSON
+files need no migration.
+On NeoForge, child villagers receive an additional instruction on every reply
+to speak as an eight-year-old, overriding adult roles in their profile or past
+dialogue. Once they grow up, ordinary adult conversation prompts apply again.
 Gem instructions supplement the existing villager profile: the profile controls
 personality and speaking style, while gem constraints govern only permitted facts.
 The base uses `{npc_name}`, `{description}`, `{personality}`, `{player_name}`,
@@ -179,10 +210,16 @@ the graphical list is also available from `/menu`.
 
 The wood market catalog includes bamboo planks and cherry/mangrove boats
 (including chest boats) in both versions, plus the pale oak wood family in
-NeoForge. After upgrading an existing world, an operator can run
-`/market importtxt wood` to add missing entries without resetting existing
-prices or stock. Newly imported items start inactive and enter normal market
-rotation; unavailable optional-mod items are skipped with diagnostics.
+NeoForge. The NeoForge catalog also includes BOP Maple Log
+(`biomesoplenty:maple_log`) and Pine Log (`biomesoplenty:pine_log`).
+On the first player login after each server restart, both targets automatically check
+all four bundled market catalogs and adds missing entries without resetting existing
+prices, stock, or active status. Failed imports are logged and retried on the next
+login. Operators can still run `/market admin importall` or
+`/market admin importtxt wood` manually. Newly imported items start inactive and
+enter normal market rotation; unavailable optional-mod items are skipped with diagnostics.
+Forge's older BOP release has neither maple-log nor pine-log items, so those two
+NeoForge catalog entries are not copied into Forge.
 
 Biome crop selections are saved by named biome/item IDs. Startup and tag reloads
 add rules for newly eligible biomes without rerolling existing selections, and
@@ -302,6 +339,8 @@ Progression shows the coin cost, saved villager/structure counts and required
 counts, next range, plot-upgrade limit changes, and increased base upkeep.
 The progression section contains the current level's Level Up button for your
 home village; it scrolls with the section rather than staying in the footer.
+The inline button receives clicks ahead of the scrolling panel behind it, while
+mouse-wheel scrolling over the button still scrolls the panel.
 Daily upkeep is displayed as an orange negative amount; this is presentation
 only and does not change the upkeep or net-income calculations.
 Confirmation states the charge and requirements; village coins pay first, with
@@ -311,6 +350,26 @@ The server checks
 the village identity and quoted level before using the existing level-up action,
 then the overview refreshes. Other villages and level 10 cannot be upgraded from
 this screen. Requirements remain visible in the progression panel.
+On NeoForge, upgrades to levels 7–10 also consume items from the upgrading
+player's inventory (including the offhand):
+
+| Target level | Extra item cost |
+| --- | --- |
+| 7 | 64 of one randomly chosen high-nutrition food |
+| 8 | 64 of one randomly chosen FarmUpCraft gem |
+| 9 | 128 of one randomly chosen high-nutrition food |
+| 10 | 128 of one randomly chosen FarmUpCraft gem |
+
+Food choices come from the highest 10% of registered positive-nutrition foods
+by hunger restored, including ties at the cutoff; saturation is not used.
+The gem pool is ruby, opal, sapphire, topaz, and peridot. All four choices are
+assigned once per village when its home-village info or upgrade is first
+requested, and saved with the village. Reopening the panel, failing an upgrade,
+restarting, or changing the village level does not reroll them. Existing saves
+need no manual migration; previously completed upgrades are not charged again.
+The panel, confirmation, and `/village info` show the next required item and
+inventory count. Existing coin, villager, and claimed-structure requirements
+remain; no items or coins are consumed unless all upgrade checks pass.
 Viewing another village by name hides the treasury and progression panels,
 their financial data, and the level-up button.
 Villager counts and the last census time are saved on each village. Every five
@@ -461,6 +520,19 @@ Updated clients and servers are required together for the market's favorite-stat
 
 On both loaders, `/menu` or **Alt+F** opens the general FarmUpcraft menu, with shortcuts
 to Village overview, Plot info, Market, Village structures, and Player info / wallet.
+
+On NeoForge, `/player info` also shows personal JourneyMap exploration as mapped
+chunks / total overworld chunks inside the world border, with a rounded percentage.
+A chunk counts when at least one saved surface-map pixel inside the border is mapped;
+partially intersecting border chunks count once in the total. This measures mapped
+terrain, not chunks physically entered or terrain generated by other players.
+The first request reads the requesting player's own JourneyMap surface tiles in
+the background and saves the result with their player data for 24 real-world hours.
+Later requests reuse that result; changing the border invalidates the cache.
+The HUD is unchanged. Admin lookups show the target player's last cached report,
+not the admin's map. Without JourneyMap/readable surface tiles, the command reports
+that coverage is unavailable rather than displaying zero. Reports are client-provided
+informational statistics, not trusted progress for rewards.
 The last shortcut shows the existing player details in chat. Change the shortcut under
 Controls -> Key Binds -> Miscellaneous -> Open FarmUpcraft menu. The menu does not pause
 the game and its buttons retain the normal server-side command permissions.
@@ -483,8 +555,12 @@ client estimate or wallet difference; failed sales do not show a success popup.
 The popup survives the automatic market refresh and does not interrupt selling.
 Prices can fall during a bulk sale, so
 the initial per-item price is not a guaranteed price for the whole stack.
-Right-click an icon to show its recipe in JEI; recipe viewing requires JEI,
-but the market screen itself does not. The icon tooltip keeps the right-click
+Right-click an icon to show recipes that use that item in JEI; exact single-item
+matches are listed before recipes accepting it through a tag or alternatives.
+Forge uses original ingredient definitions to distinguish vanilla recipe tags.
+Custom JEI categories without tag metadata are classified by their expanded
+item alternatives; a single-item custom tag may therefore appear as exact.
+Recipe viewing requires JEI, but the market screen itself does not. The icon tooltip keeps the right-click
 recipe hint; the bottom hint and category/sort subtitle are hidden to leave
 more room for items. Tabs, page buttons, and Close
 provide navigation; there is no manual Refresh button. Sales still refresh
@@ -621,10 +697,28 @@ corner markers. Lakes require at least 50 water blocks; islands require at least
 40 land blocks. Smaller previously saved records do not produce markers or titles.
 Names omit the stored numeric size suffix in chat, map markers, and entry titles
 (for example, `Frost-1089` displays as `Frost Island`); saved identifiers are unchanged.
+New discoveries draw from 314 base names mixing natural features, real-world
+places, and original fantasy names. Existing saved names stay unchanged; random
+selection can still repeat names.
+Operators can run `/scan rename-lakes confirm` (also `/scan rename confirm`) to randomly rename all saved lakes
+and islands in the current dimension, without rescanning. It queues behind active
+scans, saves a `findings-before-rename-*.json` backup beside the discoveries,
+and refreshes their shared map markers and area titles. Each feature receives a
+different base name from its previous one; names can still repeat across features.
 The chat size in chunks is a bounding-box measure, not the block-count threshold.
 Successful saved discoveries are shared with everyone in the
 same dimension and synchronized on login/dimension change. JourneyMap is optional:
-near the surface, entering a discovered feature's bounding box shows a vanilla
+on the full JourneyMap screen and minimap, `/fmap lakes` temporarily shows only lake and island
+waypoints; `/fmap all` restores the usual waypoint display. This client-only
+filter does not change or delete waypoint settings, does not filter other map
+overlays, and resets on disconnect.
+Both `/fmap lakes` and `/fmap all` undo any previous lake/island hiding.
+`/fmap hide` hides lakes/islands on both maps and restores other markers.
+`/fmap toggle` remains a compatibility shortcut between hiding lakes/islands and
+showing all markers. `/fmap` lists the explicit commands. Filter feedback includes
+the number of received discoveries and warns if none have reached the client.
+These commands preserve native waypoint/group visibility settings.
+Near the surface, entering a discovered feature's bounding box shows a vanilla
 title such as "Mist Lake" or "Storm Island", fading over four seconds. Entry
 checks run once per second, with a 20-second notification cooldown; the smallest
 feature wins overlapping bounds. Underground players more than 16 blocks from
@@ -635,6 +729,18 @@ leveling it up automatically starts an asynchronous lake/island scan around the
 village center with a radius of `25 + 5 * level` chunks (30 chunks at level 1 up
 to 75 chunks at level 10), well beyond the green village claim area. Results live under
 the current save's `farmupcraft/scans/<namespace>/<dimension>/`.
+On NeoForge, scans capture at most one terrain snapshot per server tick and
+yield to another tick every 50,000 terrain queries instead of exhausting a
+whole-scan budget. The worker keeps at most 1,024 chunk snapshots in memory.
+Every eight grid rows it saves completed seed checks and discoveries, so a
+later scan can reuse that work. Progress such as `74/290` counts grid rows,
+not chunks. To rescan, stand near the village center and run
+`/scan islands <chunk-radius>` with operator permission (for example,
+`/scan islands 45` for the level-4 automatic radius, or `50` for level 5).
+This reuses saved completed seeds; incomplete boundaries are still retried.
+Use `/scan clear` first only when intentionally discarding the seed cache;
+it keeps saved discoveries. The larger scan after a level-up queues behind
+any active scan rather than running terrain captures in parallel.
 Legacy Forge global scan files are not automatically assigned to a world.
 | `/show` | `biomes`; `/show biomecrops` lists plantable crops for the biome you are standing in, or supply `<biome>` to look up another biome. `/show cropbiomes <crop>` lists suitable biomes. Both crop lookups appear in `/farmupcraft help`. |
 | `/structures` | `find`, `list`, `detail`, `chests`, `inside`; manage visited-state markers. |
@@ -702,6 +808,22 @@ not establish familiarity. This memory survives world reloads and NPC/player
 renames, is specific to that NPC and player, and starts with the first successful
 exchange after this update; older chat logs are not imported.
 
+NeoForge also saves the last **10 completed exchanges per player per exact NPC**
+(up to 20 prior messages, counting both sides) in that NPC's entity data.
+Every chat request sends the system/profile instructions, those exchanges in
+chronological order as separate `user`/`assistant` messages, and the current
+player message. Successful delivered replies append one exchange and discard
+the oldest when needed; busy/error replies and replies discarded after leaving
+the conversation are not remembered. Memory survives world reloads and name
+changes, and is never shared between players or same-named NPCs. Existing
+recognition flags also tell the AI it has met the player, even without saved
+dialogue. `[NPC Memory]` log entries show the exact NPC/player UUIDs, number of
+prior exchanges supplied, and successful saves. Invalid stored memory reports
+an explicit error instead of silently resetting it.
+This dialogue history starts with successful conversations after installing
+this update. Legacy `NPC.txt` transcripts contain names rather than exact NPC
+identities and world IDs, so they are not automatically imported into memory.
+
 ### Player help and login welcome
 
 Every login shows a gold reminder: "Use /menu or press Alt+F to see all the options!"
@@ -728,9 +850,10 @@ targets, on dedicated servers and in single-player worlds.
 
 ### Initial market setup
 
-Underlined market items open their recipes in JEI when clicked. These links use
-plain-text tooltips with the item ID and a click hint, avoiding item tooltips
-that can intercept chat clicks. Items without crafting recipes keep item tooltips.
+Underlined market items open recipes that use those items in JEI when clicked.
+Exact single-item matches appear before tag or alternative-item matches. These
+links use plain-text tooltips with the item ID and a click hint, avoiding item
+tooltips that can intercept chat clicks. Items without recipe uses keep item tooltips.
 
 Both targets automatically import the bundled item lists for empty market
 categories at server startup and activate an initial selection when a category
@@ -897,7 +1020,9 @@ uses the stable structure ID and rechecks village membership and structure
 availability, so moving or reordering the list cannot select another structure.
 This adds a green waypoint and opens JourneyMap centered on it; it never
 teleports the player. Ordinary `/farmcraft waypoint` commands still only add a
-waypoint without opening the map.
+waypoint without opening the map. On NeoForge, structure links explicitly open
+the fullscreen map over chat; if map opening fails, the error is reported
+separately without claiming that the already-added waypoint failed.
 
 Both targets require a structure to be visited before it can be marked claimed.
 Buying a village claims territory, not its structures: only the village-center
@@ -971,7 +1096,10 @@ are detected at the next scheduled check, so they can take up to two hours.
 A bounded walking search
 starts beside the bed at the same height or one block up/down, can pass through
 hand-openable interior doors and use steps,
-and rejects blocked exterior approaches. Nearby open sky identifies the exterior;
+and rejects blocked exterior approaches. NeoForge also accepts an exterior path
+one block below the doorway when there is headroom to step down; deeper drops
+remain unsuitable, and signs stay at doorway height.
+Nearby open sky identifies the exterior;
 the doorway and sign may be under a porch. The search spans 24 blocks horizontally
 and twelve vertically from the bed (including downstairs entrances reached by
 stairs); sky must be reachable within eight blocks of
@@ -980,12 +1108,18 @@ double doors. Each wall column tries the upper position then directly below it,
 so an existing upper sign is preserved and the new sign goes underneath. Overflow
 uses the next right-hand column, up to three columns beyond the door edge. Support
 must be a sturdy wall face, never a door or trapdoor, in the same bought village. No chunks
-are force-loaded. Unsuitable entrances or full sign space are logged and marked
-done using the same per-bed flag as successful placement. There are no placement
-retries at that bed, even if the entrance or sign space is later improved.
+are force-loaded. On NeoForge, actual placement/repair attempts are limited to
+one per villager per rolling 24 real-world hours, saved across reloads and bed
+changes. Failed entrances or full sign space retry at the next scheduled check
+after that cooldown. Old permanently skipped cases retry at their first staggered
+timer gate after upgrading, without waiting for the old two-hour deadline.
+Missing/invalid/unloaded beds and beds outside bought villages also log their
+failure reason once per daily attempt. Each attempt/failure includes the
+villager's name, UUID, position, and next eligible attempt time.
+Forge retains its one-attempt-per-bed policy for unsuccessful placement.
 Each scheduled check logs bed/sign coordinates and whether the saved sign is
-present, missing, or unloaded. Permanently skipped beds get a diagnostic-only
-entrance search, never a placement retry. Diagnostics include visited nodes,
+present, obstructed, missing, or unloaded. Forge's permanently skipped beds get a
+diagnostic-only entrance search. Diagnostics include visited nodes,
 seed count, door/approach rejection counts, unloaded/height/budget limits, and
 bed-adjacent feet/head/floor block states (including modded IDs). Placement logs
 record the chosen door, outside direction, sign position, and route distance.
@@ -993,15 +1127,20 @@ record the chosen door, outside direction, sign position, and route distance.
 The per-bed placement flag is saved on the villager, and shared resident entries
 are saved on the sign. Removing a sign does not recreate it at the same bed.
 Changing beds removes that resident from an unchanged old sign, deletes the sign
-only when it becomes empty, and permits a new entry at the new home. Cleanup waits
+only when it becomes empty, and permits a new entry at the new home (subject to
+NeoForge's per-villager daily placement cap). Cleanup waits
 for the old sign's chunk to be loaded. Names/professions refresh only on unchanged
 generated signs. Player edits to either side, color, glow, wax, or facing protect
 the sign permanently from automatic updates or deletion once detected.
 Unchanged generated signs attached to a door (or directly above one) get a
-one-time relocation attempt on the resident's next scheduled two-hour check.
+one-time relocation attempt on the resident's next scheduled two-hour check
+(subject to NeoForge's daily cap). NeoForge also checks that a sign's front is
+unobstructed before placing/sharing it, and relocates unchanged generated signs
+whose fronts have become obstructed when a daily repair is eligible.
 Shared entries move individually, preserving residents not checked yet and
 leaving player-edited signs untouched. No live-world repair command or faster
-polling is added; a failed relocation is also marked done for that bed.
+polling is added; NeoForge retries failed relocations after the same daily
+cooldown, while Forge marks them done for that bed.
 
 ### Moving walls and buildings
 
@@ -1013,7 +1152,15 @@ wall: pull moves toward your side, push moves away. The second click creates a
 preview only: red particle outlines mark the source, green outlines mark the
 destination, and a client-side ghost-block preview highlights the source blocks
 to be removed in red while rendering semi-transparent destination blocks at the
-target positions without changing the world. Chat shows the price and
+target positions without changing the world.
+On both targets, ghosts use the blocks' actual models and resource-pack textures
+(including slabs, stairs, facing, and biome tints), not map-colored cubes.
+Special block models such as chests also use their own texture atlases; sign
+text and other live block-entity animation/data are not rendered in the ghost.
+Both client and server need the updated mod for this textured preview.
+Forge now requires network protocol 1.1 on both peers; older Forge builds cannot
+connect to this build because preview packets now include actual block states.
+Chat shows the price and
 clickable Confirm/Cancel actions. Run `/build confirm` (or click Confirm) to move;
 `/build cancel` cancels without charging. Starting another build command replaces
 the old preview. Selections/previews expire after two minutes or on logout/
@@ -1031,14 +1178,19 @@ inclusive source/destination bounds, size, offset, and the exact bottom-edge blo
 that stopped depth detection. Block-entity overlap logs identify the destination,
 incoming source block, and whether the destination is inside the moving source.
 Block entities inside the source may overlap because they move too; only
-stationary block entities outside the source block the move.
+stationary containers outside the source block the move on both targets.
+Destination signs and other non-container block entities may be overwritten.
 
 Both commands also include supported attachments one block outside the selected
 box, such as wall torches, banners, signs (including hanging signs), ladders,
 buttons, levers, lanterns, rails, and plants. Support is checked using each
 block's survival rules, including modded blocks implementing those rules.
+On both targets, pushing a building does not require ground support beneath
+the selected bottom layer. Side and overhead support checks remain in place,
+and pulling a wall retains all support checks. No ground is added by the move;
+unsupported blocks still follow normal Minecraft physics after placement.
 Unrelated neighboring blocks are not added to the move. Attachments extending
-farther out, or attachments that would lose their support at the destination,
+farther out, or attachments that would lose required support at the destination,
 cancel the move and ask for a larger selection rather than dropping items.
 Sign text on both sides, colors/glow/wax, banner patterns/names, and other block
 entity data are preserved. Paintings, item frames, and glow item frames move
@@ -1071,8 +1223,11 @@ Both corners must be within 64
 blocks of the player. All affected blocks must be loaded and inside the world
 border/height limits. Source blocks move rather than duplicate, including block
 entity inventories/data. Overlap is supported. Destination blocks (including
-those under source air) are overwritten, but a destination block entity outside
-the source region cancels the entire operation to avoid deleting its contents.
+those under source air) are overwritten. On NeoForge 26.2, destination signs
+and other non-container block entities may also be overwritten; chests and other
+containers outside the source region still cancel the entire operation, even
+when empty. This includes modded item/fluid storage exposed through NeoForge
+capabilities. Forge 1.20.1 retains its destination block-entity protection.
 Every affected block is preflighted for break/place events, normal editing
 permissions, and the existing village/house protections before moving anything.
 Permission probes skip FarmUpCraft's harvesting rolls, bonus drops, and chest/
@@ -1168,6 +1323,15 @@ natural animal spawns or Lycanites rules.
 When a chicken or duck egg hits a full pasture, its player thrower receives one
 red warning with the current animal count, even if the egg's hatch roll fails.
 Dispenser-thrown eggs have no player to notify.
+Alex's Mobs emu eggs instead allow hatching either in an active pasture or in
+wilderness outside every village's territory (not merely outside purchased
+plots). Ordinary village land, village centers, and other plot types block
+emu hatching, regardless of light or height. Pasture hatching still obeys its
+height band and 30-animal limit, checked separately for each baby. Allowed emu
+hatchlings retain the bred-offspring spawn exemption so the plot filter does
+not reject them or remove them on reload. Eggs keep their native hatch chance
+and still break when blocked; player throwers receive a location/full-pasture
+warning. Chicken and duck hatching rules are unchanged.
 Chicken and Naturalist duck egg laying is allowed in pasture plots and
 wilderness only, not other village plots. Blocked laying attempts reset the
 normal egg timer without dropping an egg; dropped player items are unaffected.
@@ -1490,9 +1654,14 @@ the native editor, and saves a verified rename. The persistent flag is checked,
 but restart/disk waypoint persistence remains unverified.
 
 Highlight/village-chunk payloads now drive JourneyMap v2 polygons, with
-replacement, refresh, clearing, and logout cleanup. Recipe-opening payloads
-use the actual JEI output-focus API. A connected nine-stage run verifies JEI's
-bread OUTPUT focus with two visible recipe layouts, the native JourneyMap
+replacement, refresh, clearing, and logout cleanup. When JourneyMap is
+installed, a finite vanilla world border is outlined in red on the minimap and
+fullscreen map; it follows border changes and returns after polygon clears.
+Market right-clicks, `/frecipe <itemId>`, and recipe-opening payloads show
+JEI recipes that produce the item. `/fuses <itemId>` opens the separate
+exact-first item-use view (plain-item ingredients before grouped alternatives).
+A connected nine-stage run previously verified JEI's
+wheat INPUT focus with visible recipe layouts, the native JourneyMap
 manager/editor, and rendered red highlight/blue village polygons. Exact
 geometry/style and viewport checks require 16-block chunks at four render
 pixels/block; inspected screenshots show both colored squares. Production
@@ -1564,6 +1733,50 @@ parameters and recipe quantities: the oil recipe produces eight despite its
 legacy filename. Fish tags use HarvestCraft's actual `c:fishes`, `c:rawfish`
 and `c:rawmeats` IDs; optional Aquaculture/Alex's Mobs entries do not require
 those mods. The legacy cooked-fillet entry in `rawfish` is intentionally retained.
+
+NeoForge adds targeted HarvestCraft biome modifiers when both the relevant Pam's
+module and BOP are installed. Gardens gain five previously uncovered biomes:
+Tropics (tropical), Lush Desert (arid), Old Growth Woodland (shaded), Origin Valley
+(windy), and Snowblossom Grove (frost). Existing garden coverage is unchanged.
+The garden placement chance remains 1 in 50.
+
+Trees gain 24 previously uncovered BOP biomes, bringing coverage to 40. All 30
+upstream warm-climate species plus nutmeg can generate in Rainforest, Rocky
+Rainforest, Fungal Jungle, and Tropics. Bayou, Floodplain, and Subtropics receive
+a smaller warm/wet selection; Lush Desert, Dryland, Scrubland, and Lush Savanna
+receive almond, date, olive, and pistachio. All 18 upstream temperate species
+extend to Old Growth Woodland, Origin Valley, Mystic Grove, Lavender Field,
+Prairie, and Wetland. Maple and pinenut extend to Coniferous Forest, Fir Clearing,
+Field, Forested Field, Jade Cliffs, Snowblossom Grove, and Wintry Origin Valley.
+All 50 species have BOP homes. Existing attachments and the 1-in-300 placement
+chance per species remain unchanged; more eligible species means more chances
+of finding some fruit tree, not a higher chance for each species. Ground,
+space, and canopy checks still apply. These additions affect new chunks only;
+they do not repopulate explored terrain or change FarmUpCraft crop-growing rules.
+
+Forge 1.20.1 includes the same five garden additions and corresponding tree
+groups, adapted to its older HarvestCraft biome tags. Subtropics and Wintry
+Origin Valley are omitted because that BOP release does not contain them.
+Existing tag-based attachments are preserved without duplicate tree attempts;
+all 50 species have BOP homes. Both loaders normalize HarvestCraft garden/tree feature
+order after other vegetation to prevent cross-biome feature-order cycles.
+Placement definitions and rarity are unchanged. These new compatibility modifiers
+are conditional on BOP and the relevant HarvestCraft module.
+
+The isolated Forge session regressions cover loaded biome attachments, market
+imports, preview packet states, NPC profiles, exact/tag ingredients, and building
+protection/support:
+```powershell
+$env:GRADLE_OPTS = '-Dorg.gradle.java.home="<your Java 17 installation>"'
+.\forge-1.20.1\gradlew.bat -p .\forge-1.20.1 :runGameTestServer -PsessionTests=true --max-workers=1
+```
+They use a disposable world under `forge-1.20.1\build\session-tests`; test classes
+are excluded from the release JAR. Build a release with `:jar` (including
+reobfuscation), not `build`, to avoid the legacy automatic `copyJar` deployment.
+All six regressions pass with the pinned Forge companion mods. The rebuilt
+release's JSON modifiers, client mixin mappings, and exclusion of test fixtures
+were also checked. Forge's JEI GUI, ghost rendering, and sound volume still need
+an in-client playtest; server tests do not verify their visual/audio output.
 
 On NeoForge, Pipez remains optional. Its recipe overrides are skipped when absent and load
 after Pipez when installed. To reproduce the installed-Pipez acceptance run:

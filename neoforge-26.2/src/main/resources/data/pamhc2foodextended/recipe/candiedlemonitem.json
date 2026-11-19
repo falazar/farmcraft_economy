@@ -1,0 +1,11 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "pamhc2foodextended" }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": ["#c:tool_saucepan", "#c:sugar", "#c:sugar", "#c:crops/lemon"],
+  "result": {
+    "id": "pamhc2foodextended:candiedlemonitem",
+    "count": 1
+  }
+}

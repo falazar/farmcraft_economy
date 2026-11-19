@@ -9,6 +9,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 
 import java.util.UUID;
+import java.util.Optional;
 
 public class PlayerData {
     private static final UUID NO_VILLAGE = new UUID(0L, 0L);
@@ -27,7 +28,8 @@ public class PlayerData {
             Codec.intRange(1, Integer.MAX_VALUE).optionalFieldOf("market_minimum_price", 10)
                     .forGetter(PlayerData::getMarketMinimumPrice),
             Codec.STRING.listOf().optionalFieldOf("market_favorites", java.util.List.of())
-                    .forGetter(PlayerData::getMarketFavorites))
+                    .forGetter(PlayerData::getMarketFavorites),
+            ExplorationStats.CODEC.optionalFieldOf("exploration").forGetter(PlayerData::getExploration))
             .apply(instance, PlayerData::new));
 
     private final int id;
@@ -40,6 +42,11 @@ public class PlayerData {
     private boolean villageMapShow;
     private int marketMinimumPrice;
     private final java.util.Set<String> marketFavorites = new java.util.LinkedHashSet<>();
+    private Optional<ExplorationStats> exploration = Optional.empty();
+
+    public Optional<ExplorationStats> getExploration() { return exploration; }
+
+    public void setExploration(ExplorationStats stats) { exploration = Optional.of(stats); }
 
     public java.util.List<String> getMarketFavorites() { return java.util.List.copyOf(marketFavorites); }
 
@@ -89,6 +96,13 @@ public class PlayerData {
     public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
                       String borderColor, long firstWelcomeDay, boolean villageMapShow, int marketMinimumPrice,
                       java.util.List<String> marketFavorites) {
+        this(id, playerUUID, homeVillageUUID, coins, borderShow, borderColor, firstWelcomeDay,
+                villageMapShow, marketMinimumPrice, marketFavorites, Optional.empty());
+    }
+
+    public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins, boolean borderShow,
+                      String borderColor, long firstWelcomeDay, boolean villageMapShow, int marketMinimumPrice,
+                      java.util.List<String> marketFavorites, Optional<ExplorationStats> exploration) {
         this.id = id;
         this.playerUUID = playerUUID;
         this.homeVillageUUID = homeVillageUUID;
@@ -99,6 +113,7 @@ public class PlayerData {
         this.villageMapShow = villageMapShow;
         setMarketMinimumPrice(marketMinimumPrice);
         this.marketFavorites.addAll(marketFavorites);
+        this.exploration = exploration;
     }
 
     public PlayerData(int id, UUID playerUUID, UUID homeVillageUUID, int coins) {

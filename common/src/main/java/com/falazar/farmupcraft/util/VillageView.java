@@ -22,7 +22,7 @@ public record VillageView(String name, List<Entry> entries) {
     public VillageView publicOverview() {
         return new VillageView(name, entries.stream().filter(e -> !List.of(
                 "Village treasury", "Daily income", "Daily upkeep", "Net daily", "Next plot cost",
-                "Level-up action").contains(e.label())).toList());
+                "Level-up action", "Level-up items").contains(e.label())).toList());
     }
 
     public static VillageView summary(String name, int level, int radius, int coins, String center,

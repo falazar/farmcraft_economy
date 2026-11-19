@@ -32,6 +32,7 @@ public final class CommandPayloadHandler {
     public static void loggedOut() {
         if (ModList.get().isLoaded("journeymap")) {
             JourneyMapChunkOverlays.loggedOut();
+            JourneyMapWorldBorder.loggedOut();
         }
     }
 

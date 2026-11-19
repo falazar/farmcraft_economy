@@ -1,0 +1,13 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "biomesoplenty" },
+    {
+      "type": "neoforge:or",
+      "values": [
+        { "type": "neoforge:mod_loaded", "modid": "pamhc2trees" },
+        { "type": "neoforge:mod_loaded", "modid": "pamhc2crops" }
+      ]
+    }
+  ],
+  "type": "farmupcraft:harvestcraft_feature_order"
+}

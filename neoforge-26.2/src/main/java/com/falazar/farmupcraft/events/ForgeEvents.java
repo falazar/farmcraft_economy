@@ -85,6 +85,7 @@ public final class ForgeEvents {
         if (!(event.getEntity() instanceof ServerPlayer player)) {
             return;
         }
+        com.falazar.farmupcraft.command.MarketCommand.updateCatalogsOnLogin(player.level().getServer());
         var database = ModEvents.getPlayerDatabase(player.level());
         player.sendSystemMessage(Component.literal(com.falazar.farmupcraft.util.PlayerOnboarding.MENU_REMINDER)
                 .withStyle(ChatFormatting.GOLD));

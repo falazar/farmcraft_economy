@@ -1,0 +1,10 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "pamhc2crops" },
+    { "type": "neoforge:mod_loaded", "modid": "biomesoplenty" }
+  ],
+  "type": "neoforge:add_features",
+  "biomes": ["biomesoplenty:origin_valley"],
+  "features": "pamhc2crops:windy_garden_placed_plains",
+  "step": "vegetal_decoration"
+}

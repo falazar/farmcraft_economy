@@ -34,7 +34,7 @@ public final class GemRenderAcceptanceClient {
                 throw new IllegalStateException("Gem render probe timed out");
             if (minecraft.level == null || minecraft.player == null || minecraft.gameMode == null)
                 return;
-            if (minecraft.gui.screen() != null)
+            if (minecraft.gui.screen() != null && (seenAt < 0 || !Boolean.getBoolean("farmupcraft.mapFilterAcceptance")))
                 minecraft.gui.setScreen(null);
             minecraft.gui.hud.getChat().clearMessages(true);
             minecraft.gui.toastManager().clear();
@@ -56,12 +56,18 @@ public final class GemRenderAcceptanceClient {
             }
             if (seenAt < 0) {
                 if (Boolean.getBoolean("farmupcraft.soundRetryAcceptance"))
-                    verifySoundFailureLogging(minecraft);
+                    verifySoundRetryCooldown(minecraft);
+                if (Boolean.getBoolean("farmupcraft.mapFilterAcceptance"))
+                    JourneyMapFilterAcceptance.verify(minecraft);
                 seenAt = minecraft.level.getGameTime();
             }
             minecraft.player.setYRot(0);
             minecraft.player.setXRot(0);
-            if (minecraft.level.getGameTime() - seenAt >= 60)
+            if (Boolean.getBoolean("farmupcraft.mapFilterAcceptance")
+                    && minecraft.level.getGameTime() - seenAt == 20)
+                JourneyMapFilterAcceptance.openFullscreen();
+            if (minecraft.level.getGameTime() - seenAt >=
+                    (Boolean.getBoolean("farmupcraft.mapFilterAcceptance") ? 200 : 60))
                 capture = true;
         } catch (RuntimeException error) {
             finished = true;
@@ -70,7 +76,7 @@ public final class GemRenderAcceptanceClient {
         }
     }
 
-    private static void verifySoundFailureLogging(Minecraft minecraft) {
+    private static void verifySoundRetryCooldown(Minecraft minecraft) {
         try {
             var manager = minecraft.getSoundManager();
             var engineField = manager.getClass().getDeclaredField("soundEngine");
@@ -88,11 +94,33 @@ public final class GemRenderAcceptanceClient {
                     || !throttle.shouldLogFailure(now + oneHour)) {
                 throw new IllegalStateException("Sound failure warnings are not limited to one per hour");
             }
-            manager.reload();
+            var retry = (SoundRetryCooldown) throttleField.get(engine);
+            var checkDevice = engine.getClass().getDeclaredMethod("shouldChangeDevice");
+            checkDevice.setAccessible(true);
+            var devicesField = engine.getClass().getDeclaredField("lastSeenDevices");
+            devicesField.setAccessible(true);
+            var previousDevices = devicesField.get(engine);
+            try {
+                devicesField.set(engine, null);
+                retry.recordAttempt(false, System.nanoTime());
+                if (!Boolean.FALSE.equals(checkDevice.invoke(engine)) || devicesField.get(engine) != null)
+                    throw new IllegalStateException("Automatic device checks ran during the retry cooldown");
+                retry.recordAttempt(false, System.nanoTime() - java.util.concurrent.TimeUnit.MINUTES.toNanos(5));
+                if (!Boolean.TRUE.equals(checkDevice.invoke(engine)) && devicesField.get(engine) == null)
+                    throw new IllegalStateException("Automatic device checks did not resume after the cooldown");
+                retry.recordAttempt(false, System.nanoTime());
+                manager.reload();
+                var loadedField = engine.getClass().getDeclaredField("loaded");
+                loadedField.setAccessible(true);
+                if (!loadedField.getBoolean(engine) || !retry.allowsAutomaticRetry(System.nanoTime()))
+                    throw new IllegalStateException("Manual sound reload did not bypass and reset the cooldown");
+            } finally {
+                devicesField.set(engine, previousDevices);
+            }
             PlayerActionAcceptance
-                    .report("PASS sound failure logging: hourly warning limit and manual resource reload");
+                    .report("PASS sound retry transformed client: automatic cooldown, due retry and manual reload");
         } catch (ReflectiveOperationException error) {
-            throw new IllegalStateException("Cannot verify transformed sound logging mixin", error);
+            throw new IllegalStateException("Cannot verify transformed sound retry mixin", error);
         }
     }
 
@@ -102,9 +130,19 @@ public final class GemRenderAcceptanceClient {
             return;
         capture = false;
         finished = true;
+        if (Boolean.getBoolean("farmupcraft.mapFilterAcceptance")) {
+            try {
+                JourneyMapFilterAcceptance.verifyFullscreen(Minecraft.getInstance());
+            } catch (RuntimeException error) {
+                PlayerActionAcceptance.report("FAIL map fullscreen " + error);
+                Minecraft.getInstance().stop();
+                return;
+            }
+        }
         Screenshot.takeScreenshot(Minecraft.getInstance().gameRenderer.mainRenderTarget(), image -> {
             try (image) {
-                image.writeToFile(PlayerActionAcceptance.directory().resolve("gem-render.png"));
+                image.writeToFile(PlayerActionAcceptance.directory().resolve(
+                        Boolean.getBoolean("farmupcraft.mapFilterAcceptance") ? "map-filter.png" : "gem-render.png"));
                 PlayerActionAcceptance.report(
                         "PASS gem render synchronized five items, ten blocks, loaded assets, framebuffer screenshot");
             } catch (IOException error) {

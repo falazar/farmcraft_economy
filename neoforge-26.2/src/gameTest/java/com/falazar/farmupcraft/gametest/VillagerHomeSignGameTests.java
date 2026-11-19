@@ -105,11 +105,13 @@ public final class VillagerHomeSignGameTests {
                     "A reloaded household sign keeps both resident entries");
 
             fixture.assign(alice, fixture.bed(1, 1));
+            nextDay(alice);
             VillagerHomeSigns.update(alice);
             helper.assertTrue(fixture.hasText(first, "Bob") && !fixture.hasText(first, "Alice"),
                     "A move removes only that resident, not the shared sign or other resident");
             var newHome = fixture.sign(alice);
             fixture.assign(bob, fixture.bed(1, 2));
+            nextDay(bob);
             VillagerHomeSigns.update(bob);
             helper.assertTrue(level.getBlockState(first.getBlockPos()).isAir(),
                     "The unchanged old sign is removed when its final resident moves");
@@ -117,10 +119,12 @@ public final class VillagerHomeSignGameTests {
                     "Moved residents share their new home sign");
 
             fixture.assign(alice, fixture.bed(2, 1));
+            nextDay(alice);
             VillagerHomeSigns.update(alice);
             var edited = fixture.sign(alice);
             edited.setText(edited.getFrontText().setMessage(0, Component.literal("Player's shop")), true);
             fixture.assign(alice, fixture.bed(0, 1));
+            nextDay(alice);
             VillagerHomeSigns.update(alice);
             helper.assertTrue(level.getBlockEntity(edited.getBlockPos()) == edited
                             && fixture.hasText(edited, "Player's shop"),
@@ -128,6 +132,7 @@ public final class VillagerHomeSignGameTests {
 
             var removed = fixture.sign(alice).getBlockPos();
             level.removeBlock(removed, false);
+            nextDay(alice);
             VillagerHomeSigns.update(alice);
             helper.assertTrue(level.getBlockState(removed).isAir(), "Removed signs stay removed at the same bed");
             fixture.assign(alice, fixture.bed(0, 1).south());
@@ -143,10 +148,14 @@ public final class VillagerHomeSignGameTests {
             helper.assertValueEqual(restored.getPersistentData().getLongOr("farmupcraft_home_sign_next_check", 0L),
                     alice.getPersistentData().getLongOr("farmupcraft_home_sign_next_check", 0L),
                     "The two-hour deadline survives actual entity serialization");
+            helper.assertValueEqual(restored.getPersistentData().getLongOr("farmupcraft_home_sign_last_attempt_ms", 0L),
+                    alice.getPersistentData().getLongOr("farmupcraft_home_sign_last_attempt_ms", 0L),
+                    "The real-world placement cooldown survives actual entity serialization");
             VillagerHomeSigns.update(restored);
             helper.assertTrue(level.getBlockState(removed).isAir(),
                     "The per-bed placed flag survives actual entity serialization");
             fixture.assign(restored, fixture.bed(1, 1));
+            nextDay(restored);
             VillagerHomeSigns.update(restored);
             helper.assertTrue(fixture.hasText(fixture.sign(restored), "Alice"),
                     "Moving after removal allows an entry at the new home");
@@ -157,6 +166,10 @@ public final class VillagerHomeSignGameTests {
             VillagerHomeSigns.update(newborn);
             helper.assertValueEqual(fixture.signCount(), count, "Newborns without assigned beds create no signs");
             fixture.assign(newborn, fixture.bed(0, 2));
+            VillagerHomeSigns.update(newborn);
+            helper.assertTrue(!newborn.getPersistentData().getCompoundOrEmpty(KEY).contains("sign"),
+                    "Receiving a bed does not bypass today's failed no-home attempt");
+            nextDay(newborn);
             VillagerHomeSigns.update(newborn);
             helper.assertTrue(fixture.hasText(fixture.sign(newborn), "Child"),
                     "A newborn gets a sign after receiving a bed");
@@ -195,15 +208,22 @@ public final class VillagerHomeSignGameTests {
             var blocked = fixture.villager("Blocked", fixture.bed(0, 2));
             VillagerHomeSigns.update(blocked);
             helper.assertValueEqual(fixture.signCount(), 0, "A blocked exterior approach is not a valid entrance");
-            helper.assertTrue(blocked.getPersistentData().getCompoundOrEmpty(KEY).getBooleanOr("placed", false),
-                    "An unsuitable home consumes the same done flag as a successful placement");
+            helper.assertTrue(!blocked.getPersistentData().getCompoundOrEmpty(KEY).getBooleanOr("placed", false)
+                            && blocked.getPersistentData().getCompoundOrEmpty(KEY).contains("skipped"),
+                    "An unsuitable home records failure without pretending a sign was placed");
+            long firstAttempt = villager.getPersistentData().getLongOr("farmupcraft_home_sign_last_attempt_ms", 0L);
             var other = fixture.start(0).offset(6, 0, 3);
             var state = Blocks.OAK_DOOR.defaultBlockState().setValue(DoorBlock.FACING, Direction.EAST);
             level.setBlock(other, state, 2);
             level.setBlock(other.above(), state.setValue(DoorBlock.HALF, DoubleBlockHalf.UPPER), 2);
             VillagerHomeSigns.update(villager);
-            helper.assertValueEqual(fixture.signCount(), 0, "A repaired doorway does not retry a completed failed attempt");
+            helper.assertValueEqual(fixture.signCount(), 0, "A repaired doorway cannot retry before 24 real-world hours");
             fixture.assign(villager, fixture.bed(0, 4));
+            VillagerHomeSigns.update(villager);
+            helper.assertValueEqual(fixture.signCount(), 0, "Changing beds cannot bypass the per-villager daily cap");
+            helper.assertValueEqual(villager.getPersistentData().getLongOr("farmupcraft_home_sign_last_attempt_ms", 0L),
+                    firstAttempt, "Suppressed retries do not move the saved attempt timestamp");
+            nextDay(villager);
             VillagerHomeSigns.update(villager);
             var sign = fixture.sign(villager);
             helper.assertValueEqual(sign.getBlockState().getValue(WallSignBlock.FACING), Direction.EAST,
@@ -221,13 +241,13 @@ public final class VillagerHomeSignGameTests {
             int before = fixture.signCount();
             VillagerHomeSigns.update(resident);
             helper.assertValueEqual(fixture.signCount(), before, "Occupied sign positions are never overwritten");
-            helper.assertTrue(resident.getPersistentData().getCompoundOrEmpty(KEY).getBooleanOr("placed", false),
-                    "Full sign space marks the task done without placement");
+            helper.assertTrue(resident.getPersistentData().getCompoundOrEmpty(KEY).contains("skipped"),
+                    "Full sign space records a retryable failure");
             var free = door.north().west().above();
             level.setBlock(free, Blocks.AIR.defaultBlockState(), 2);
             VillagerHomeSigns.update(resident);
-            helper.assertTrue(level.getBlockState(free).isAir(), "Freed sign space is not retried at the same bed");
-            fixture.assign(resident, fixture.bed(1, 2));
+            helper.assertTrue(level.getBlockState(free).isAir(), "Freed sign space is not retried again on the same day");
+            nextDay(resident);
             resident.tickCount = Math.floorMod(-resident.getUUID().hashCode(), 200);
             var persistent = resident.getPersistentData();
             persistent.putLong("farmupcraft_home_sign_next_check", level.getGameTime() + 1);
@@ -236,7 +256,9 @@ public final class VillagerHomeSignGameTests {
             persistent.putLong("farmupcraft_home_sign_next_check", level.getGameTime());
             VillagerHomeSigns.tick(resident);
             helper.assertValueEqual(fixture.sign(resident).getBlockPos(), free,
-                    "The exact saved deadline permits one attempt for a different assigned bed");
+                    "After 24 real-world hours the due check retries placement at the same bed");
+            helper.assertTrue(!persistent.getCompoundOrEmpty(KEY).contains("skipped"),
+                    "Successful daily retries clear the previous failure reason");
             helper.assertValueEqual(persistent.getLongOr("farmupcraft_home_sign_next_check", 0L),
                     level.getGameTime() + 144000L, "The due check saves another two-hour deadline");
             resident.setCustomName(Component.literal("Too soon"));
@@ -277,13 +299,97 @@ public final class VillagerHomeSignGameTests {
             legacyData.putBoolean("placed", true);
             legacyData.putString("skipped", "Previous entrance failure");
             legacy.getPersistentData().put(KEY, legacyData);
-            before = fixture.signCount();
-            VillagerHomeSigns.update(legacy);
-            helper.assertValueEqual(fixture.signCount(), before, "Diagnostics never retry permanent skipped attempts");
-            helper.assertTrue(!legacyData.contains("sign") && legacyData.getBooleanOr("placed", false),
-                    "A now-reachable old failure remains skipped without migration or placement");
+            legacy.getPersistentData().putLong("farmupcraft_home_sign_next_check", level.getGameTime() + 144000L);
+            legacy.tickCount = Math.floorMod(-legacy.getUUID().hashCode(), 200);
+            VillagerHomeSigns.tick(legacy);
+            helper.assertTrue(fixture.sign(legacy) != null && !legacyData.contains("skipped"),
+                    "Legacy permanent failures retry at the first staggered gate even before an old check deadline");
         }
+        verifyStepDown(helper);
+        verifyObstructedSign(helper);
         helper.succeed();
+    }
+
+    private static void nextDay(Villager villager) {
+        villager.getPersistentData().putLong("farmupcraft_home_sign_last_attempt_ms",
+                System.currentTimeMillis() - 24L * 60 * 60 * 1000);
+    }
+
+    private static void verifyStepDown(GameTestHelper helper) {
+        try (var fixture = new Fixture(helper)) {
+            var level = fixture.level;
+            for (int house = 0; house < 3; house++) {
+                var start = fixture.start(house);
+                for (int x = 0; x <= 6; x++) {
+                    for (int z = -3; z < 0; z++) {
+                        var floor = start.offset(x, -2, z);
+                        fixture.blocks.putIfAbsent(floor, level.getBlockState(floor));
+                        level.setBlock(floor, Blocks.GRAVEL.defaultBlockState(), 2);
+                        level.setBlock(floor.above(), Blocks.AIR.defaultBlockState(), 2);
+                    }
+                }
+            }
+            var stepDown = fixture.villager("Step down", fixture.bed(0, 1));
+            var oldFailure = new net.minecraft.nbt.CompoundTag();
+            oldFailure.putLong("bed", fixture.bed(0, 1).asLong());
+            oldFailure.putString("dimension", level.dimension().identifier().toString());
+            oldFailure.putBoolean("placed", true);
+            oldFailure.putString("skipped", "Old step-down entrance failure");
+            stepDown.getPersistentData().put(KEY, oldFailure);
+            stepDown.getPersistentData().putLong("farmupcraft_home_sign_next_check", level.getGameTime() + 144000L);
+            stepDown.tickCount = Math.floorMod(-stepDown.getUUID().hashCode(), 200);
+            VillagerHomeSigns.tick(stepDown);
+            var signPos = fixture.sign(stepDown).getBlockPos();
+            helper.assertTrue(signPos.getZ() < fixture.door(0).getZ(),
+                    "A doorway one block above the outdoor path gets an exterior household sign");
+            helper.assertTrue(signPos.getY() >= fixture.door(0).getY()
+                            && signPos.getY() <= fixture.door(0).getY() + 1,
+                    "The step-down path does not lower the sign's wall position");
+            helper.assertTrue(!oldFailure.contains("skipped"), "A Harlan-style legacy failure is cleared after retrying");
+
+            var obstructed = fixture.door(1).north();
+            level.setBlock(obstructed.above(), Blocks.STONE.defaultBlockState(), 2);
+            var blocked = fixture.villager("Blocked descent", fixture.bed(1, 1));
+            VillagerHomeSigns.update(blocked);
+            helper.assertTrue(!blocked.getPersistentData().getCompoundOrEmpty(KEY).contains("sign"),
+                    "A low ceiling cannot be bypassed by choosing the lower outside position");
+
+            var gap = fixture.door(2).north();
+            level.setBlock(gap.below(2), Blocks.AIR.defaultBlockState(), 2);
+            var deepFloor = gap.below(3);
+            fixture.blocks.putIfAbsent(deepFloor, level.getBlockState(deepFloor));
+            level.setBlock(deepFloor, Blocks.STONE.defaultBlockState(), 2);
+            var tooDeep = fixture.villager("Deep gap", fixture.bed(2, 1));
+            VillagerHomeSigns.update(tooDeep);
+            helper.assertTrue(!tooDeep.getPersistentData().getCompoundOrEmpty(KEY).contains("sign"),
+                    "The step-down allowance does not accept a two-block drop");
+        }
+    }
+
+    private static void verifyObstructedSign(GameTestHelper helper) {
+        try (var fixture = new Fixture(helper)) {
+            var resident = fixture.villager("Obstructed sign", fixture.bed(0, 1));
+            VillagerHomeSigns.update(resident);
+            var oldSign = fixture.sign(resident);
+            var oldPos = oldSign.getBlockPos();
+            var front = oldPos.north();
+            fixture.level.setBlock(front, Blocks.COBBLESTONE.defaultBlockState(), 2);
+            VillagerHomeSigns.update(resident);
+            helper.assertValueEqual(fixture.sign(resident).getBlockPos(), oldPos,
+                    "An obstructed sign is not relocated twice in one day");
+            var other = fixture.villager("Other resident", fixture.bed(0, 2));
+            VillagerHomeSigns.update(other);
+            helper.assertTrue(!fixture.sign(other).getBlockPos().equals(oldPos),
+                    "New residents cannot share a generated sign whose front is obstructed");
+            nextDay(resident);
+            VillagerHomeSigns.update(resident);
+            helper.assertTrue(!fixture.sign(resident).getBlockPos().equals(oldPos),
+                    "An unchanged obstructed sign relocates at the next daily attempt");
+            helper.assertTrue(fixture.level.getBlockState(front).is(Blocks.COBBLESTONE),
+                    "Relocating an obstructed sign never removes the obstructing player block");
+            helper.assertTrue(fixture.level.getBlockState(oldPos).isAir(),
+                    "Relocating the final resident removes only the old unchanged generated sign");
+        }
     }
 
     private static void verifyDoubleDoor(GameTestHelper helper) {
@@ -318,6 +424,7 @@ public final class VillagerHomeSignGameTests {
             helper.assertTrue(problems.isEmpty(), "Old generated sign fixture must retain saved data");
             for (var villager : List.of(alice, bob)) {
                 villager.getPersistentData().getCompoundOrEmpty(KEY).putLong("sign", oldPos.asLong());
+                nextDay(villager);
             }
             VillagerHomeSigns.update(alice);
             helper.assertValueEqual(fixture.sign(alice).getBlockPos(), playerPos.below(),
@@ -342,6 +449,7 @@ public final class VillagerHomeSignGameTests {
             edited.loadWithComponents(TagValueInput.create(problems, level.registryAccess(), caraSaved));
             edited.setText(edited.getFrontText().setMessage(0, Component.literal("Player edited")), true);
             cara.getPersistentData().getCompoundOrEmpty(KEY).putLong("sign", editedPos.asLong());
+            nextDay(cara);
             VillagerHomeSigns.update(cara);
             helper.assertTrue(fixture.hasText(edited, "Player edited"),
                     "Even door-mounted signs stay untouched if a player edited them");

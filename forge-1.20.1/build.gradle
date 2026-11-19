@@ -155,9 +155,24 @@ mixin {
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 sourceSets.main.java.srcDir('../common/src/minecraft/java')
 sourceSets {
+    sessionTest {
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
     gemAcceptance {
         compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
         runtimeClasspath += sourceSets.main.output + sourceSets.main.runtimeClasspath
+    }
+    if (providers.gradleProperty('sessionTests').map { it.toBoolean() }.getOrElse(false)) {
+        minecraft.runs.gameTestServer {
+            workingDirectory project.file('build/session-tests')
+            arg '-mixin.config=farmupcraft.mixins.json'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.sessionTest
+                }
+            }
+        }
     }
 }
 if (providers.gradleProperty('gemAcceptance').map { it.toBoolean() }.getOrElse(false)) {

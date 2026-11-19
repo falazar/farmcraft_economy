@@ -24,6 +24,7 @@ import net.minecraft.server.permissions.LevelBasedPermissionSet;
 import net.minecraft.tags.BlockTags;
 import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.Container;
 import net.minecraft.world.entity.decoration.HangingEntity;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.GameMasterBlock;
@@ -36,6 +37,7 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.common.util.BlockSnapshot;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
@@ -344,7 +346,7 @@ public final class BuildCommand {
                         level.getBlockEntity(destination).getType(), source.containsKey(destination),
                         entry.getKey().toShortString(), entry.getValue());
             }
-            if (!source.containsKey(destination) && level.getBlockEntity(destination) != null) {
+            if (!source.containsKey(destination) && hasContainerStorage(level, destination)) {
                 throw new IllegalArgumentException("Destination "
                         + level.getBlockState(destination).getBlock().getName().getString()
                         + " would be overwritten at " + destination.toShortString());
@@ -358,6 +360,13 @@ public final class BuildCommand {
             BlockPos destination = entry.getKey().offset(offset);
             requireLoaded(level, destination);
             if (!entry.getValue().isAir() && !entry.getValue().canSurvive(destinationView, destination)) {
+                if (building && entry.getKey().getY() == min.getY()) {
+                    var bottomSupportView = new LinkedHashMap<>(changes);
+                    bottomSupportView.put(destination.below(), level.getBlockState(entry.getKey().below()));
+                    if (entry.getValue().canSurvive(new PlannedBlockView(level, bottomSupportView), destination)) {
+                        continue;
+                    }
+                }
                 throw new IllegalArgumentException("Moved attachment would lose its support at "
                         + destination.toShortString() + ". Include its supporting blocks in the selection.");
             }
@@ -389,6 +398,21 @@ public final class BuildCommand {
         return new Plan(level, first.immutable(), second.immutable(), building, distance, toward,
                 width, depth, cloneMin, cloneMax, offset, blocks, cost, changes, before,
                 Set.copyOf(source.keySet()), Map.copyOf(decorations), List.copyOf(movingDecorations));
+    }
+
+    private static boolean hasContainerStorage(ServerLevel level, BlockPos pos) {
+        if (level.getBlockEntity(pos) instanceof Container
+                || level.getCapability(Capabilities.Item.BLOCK, pos, null) != null
+                || level.getCapability(Capabilities.Fluid.BLOCK, pos, null) != null) {
+            return true;
+        }
+        for (Direction side : Direction.values()) {
+            if (level.getCapability(Capabilities.Item.BLOCK, pos, side) != null
+                    || level.getCapability(Capabilities.Fluid.BLOCK, pos, side) != null) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void includeAttachments(ServerLevel level, BlockPos min, BlockPos max,
@@ -600,9 +624,11 @@ public final class BuildCommand {
     private static void sendPreview(ServerPlayer player, Plan plan, long expires) {
         List<com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry> src = new ArrayList<>();
         List<com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry> dst = new ArrayList<>();
+        List<BlockState> states = new ArrayList<>();
         for (BlockPos pos : plan.source) {
             BlockState state = plan.level.getBlockState(pos);
             if (state.isAir()) continue;
+            states.add(state);
             int rgb = state.getMapColor(plan.level, pos).col & 0xFFFFFF;
             if (rgb == 0) rgb = 0x55FF88;
             src.add(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(
@@ -613,7 +639,7 @@ public final class BuildCommand {
         }
         com.falazar.farmupcraft.database.message.EDBMessages.sendToPlayer(
                 new com.falazar.farmupcraft.database.message.BuildPreviewPacket(
-                        plan.level.dimension().identifier().toString(), src, dst, expires),
+                        plan.level.dimension().identifier().toString(), src, dst, states, expires),
                 player);
     }
 

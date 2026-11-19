@@ -69,6 +69,7 @@ biomesoplenty:mahogany_sapling
 biomesoplenty:mahogany_stairs
 biomesoplenty:mahogany_trapdoor
 biomesoplenty:mahogany_wood
+biomesoplenty:maple_log
 biomesoplenty:palm_door
 biomesoplenty:palm_fence
 biomesoplenty:palm_fence_gate
@@ -79,6 +80,7 @@ biomesoplenty:palm_sapling
 biomesoplenty:palm_stairs
 biomesoplenty:palm_trapdoor
 biomesoplenty:palm_wood
+biomesoplenty:pine_log
 biomesoplenty:rainbow_birch_leaves
 biomesoplenty:rainbow_birch_sapling
 biomesoplenty:redwood_door

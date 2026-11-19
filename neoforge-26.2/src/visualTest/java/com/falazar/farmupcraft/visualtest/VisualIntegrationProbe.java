@@ -55,7 +55,7 @@ final class VisualIntegrationProbe {
         require(JourneyMapIntegration.getApi() != null, "Pinned JourneyMap API is not ready");
         ownedScreen = null;
         if (stage == 4) {
-            detail = "awaiting production OpenJeiRecipePacket output focus minecraft:bread";
+            detail = "awaiting production OpenJeiRecipePacket input focus minecraft:wheat";
         } else if (stage == 5) {
             minecraft.gui.setScreen(null);
             Waypoint waypoint = nativeWaypoint(VisualAcceptance.WAYPOINT_NAME);

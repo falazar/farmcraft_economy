@@ -27,6 +27,54 @@ public final class MarketSellLinkGameTests {
                 FarmUpCraftNeoForge.prefix("market_sell_link"), MarketSellLinkGameTests::verify));
         event.register(Registries.TEST_FUNCTION, functions -> functions.register(
                 FarmUpCraftNeoForge.prefix("market_wood_import"), MarketSellLinkGameTests::woodImport));
+        event.register(Registries.TEST_FUNCTION, functions -> functions.register(
+                FarmUpCraftNeoForge.prefix("market_login_import"), MarketSellLinkGameTests::loginImport));
+    }
+
+    private static void loginImport(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var goods = ModEvents.getGoodsDataDatabase(level);
+        var previous = new java.util.HashMap<String, GoodsData>();
+        for (String key : goods.getKeys()) previous.put(key, goods.getData(key));
+        var player = FakePlayerFactory.get(level, new GameProfile(UUID.randomUUID(), "market-login-test"));
+        var players = ModEvents.getPlayerDatabase(level);
+        var previousPlayer = players.getData(player.getUUID());
+        String foodId = MarketCommand.validMarketItem("pamhc2foodcore:appledonutitem")
+                ? "pamhc2foodcore:appledonutitem" : "minecraft:apple";
+        var additions = java.util.Map.of(foodId, "food", "minecraft:pale_oak_log", "wood",
+                "minecraft:cobblestone", "stone", "minecraft:dandelion", "general");
+        try {
+            goods.removeDataBatch(new java.util.ArrayList<>(additions.keySet()));
+            String sentinelId = "minecraft:oak_log";
+            var sentinel = new GoodsData(sentinelId, 37, 81, "common", true, "wood", "");
+            goods.putData(sentinelId, sentinel);
+            com.falazar.farmupcraft.events.ForgeEvents.onLoginEvent(
+                    new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player));
+            for (var entry : additions.entrySet()) {
+                var imported = goods.getData(entry.getKey());
+                helper.assertTrue(imported != null, "Login imports missing item: " + entry.getKey());
+                helper.assertValueEqual(imported.getMarketType(), entry.getValue(), "Correct catalog category");
+                helper.assertTrue(!imported.isActive(), "Login does not activate imported items");
+            }
+            helper.assertTrue(goods.getData(sentinelId) == sentinel, "Login preserves existing goods");
+            helper.assertValueEqual(sentinel.getCost(), 37, "Login preserves existing prices");
+            helper.assertValueEqual(sentinel.getAmountSold(), 81, "Login preserves existing sales");
+            helper.assertTrue(sentinel.isActive(), "Login preserves active status");
+            helper.assertTrue(goods.isDirty(), "Imported catalog is marked for persistence");
+            goods.removeDataBatch(List.of("minecraft:pale_oak_log"));
+            com.falazar.farmupcraft.events.ForgeEvents.onLoginEvent(
+                    new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedInEvent(player));
+            helper.assertTrue(goods.getData("minecraft:pale_oak_log") == null,
+                    "Later logins do not repeat the successful catalog scan");
+        } finally {
+            com.falazar.farmupcraft.events.ForgeEvents.onLogoutEvent(
+                    new net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent(player));
+            players.removeDataBatch(List.of(player.getUUID()));
+            if (previousPlayer != null) players.putData(player.getUUID(), previousPlayer);
+            goods.removeDataBatch(new java.util.ArrayList<>(goods.getKeys()));
+            previous.forEach(goods::putData);
+        }
+        helper.succeed();
     }
 
     private static void woodImport(GameTestHelper helper) {

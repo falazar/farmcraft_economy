@@ -21,9 +21,9 @@ public class EDBMessages {
     public static void register() {
         SimpleChannel net = NetworkRegistry.ChannelBuilder
                 .named(new ResourceLocation(FarmUpCraft.MODID, "messages"))
-                .networkProtocolVersion(() -> "1.0")
-                .clientAcceptedVersions(s -> true)
-                .serverAcceptedVersions(s -> true)
+                .networkProtocolVersion(() -> "1.1")
+                .clientAcceptedVersions("1.1"::equals)
+                .serverAcceptedVersions("1.1"::equals)
                 .simpleChannel();
 
         INSTANCE = net;

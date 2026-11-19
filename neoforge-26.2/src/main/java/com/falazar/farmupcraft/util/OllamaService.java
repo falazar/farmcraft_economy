@@ -1,5 +1,7 @@
 package com.falazar.farmupcraft.util;
 
+import com.falazar.farmupcraft.NpcConversationMemory;
+import com.falazar.farmupcraft.NpcConversationMemory.Exchange;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -14,6 +16,7 @@ import java.net.HttpURLConnection;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -61,14 +64,19 @@ public class OllamaService {
     }
 
     public static synchronized CompletableFuture<String> chat(String prompt, String model) {
-        return chat(prompt, model, null);
+        return chat(prompt, model, null, List.of());
     }
 
     public static CompletableFuture<String> chatNpc(String prompt, String playerMessage) {
-        return chat(prompt, DEFAULT_MODEL, playerMessage);
+        return chatNpc(prompt, playerMessage, List.of());
     }
 
-    private static synchronized CompletableFuture<String> chat(String prompt, String model, String playerMessage) {
+    public static CompletableFuture<String> chatNpc(String prompt, String playerMessage, List<Exchange> history) {
+        return chat(prompt, DEFAULT_MODEL, playerMessage, List.copyOf(history));
+    }
+
+    private static synchronized CompletableFuture<String> chat(String prompt, String model, String playerMessage,
+                                                              List<Exchange> history) {
         if (stopped)
             return CompletableFuture.completedFuture("[AI Error] Ollama service stopped.");
         if (executor == null) {
@@ -87,7 +95,7 @@ public class OllamaService {
         });
         executor.execute(() -> {
             if (!result.isDone())
-                result.complete(request(prompt, model, playerMessage, result));
+                result.complete(request(prompt, model, playerMessage, history, result));
         });
         return result;
     }
@@ -96,10 +104,11 @@ public class OllamaService {
         return chat(prompt, DEFAULT_MODEL);
     }
 
-    private static String request(String prompt, String model, String playerMessage, CompletableFuture<String> result) {
+    private static String request(String prompt, String model, String playerMessage, List<Exchange> history,
+                                  CompletableFuture<String> result) {
         HttpURLConnection conn = null;
         try {
-            byte[] bodyBytes = buildChatRequest(model, prompt, playerMessage).getBytes(StandardCharsets.UTF_8);
+            byte[] bodyBytes = buildChatRequest(model, prompt, playerMessage, history).getBytes(StandardCharsets.UTF_8);
             conn = (HttpURLConnection) URI.create(CHAT_ENDPOINT).toURL().openConnection();
             synchronized (OllamaService.class) {
                 if (stopped || result.isDone())
@@ -147,22 +156,32 @@ public class OllamaService {
     }
 
     static String buildChatRequest(String model, String content, String playerMessage) {
-        JsonObject message = new JsonObject();
-        message.addProperty("role", playerMessage == null ? "user" : "system");
-        message.addProperty("content", content);
+        return buildChatRequest(model, content, playerMessage, List.of());
+    }
+
+    static String buildChatRequest(String model, String content, String playerMessage, List<Exchange> history) {
         JsonArray messages = new JsonArray();
-        messages.add(message);
+        messages.add(chatMessage(playerMessage == null ? "user" : "system", content));
         if (playerMessage != null) {
-            JsonObject player = new JsonObject();
-            player.addProperty("role", "user");
-            player.addProperty("content", playerMessage);
-            messages.add(player);
+            for (int i = Math.max(0, history.size() - NpcConversationMemory.MAX_EXCHANGES); i < history.size(); i++) {
+                var exchange = history.get(i);
+                messages.add(chatMessage("user", exchange.playerMessage()));
+                messages.add(chatMessage("assistant", exchange.npcReply()));
+            }
+            messages.add(chatMessage("user", playerMessage));
         }
         JsonObject body = new JsonObject();
         body.addProperty("model", model);
         body.add("messages", messages);
         body.addProperty("stream", false);
         return body.toString();
+    }
+
+    private static JsonObject chatMessage(String role, String content) {
+        var message = new JsonObject();
+        message.addProperty("role", role);
+        message.addProperty("content", content);
+        return message;
     }
 
     private static String readStream(InputStream stream) throws IOException {

@@ -1,0 +1,25 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "pamhc2trees" },
+    { "type": "neoforge:mod_loaded", "modid": "biomesoplenty" }
+  ],
+  "type": "neoforge:add_features",
+  "biomes": [
+    "biomesoplenty:floodplain",
+    "biomesoplenty:bayou",
+    "biomesoplenty:subtropics"
+  ],
+  "features": [
+    "pamhc2trees:avocado_placed",
+    "pamhc2trees:banana_placed",
+    "pamhc2trees:coconut_placed",
+    "pamhc2trees:guava_placed",
+    "pamhc2trees:lime_placed",
+    "pamhc2trees:mango_placed",
+    "pamhc2trees:nutmeg_placed",
+    "pamhc2trees:orange_placed",
+    "pamhc2trees:papaya_placed",
+    "pamhc2trees:pecan_placed"
+  ],
+  "step": "vegetal_decoration"
+}

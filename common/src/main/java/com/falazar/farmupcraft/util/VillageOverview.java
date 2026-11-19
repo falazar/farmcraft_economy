@@ -53,8 +53,17 @@ public final class VillageOverview {
                 Math.min(136, columnWidth - 20), 20);
     }
 
+    public static ActionBounds levelUpBounds(VillageView view, int width) {
+        var bounds = levelUpBounds(width);
+        return new ActionBounds(bounds.x(), bounds.y() + itemRowHeight(view), bounds.width(), bounds.height());
+    }
+
+    private static int itemRowHeight(VillageView view) {
+        return view.entries().stream().anyMatch(entry -> entry.label().equals("Level-up items")) ? 20 : 0;
+    }
+
     public static int height(VillageView view, int width) {
-        return view.hasManagementPanels() ? height(width) : (width >= 360 ? 228 : 294);
+        return view.hasManagementPanels() ? height(width) + itemRowHeight(view) : (width >= 360 ? 228 : 294);
     }
 
     public static void render(Canvas c, VillageView view, int width) {
@@ -94,7 +103,8 @@ public final class VillageOverview {
 
             int progressX = wide ? columnWidth + 8 : 0;
             int progressY = wide ? sectionY : sectionY + 192;
-            panel(c, progressX, progressY, columnWidth, 184, level == 10 ? "A LASTING LEGACY" : "THE NEXT CHAPTER", 0x91CEED);
+            int itemRow = itemRowHeight(view);
+            panel(c, progressX, progressY, columnWidth, 184 + itemRow, level == 10 ? "A LASTING LEGACY" : "THE NEXT CHAPTER", 0x91CEED);
             if (level == 10) {
                 c.text("Maximum village level reached", progressX + 10, progressY + 29, columnWidth - 20, GOLD);
                 c.text("Keep building your story.", progressX + 10, progressY + 49, columnWidth - 20, WHITE);
@@ -106,16 +116,20 @@ public final class VillageOverview {
                 int claimed = Integer.parseInt(value(view, "Claimed structures").replace(",", ""));
                 requirement(c, progressX + 10, progressY + 64, columnWidth - 20, "Villagers", villagers, (level + 1) * 2);
                 requirement(c, progressX + 10, progressY + 88, columnWidth - 20, "Structures", claimed, (level + 1) * 2 - 2);
+                if (itemRow > 0) {
+                    var items = field(view, "Level-up items");
+                    c.text(items.value(), progressX + 10, progressY + 111, columnWidth - 20, items.color());
+                }
                 c.text("Range: " + (2 + 3 * (level + 1)) + " chunks (+3)",
-                        progressX + 10, progressY + 117, columnWidth - 20, 0xB4E5AE);
+                        progressX + 10, progressY + 117 + itemRow, columnWidth - 20, 0xB4E5AE);
                 int currentCap = Math.min(4, level / 2), nextCap = Math.min(4, (level + 1) / 2);
                 String unlock = level + 1 == 7 ? "Unlock: 2x stone/dirt mining in bought plots"
                         : nextCap > currentCap ? "Unlock: plot upgrades to level " + nextCap
                         : "Plot upgrade cap unchanged (" + currentCap + ")";
-                c.text(unlock, progressX + 10, progressY + 132, columnWidth - 20, MUTED);
-                c.text("Upkeep: -100/day extra", progressX + 10, progressY + 144, columnWidth - 20, 0xFFA500);
+                c.text(unlock, progressX + 10, progressY + 132 + itemRow, columnWidth - 20, MUTED);
+                c.text("Upkeep: -100/day extra", progressX + 10, progressY + 144 + itemRow, columnWidth - 20, 0xFFA500);
             }
-            communityY = (wide ? sectionY : progressY) + 192;
+            communityY = (wide ? sectionY : progressY) + 192 + itemRow;
         }
         community(c, view, width, communityY);
     }

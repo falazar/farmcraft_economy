@@ -35,6 +35,22 @@ public final class GeneralMenuEvents {
             requested = true;
             return 1;
         }));
+        event.getDispatcher().register(Commands.literal("fmap")
+                .executes(context -> {
+                    context.getSource().sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                            "[Map] /fmap lakes: only lakes/islands on both maps; /fmap all: restore all; "
+                                    + "/fmap hide: hide lakes/islands on both maps. "
+                                    + "Rename saved lakes/islands: /scan rename-lakes confirm (operator)."));
+                    return 1;
+                })
+                .then(Commands.literal("lakes").executes(context ->
+                        WaypointPayloadHandler.setMapFilter(true, context.getSource()::sendSystemMessage)))
+                .then(Commands.literal("all").executes(context ->
+                        WaypointPayloadHandler.setMapFilter(false, context.getSource()::sendSystemMessage)))
+                .then(Commands.literal("hide").executes(context ->
+                        WaypointPayloadHandler.hideMapFeatures(context.getSource()::sendSystemMessage)))
+                .then(Commands.literal("toggle").executes(context ->
+                        WaypointPayloadHandler.toggleMapFeatures(context.getSource()::sendSystemMessage))));
     }
 
     @SubscribeEvent

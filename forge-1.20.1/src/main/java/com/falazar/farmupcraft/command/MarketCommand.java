@@ -1147,6 +1147,19 @@ public class MarketCommand {
         return result;
     }
 
+    private static final Set<net.minecraft.server.MinecraftServer> UPDATED_CATALOGS =
+            Collections.newSetFromMap(new WeakHashMap<>());
+
+    public static void updateCatalogsOnLogin(net.minecraft.server.MinecraftServer server) {
+        if (UPDATED_CATALOGS.contains(server)) return;
+        if (importAllMarketItems(server.createCommandSourceStack()) == 1) {
+            UPDATED_CATALOGS.add(server);
+            LOGGER.info("Market catalogs checked for missing entries; existing goods preserved.");
+        } else {
+            LOGGER.error("Automatic market catalog update failed; will retry on the next login.");
+        }
+    }
+
     public static void initializeMarket(CommandSourceStack source) {
         for (String type : List.of("food", "wood", "stone", "general")) {
             Collection<GoodsData> goods = getFilteredGoods(type);
@@ -1436,8 +1449,7 @@ public class MarketCommand {
 
     /**
      * Builds a single styled chat line for a market item.
-     * If the item has a crafting recipe: teal/green + underlined + JEI click.
-     * If no recipe (e.g. oxidized copper): plain white/green + hover only.
+     * Items used by recipes have an underlined JEI uses link.
      */
     private static MutableComponent buildItemLine(CommandSourceStack source, Item item, String itemId, int cost,
             @Nullable Player playerSource) {
@@ -1451,13 +1463,11 @@ public class MarketCommand {
                 ? itemName + ": " + costStr + " coins (" + inventoryCount + " cnt)\n"
                 : itemName + ": " + costStr + " coins\n";
 
-        // Check if item has any crafting recipe.
-        boolean hasRecipe = source.getServer() != null && source.getServer().getRecipeManager()
-                .getAllRecipesFor(RecipeType.CRAFTING)
-                .stream()
-                .anyMatch(r -> r.getResultItem(source.getServer().registryAccess()).getItem() == item);
+        boolean hasUses = source.getServer() != null && source.getServer().getRecipeManager()
+                .getRecipes().stream().flatMap(recipe -> recipe.getIngredients().stream())
+                .anyMatch(ingredient -> ingredient.test(item.getDefaultInstance()));
 
-        Style style = itemLineStyle(item, itemId, inInventory, hasRecipe);
+        Style style = itemLineStyle(item, itemId, inInventory, hasUses);
 
         // Strip trailing newline from label so we can append the [x] on the same line.
         String labelNoNewline = label.endsWith("\n") ? label.substring(0, label.length() - 1) : label;
@@ -1489,14 +1499,14 @@ public class MarketCommand {
         return line.append(Component.literal("\n"));
     }
 
-    static Style itemLineStyle(Item item, String itemId, boolean inInventory, boolean hasRecipe) {
-        if (hasRecipe) {
+    static Style itemLineStyle(Item item, String itemId, boolean inInventory, boolean hasUses) {
+        if (hasUses) {
             // Item tooltips can consume chat clicks; recipe links use text tooltips instead.
             return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA)
                     .withUnderlined(true)
                     .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND, "/frecipe " + itemId))
                     .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                            Component.literal("Click to view recipe in JEI\n" + itemId)));
+                            Component.literal("Click to view item uses in JEI\n" + itemId)));
         }
         return Style.EMPTY.withColor(inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE)
                 .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_ITEM,

@@ -5,6 +5,9 @@ import com.mojang.authlib.GameProfile;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.ProblemReporter;
 import net.minecraft.world.entity.EntityTypes;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.ai.goal.Goal;
@@ -14,6 +17,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.level.storage.TagValueInput;
+import net.minecraft.world.level.storage.TagValueOutput;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -22,14 +27,91 @@ import net.neoforged.neoforge.registries.RegisterEvent;
 
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @EventBusSubscriber(modid = FarmUpCraftNeoForge.MOD_ID)
 public final class NpcConversationGameTests {
     @SubscribeEvent
     public static void register(RegisterEvent event) {
-        event.register(Registries.TEST_FUNCTION, functions -> functions.register(
-                FarmUpCraftNeoForge.prefix("npc_conversation_focus"), NpcConversationGameTests::focus));
+        event.register(Registries.TEST_FUNCTION, functions -> {
+            functions.register(FarmUpCraftNeoForge.prefix("npc_conversation_focus"), NpcConversationGameTests::focus);
+            functions.register(FarmUpCraftNeoForge.prefix("npc_conversation_memory"), NpcConversationGameTests::memory);
+        });
+    }
+
+    private static void memory(GameTestHelper helper) {
+        var level = helper.getLevel();
+        var npc = helper.spawn(EntityTypes.VILLAGER, new BlockPos(1, 2, 1));
+        var sameName = helper.spawn(EntityTypes.VILLAGER, new BlockPos(3, 2, 1));
+        var restored = helper.spawn(EntityTypes.VILLAGER, new BlockPos(5, 2, 1));
+        UUID player = UUID.randomUUID();
+        UUID otherPlayer = UUID.randomUUID();
+        try {
+            npc.setCustomName(Component.literal("Eric"));
+            sameName.setCustomName(Component.literal("Eric"));
+            helper.assertTrue(NpcConversationMemory.recall(npc, player).isEmpty(),
+                    "Old entities without conversation history remain compatible");
+            for (String failed : new String[]{null, "", NpcReplyRetry.BUSY_REPLY, "[AI Error] offline", "[NPC Error] invalid"}) {
+                helper.assertTrue(!NpcConversationMemory.remember(sameName, player, "Question", failed, null),
+                        "Errors and busy fallbacks never establish conversational memory");
+            }
+            helper.assertTrue(!NpcConversationMemory.remember(sameName, player, "Question", "Late reply",
+                            new TimeoutException("Timed out")),
+                    "A failed request cannot save a late reply");
+            helper.assertTrue(NpcConversationMemory.recall(sameName, player).isEmpty()
+                            && !sameName.getPersistentData().getCompoundOrEmpty(NpcReplyRetry.TALKED_PLAYERS_KEY)
+                            .getBooleanOr(player.toString(), false),
+                    "Failed replies preserve both empty history and unfamiliar status");
+            for (int i = 1; i <= 12; i++)
+                NpcConversationMemory.remember(npc, player, "Question " + i, "Reply " + i, null);
+            var expected = NpcConversationMemory.recall(npc, player);
+            helper.assertValueEqual(expected.size(), 10, "Memory retains ten completed exchanges");
+            helper.assertValueEqual(expected.getFirst(), new NpcConversationMemory.Exchange("Question 3", "Reply 3"),
+                    "Only the oldest exchanges are discarded");
+            helper.assertValueEqual(expected.getLast(), new NpcConversationMemory.Exchange("Question 12", "Reply 12"),
+                    "The newest exchange retains both sides");
+            var stored = npc.getPersistentData().getCompoundOrEmpty("farmupcraft_conversation_memory").get(player.toString());
+            helper.assertTrue(stored instanceof ListTag list && list.size() == 10,
+                    "Persisted data itself is capped, not just the request view");
+            NpcConversationMemory.remember(npc, otherPlayer, "Other player's question", "Other player's reply", null);
+            NpcConversationMemory.remember(sameName, player, "Different Eric", "Different answer", null);
+            helper.assertValueEqual(NpcConversationMemory.recall(npc, player), expected,
+                    "Another player and a same-named NPC cannot alter this player's history");
+            helper.assertValueEqual(NpcConversationMemory.recall(npc, otherPlayer).size(), 1,
+                    "Each player has a separate history with the same NPC");
+            helper.assertValueEqual(NpcConversationMemory.recall(sameName, player).getFirst().playerMessage(),
+                    "Different Eric", "Same names never merge different NPC identities");
+            NpcConversationMemory.remember(npc, player, "Discard this failure", NpcReplyRetry.BUSY_REPLY, null);
+            helper.assertValueEqual(NpcConversationMemory.recall(npc, player), expected,
+                    "A failed request does not evict a remembered successful exchange");
+            npc.setCustomName(Component.literal("Renamed Eric"));
+            var problems = new ProblemReporter.Collector();
+            var output = TagValueOutput.createWithContext(problems, level.registryAccess());
+            npc.saveWithoutId(output);
+            restored.load(TagValueInput.create(problems, level.registryAccess(), output.buildResult()));
+            helper.assertTrue(problems.isEmpty(), "NPC memory survives actual entity save/reload: " + problems.getReport());
+            helper.assertValueEqual(NpcConversationMemory.recall(restored, player), expected,
+                    "History survives NPC renames and serialization");
+            helper.assertValueEqual(NpcConversationMemory.recall(restored, otherPlayer).size(), 1,
+                    "Save/reload preserves other players' histories too");
+            helper.assertTrue(restored.getPersistentData().getCompoundOrEmpty(NpcReplyRetry.TALKED_PLAYERS_KEY)
+                            .getBooleanOr(player.toString(), false),
+                    "Remembering a successful exchange also preserves returning-player recognition");
+            restored.getPersistentData().putString("farmupcraft_conversation_memory", "corrupt data");
+            boolean rejected = false;
+            try {
+                NpcConversationMemory.recall(restored, player);
+            } catch (IllegalStateException error) {
+                rejected = error.getMessage().contains(restored.getUUID().toString());
+            }
+            helper.assertTrue(rejected, "Malformed memory must raise an identifiable error instead of silently forgetting");
+        } finally {
+            npc.discard();
+            sameName.discard();
+            restored.discard();
+        }
+        helper.succeed();
     }
 
     private static void focus(GameTestHelper helper) {

@@ -202,7 +202,7 @@ public class NpcManager {
             String requestPrompt = systemPrompt;
             NpcReplyRetry.request(
                     () -> OllamaService.chatNpc(requestPrompt, playerMessage)
-                            .orTimeout(30, java.util.concurrent.TimeUnit.SECONDS),
+                            .orTimeout(42, java.util.concurrent.TimeUnit.SECONDS),
                     server::execute,
                     () -> server.getPlayerList().getPlayer(playerUUID) == player
                             && ACTIVE_CONVERSATIONS.get(playerUUID) == conv && availableNpc(player, conv) != null,

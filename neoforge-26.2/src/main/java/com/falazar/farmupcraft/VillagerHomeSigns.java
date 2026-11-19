@@ -36,7 +36,9 @@ public final class VillagerHomeSigns {
     private static final String KEY = "farmupcraft_home_sign";
     private static final String RESIDENTS = "residents";
     private static final String NEXT_CHECK = "farmupcraft_home_sign_next_check";
+    private static final String LAST_ATTEMPT = "farmupcraft_home_sign_last_attempt_ms";
     private static final long CHECK_INTERVAL = 2L * 60 * 60 * 20;
+    private static final long RETRY_INTERVAL_MS = 24L * 60 * 60 * 1000;
     private static final int SEARCH_RADIUS = 24;
     private static final int SEARCH_HEIGHT = 12;
     private static final int MAX_VISITS = 4096;
@@ -49,7 +51,9 @@ public final class VillagerHomeSigns {
                 || !(villager.level() instanceof ServerLevel level)) return;
         var persistent = villager.getPersistentData();
         long now = level.getGameTime();
-        if (persistent.contains(NEXT_CHECK) && now < persistent.getLongOr(NEXT_CHECK, 0L)) return;
+        boolean legacyFailure = !persistent.contains(LAST_ATTEMPT)
+                && persistent.getCompoundOrEmpty(KEY).contains("skipped");
+        if (!legacyFailure && persistent.contains(NEXT_CHECK) && now < persistent.getLongOr(NEXT_CHECK, 0L)) return;
         persistent.putLong(NEXT_CHECK, now + CHECK_INTERVAL);
         update(villager);
     }
@@ -57,21 +61,44 @@ public final class VillagerHomeSigns {
     public static void update(Villager villager) {
         if (!(villager.level() instanceof ServerLevel level) || !villager.isAlive()) return;
         var home = villager.getBrain().getMemory(MemoryModuleType.HOME).orElse(null);
-        if (home == null || !home.dimension().equals(level.dimension()) || !level.hasChunkAt(home.pos())) return;
+        if (home == null || !home.dimension().equals(level.dimension()) || !level.hasChunkAt(home.pos())) {
+            if (beginAttempt(villager)) {
+                logFailure(villager, home == null ? null : home.pos(),
+                        home == null ? "No assigned home bed" : !home.dimension().equals(level.dimension())
+                                ? "Assigned bed is in another dimension" : "Assigned bed chunk is unloaded");
+            }
+            return;
+        }
         var bed = home.pos();
         var bedState = level.getBlockState(bed);
-        if (!(bedState.getBlock() instanceof BedBlock)) return;
+        if (!(bedState.getBlock() instanceof BedBlock)) {
+            if (beginAttempt(villager)) logFailure(villager, bed, "Assigned home is not a bed: " + bedState);
+            return;
+        }
         if (bedState.getValue(BedBlock.PART) == BedPart.FOOT) bed = bed.relative(bedState.getValue(BedBlock.FACING));
         var data = villager.getPersistentData().getCompoundOrEmpty(KEY);
         String dimension = level.dimension().identifier().toString();
         if (data.contains("bed") && (data.getLongOr("bed", 0L) != bed.asLong()
                 || !dimension.equals(data.getStringOr("dimension", dimension)))) {
+            if (!attemptAllowed(villager.getPersistentData(), System.currentTimeMillis())) {
+                VillagerManager.LOGGER.info("Household sign bed move deferred for {} ({}): daily placement cooldown",
+                        villager.getName().getString(), villager.getUUID());
+                return;
+            }
             if (data.contains("sign")) {
                 var previous = BlockPos.of(data.getLongOr("sign", 0L));
                 var previousLevel = level.getServer().getLevel(ResourceKey.create(Registries.DIMENSION,
                         Identifier.parse(data.getStringOr("dimension", dimension))));
-                if (previousLevel == null || !previousLevel.hasChunkAt(previous)) return;
-                if (!removeResident(previousLevel, previous, villager.getUUID())) return;
+                if (previousLevel == null || !previousLevel.hasChunkAt(previous)) {
+                    if (beginAttempt(villager))
+                        logFailure(villager, bed, "Old household sign dimension/chunk is unloaded: " + previous);
+                    return;
+                }
+                if (!removeResident(previousLevel, previous, villager.getUUID())) {
+                    if (beginAttempt(villager))
+                        logFailure(villager, bed, "Could not remove the unchanged old resident entry at " + previous);
+                    return;
+                }
             }
             data = new CompoundTag();
         }
@@ -79,26 +106,25 @@ public final class VillagerHomeSigns {
         data.putString("dimension", dimension);
         villager.getPersistentData().put(KEY, data);
         UUID village = boughtVillage(level, bed);
-        if (village == null) return;
-        if (data.getBooleanOr("placed", false)) {
-            if (data.contains("skipped")) {
-                var search = findEntrance(level, bed);
-                logSearch(villager, bed, search, "Previously skipped; diagnostic only, no retry");
-                return;
-            }
-            if (!repairDoorSign(level, data, villager)) {
+        if (village == null) {
+            if (beginAttempt(villager)) logFailure(villager, bed, "Assigned bed is not in a bought village");
+            return;
+        }
+        if (data.getBooleanOr("placed", false) && !data.contains("skipped")) {
+            if (!attemptAllowed(villager.getPersistentData(), System.currentTimeMillis())
+                    || !repairSign(level, data, villager)) {
                 if (data.contains("sign")) {
                     var signPos = BlockPos.of(data.getLongOr("sign", 0L));
                     VillagerManager.LOGGER.info("Household sign check for {}: villager={}, bed={}, sign={}, status={}",
                             villager.getName().getString(), villager.blockPosition(), bed, signPos,
-                            !level.hasChunkAt(signPos) ? "unloaded" :
-                                    level.getBlockEntity(signPos) instanceof SignBlockEntity ? "present" : "missing; removal respected");
+                            signStatus(level, signPos));
                     refreshResident(level, signPos, villager);
                 }
                 return;
             }
         }
 
+        if (!beginAttempt(villager)) return;
         var search = findEntrance(level, bed);
         var entrance = search.entrance();
         if (entrance == null) {
@@ -107,7 +133,8 @@ public final class VillagerHomeSigns {
             return;
         }
         for (var pos : signPositions(level, entrance)) {
-            if (!level.hasChunkAt(pos) || !village.equals(boughtVillage(level, pos))) continue;
+            if (!level.hasChunkAt(pos) || !village.equals(boughtVillage(level, pos))
+                    || !clearSignFront(level, pos, entrance.outside())) continue;
             if (level.getBlockEntity(pos) instanceof SignBlockEntity sign) {
                 var info = sign.getPersistentData().getCompoundOrEmpty(KEY);
                 if (!info.getStringOr("village", "").equals(village.toString())
@@ -126,7 +153,8 @@ public final class VillagerHomeSigns {
         }
         for (var pos : signPositions(level, entrance)) {
             if (!level.hasChunkAt(pos) || !village.equals(boughtVillage(level, pos))
-                    || !level.getBlockState(pos).isAir()) continue;
+                    || !level.getBlockState(pos).isAir()
+                    || !clearSignFront(level, pos, entrance.outside())) continue;
             var state = Blocks.OAK_WALL_SIGN.defaultBlockState().setValue(WallSignBlock.FACING, entrance.outside());
             if (!wallSupport(level, pos, entrance.outside()) || !state.canSurvive(level, pos)) continue;
             if (!level.setBlock(pos, state, 3)) {
@@ -153,6 +181,7 @@ public final class VillagerHomeSigns {
                 .map(pos -> !level.hasChunkAt(pos)
                         || !level.hasChunkAt(pos.relative(entrance.outside().getOpposite())) ? pos + ": unloaded" : pos + ": block=" + level.getBlockState(pos)
                         + ", support=" + level.getBlockState(pos.relative(entrance.outside().getOpposite()))
+                        + ", frontClear=" + clearSignFront(level, pos, entrance.outside())
                         + ", sameVillage=" + village.equals(boughtVillage(level, pos))).toList());
         skipped(villager, data, "No free supported sign space beside the home's outside doorway");
     }
@@ -164,32 +193,67 @@ public final class VillagerHomeSigns {
         return village != null && village.isBought() ? village.getUUID() : null;
     }
 
-    private static boolean repairDoorSign(ServerLevel level, CompoundTag data, Villager villager) {
-        if (!data.contains("sign") || data.getBooleanOr("door_repair_done", false)) return false;
+    private static boolean repairSign(ServerLevel level, CompoundTag data, Villager villager) {
+        if (!data.contains("sign")) return false;
         var pos = BlockPos.of(data.getLongOr("sign", 0L));
         if (!level.hasChunkAt(pos) || !(level.getBlockEntity(pos) instanceof SignBlockEntity sign)
                 || !unchanged(sign)) return false;
         var facing = sign.getBlockState().getValue(WallSignBlock.FACING);
         var support = pos.relative(facing.getOpposite());
         if (!level.hasChunkAt(support) || !level.hasChunkAt(support.below())) return false;
-        if (!(level.getBlockState(support).getBlock() instanceof DoorBlock)
-                && !(level.getBlockState(support.below()).getBlock() instanceof DoorBlock)) return false;
+        boolean onDoor = !data.getBooleanOr("door_repair_done", false)
+                && (level.getBlockState(support).getBlock() instanceof DoorBlock
+                || level.getBlockState(support.below()).getBlock() instanceof DoorBlock);
+        var front = pos.relative(facing);
+        if (!level.hasChunkAt(front)) return false;
+        boolean obstructed = !clearSignFront(level, pos, facing);
+        if (!onDoor && !obstructed) return false;
         var residents = sign.getPersistentData().getCompoundOrEmpty(KEY).getCompoundOrEmpty(RESIDENTS);
         if (!residents.contains(villager.getUUID().toString())
                 || !removeResident(level, pos, villager.getUUID())) return false;
-        data.putBoolean("door_repair_done", true);
+        if (onDoor) data.putBoolean("door_repair_done", true);
         data.putBoolean("placed", false);
         data.remove("sign");
+        VillagerManager.LOGGER.info("Household sign repair for {} ({}): sign={}, reason={}",
+                villager.getName().getString(), villager.getUUID(), pos,
+                onDoor ? "Sign is attached to a door" : "Sign front is obstructed by " + level.getBlockState(front));
         return true;
     }
 
+    static boolean attemptAllowed(CompoundTag persistent, long now) {
+        return !persistent.contains(LAST_ATTEMPT)
+                || now >= persistent.getLongOr(LAST_ATTEMPT, 0L)
+                && now - persistent.getLongOr(LAST_ATTEMPT, 0L) >= RETRY_INTERVAL_MS;
+    }
+
+    private static boolean beginAttempt(Villager villager) {
+        long now = System.currentTimeMillis();
+        var persistent = villager.getPersistentData();
+        if (!attemptAllowed(persistent, now)) {
+            VillagerManager.LOGGER.info("Household sign attempt deferred for {} ({}): nextAttemptAt={}",
+                    villager.getName().getString(), villager.getUUID(),
+                    java.time.Instant.ofEpochMilli(persistent.getLongOr(LAST_ATTEMPT, 0L) + RETRY_INTERVAL_MS));
+            return false;
+        }
+        persistent.putLong(LAST_ATTEMPT, now);
+        VillagerManager.LOGGER.info("Household sign attempt for {} ({}): villager={}, nextAttemptAt={}",
+                villager.getName().getString(), villager.getUUID(), villager.blockPosition(),
+                java.time.Instant.ofEpochMilli(now + RETRY_INTERVAL_MS));
+        return true;
+    }
+
+    private static void logFailure(Villager villager, BlockPos bed, String reason) {
+        long last = villager.getPersistentData().getLongOr(LAST_ATTEMPT, 0L);
+        VillagerManager.LOGGER.warn("Household sign attempt failed for {} ({}): villager={}, bed={}, reason={}, nextAttemptAt={}",
+                villager.getName().getString(), villager.getUUID(), villager.blockPosition(), bed, reason,
+                java.time.Instant.ofEpochMilli(last + RETRY_INTERVAL_MS));
+    }
+
     private static void skipped(Villager villager, CompoundTag data, String reason) {
-        data.putBoolean("placed", true);
+        data.putBoolean("placed", false);
         data.putString("skipped", reason);
         data.remove("pending");
-        VillagerManager.LOGGER.info("Household sign skipped permanently for {}: villager={}, bed={}, reason={}",
-                villager.getName().getString(), villager.blockPosition(),
-                BlockPos.of(data.getLongOr("bed", 0L)), reason);
+        logFailure(villager, BlockPos.of(data.getLongOr("bed", 0L)), reason);
     }
 
     private static void placed(CompoundTag data, BlockPos pos) {
@@ -336,11 +400,12 @@ public final class VillagerHomeSigns {
                                 || level.getBlockState(pos.below()).getCollisionShape(level, pos.below()).isEmpty()) continue;
                         var axis = state.getValue(DoorBlock.FACING);
                         if (direction.getAxis() != axis.getAxis()) continue;
-                        var outside = pos.relative(direction);
-                        if (!walkable(level, outside)) {
+                        var threshold = pos.relative(direction);
+                        var outside = outsideApproach(level, threshold);
+                        if (outside == null) {
                             blocked++;
                             if (rejectedDoors.size() < 4) rejectedDoors.add(pos + ": door=" + state
-                                    + ", outside=" + outside + ", blocks=" + approachBlocks(level, outside));
+                                    + ", outside=" + threshold + ", blocks=" + approachBlocks(level, threshold));
                             continue;
                         }
                         boolean sky = skyChecks.computeIfAbsent(new Approach(pos.immutable(), direction),
@@ -366,6 +431,17 @@ public final class VillagerHomeSigns {
                 .thenComparingLong(entry -> entry.door().asLong())).orElse(null);
         return new EntranceSearch(entrance, seeds, seen.size(), doors, blocked, covered, unloaded,
                 heightLimited, !queue.isEmpty(), List.copyOf(rejectedDoors));
+    }
+
+    private static BlockPos outsideApproach(ServerLevel level, BlockPos pos) {
+        if (walkable(level, pos)) return pos;
+        var headPos = pos.above();
+        if (!level.hasChunkAt(headPos)) return null;
+        var head = level.getBlockState(headPos);
+        // Descending still requires headroom while crossing the raised threshold.
+        if (!head.getFluidState().isEmpty() || !head.getCollisionShape(level, headPos).isEmpty()) return null;
+        var lower = pos.below();
+        return walkable(level, lower) ? lower : null;
     }
 
     private static String approachBlocks(ServerLevel level, BlockPos pos) {
@@ -434,6 +510,25 @@ public final class VillagerHomeSigns {
         var state = level.getBlockState(support);
         return !(state.getBlock() instanceof DoorBlock) && !(state.getBlock() instanceof TrapDoorBlock)
                 && state.isFaceSturdy(level, support, facing);
+    }
+
+    private static boolean clearSignFront(ServerLevel level, BlockPos pos, Direction facing) {
+        var front = pos.relative(facing);
+        if (!level.hasChunkAt(front)) return false;
+        var state = level.getBlockState(front);
+        return state.getFluidState().isEmpty() && state.getCollisionShape(level, front).isEmpty();
+    }
+
+    private static String signStatus(ServerLevel level, BlockPos pos) {
+        if (!level.hasChunkAt(pos)) return "unloaded";
+        if (!(level.getBlockEntity(pos) instanceof SignBlockEntity)) return "missing; removal respected";
+        var state = level.getBlockState(pos);
+        if (!state.hasProperty(WallSignBlock.FACING)) return "present; replacement sign respected";
+        var facing = state.getValue(WallSignBlock.FACING);
+        var front = pos.relative(facing);
+        if (!level.hasChunkAt(front)) return "present; front chunk unloaded";
+        return clearSignFront(level, pos, facing) ? "present"
+                : "present; front obstructed by " + level.getBlockState(front);
     }
 
     private static List<BlockPos> signPositions(ServerLevel level, Entrance entrance) {

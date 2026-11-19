@@ -42,18 +42,19 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -70,13 +71,51 @@ public final class IslandScanManager {
     static final int MAX_BODY_SIZE = 60_000;
     static final int MAX_RADIUS = 128 * 16;
     private static final int MAX_SNAPSHOTS = 1_024;
-    private static final int MAX_JOB_SAMPLES = 4_096_000;
-    private static final int MAX_TERRAIN_QUERIES = 128_000_000;
+    static final int QUERIES_PER_BATCH = 50_000;
+    private static final int CHECKPOINT_ROWS = 8;
     private static final int[] DX = {1, -1, 0, 0};
     private static final int[] DZ = {0, 0, 1, -1};
     private static final String[] WP_NAMES = {
             "Mist", "Storm", "Dawn", "Dusk", "Frost", "Ember", "Tide", "Gale",
-            "Vale", "Cove", "Reef", "Fen", "Briar", "Shoal", "Bluff", "Mere"
+            "Vale", "Cove", "Reef", "Fen", "Briar", "Shoal", "Bluff", "Mere",
+            "Alder", "Ash", "Aspen", "Beech", "Birch", "Cedar", "Cypress", "Elm",
+            "Fir", "Hazel", "Holly", "Juniper", "Larch", "Laurel", "Maple", "Oak",
+            "Olive", "Pine", "Poplar", "Redwood", "Rowan", "Spruce", "Sycamore", "Willow",
+            "Acacia", "Banyan", "Chestnut", "Dogwood", "Hawthorn", "Hemlock", "Magnolia", "Tamarack",
+            "Bluebell", "Buttercup", "Clover", "Daffodil", "Daisy", "Foxglove", "Heather", "Iris",
+            "Lavender", "Lily", "Lotus", "Marigold", "Orchid", "Poppy", "Primrose", "Violet",
+            "Bracken", "Bramble", "Cattail", "Fern", "Ivy", "Lichen", "Moss", "Nettle",
+            "Reed", "Rosemary", "Sage", "Sorrel", "Thistle", "Thyme", "Watercress", "Yarrow",
+            "Badger", "Beaver", "Heron", "Kingfisher", "Loon", "Otter", "Osprey", "Wren",
+            "Cormorant", "Crane", "Egret", "Falcon", "Finch", "Kestrel", "Raven", "Swan",
+            "Amber", "Amethyst", "Aquamarine", "Carnelian", "Copper", "Crystal", "Flint", "Garnet",
+            "Granite", "Jade", "Jasper", "Moonstone", "Obsidian", "Onyx", "Opal", "Quartz",
+            "Basalt", "Chalk", "Coral", "Dolomite", "Limestone", "Marble", "Sandstone", "Slate",
+            "Clearwater", "Coldwater", "Deepwater", "Fairwater", "Freshwater", "Stillwater", "Sweetwater", "Whitewater",
+            "Bluewater", "Brightwater", "Darkwater", "Greenwater", "Redwater", "Silverwater", "Springwater", "Wildwater",
+            "Bearclaw", "Deerhaven", "Eaglecrest", "Elkhorn", "Foxglade", "Hawkstone", "Otterbrook", "Wolfpine",
+            "Alderbrook", "Ashgrove", "Birchwood", "Cedarshade", "Maplewood", "Oakshade", "Pinecrest", "Willowbend",
+            "Autumn", "Daybreak", "Dewfall", "Evening", "Harvest", "Midnight", "Snowfall", "Solstice",
+            "Starlight", "Sunrise", "Sunset", "Thunder", "Twilight", "Whisper", "Wildflower", "Winter",
+            "Avalon", "Skye", "Arran", "Islay", "Jura", "Mull", "Orkney", "Shetland",
+            "Erie", "Huron", "Ontario", "Tahoe", "Superior", "Windermere", "Lomond", "Ness",
+            "Aeloria", "Aldervale", "Arkenfall", "Asterwyn", "Briarwyn", "Caerwyn", "Caldris", "Cindervale",
+            "Dawnspire", "Dragonwake", "Dreamwillow", "Duskwhisper", "Elderglen", "Emberveil", "Evermist", "Faelight",
+            "Feybrook", "Frosthaven", "Glimmerfen", "Gloamwood", "Griffonrest", "Hallowmere", "Ironroot", "Ivorythorn",
+            "Lanternwake", "Larkspire", "Mistvale", "Moonpetal", "Morrowglen", "Mosswhisper", "Nightbloom", "Oakenveil",
+            "Owlglass", "Quietthorn", "Ravenhollow", "Rimewood", "Runehaven", "Sablefen", "Shadewillow", "Silverthorn",
+            "Skybloom", "Spellbrook", "Starfall", "Stonewhisper", "Sunhallow", "Thistledown", "Thornveil", "Wyrmrest",
+            "Aetherglade", "Bellflower", "Bramblecrown", "Cloudrest", "Copperleaf", "Crownhollow", "Dawnfeather", "Dewspire",
+            "Dusklily", "Emberhollow", "Fairhollow", "Fallowstar", "Feylantern", "Foxfire", "Glimmerroot", "Goldwillow",
+            "Hearthglow", "Hollowstar", "Larksong", "Lilycrown", "Mistriddle", "Moonharbor", "Nettlewick", "Opalshade",
+            "Petalwind", "Rainwhisper", "Reedcrown", "Rosequartz", "Runeblossom", "Sparrowspell", "Starmeadow", "Windharp",
+            "Applecross", "Blackthorn", "Brookhaven", "Cloudberry", "Dunlin", "Eider", "Fennel", "Gorse",
+            "Harebell", "Honeysuckle", "Linnet", "Meadowsweet", "Peregrine", "Redshank", "Rosehip", "Sundew",
+            "Alderwick", "Briarbell", "Candlefen", "Dewhaven", "Elderharp", "Fablebrook", "Faeroot", "Fernspell",
+            "Glimmerhollow", "Gossamer", "Hazelchant", "Hearthmist", "Ivywhisper", "Lanternglen", "Larkhollow", "Mageshade",
+            "Moonriddle", "Mothlight", "Oakensong", "Owlthorn", "Pebblewick", "Ravenbell", "Reedwhisper", "Rookhaven",
+            "Rowanspell", "Runewillow", "Sagehollow", "Silverbell", "Sorrelwind", "Stagrest", "Thimblefern", "Wanderlight",
+            "Wrenhaven", "Yarrowglen"
     };
     private static final Gson JSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Map<MinecraftServer, Service> SERVICES = new IdentityHashMap<>();
@@ -92,6 +131,7 @@ public final class IslandScanManager {
                     return thread;
                 }, new ThreadPoolExecutor.AbortPolicy());
         final Map<ServerLevel, WorldWork> worlds = new IdentityHashMap<>();
+        final Queue<Runnable> snapshots = new ConcurrentLinkedQueue<>();
         int nextId;
     }
 
@@ -102,6 +142,39 @@ public final class IslandScanManager {
 
     private static synchronized Service service(MinecraftServer server) {
         return SERVICES.computeIfAbsent(server, ignored -> new Service());
+    }
+
+    public static void tick(MinecraftServer server) {
+        if (!server.isSameThread())
+            throw new IllegalStateException("Scan snapshots require the server thread");
+        Service service;
+        synchronized (IslandScanManager.class) {
+            service = SERVICES.get(server);
+        }
+        if (service != null)
+            runSnapshotTask(service.snapshots);
+    }
+
+    static void runSnapshotTask(Queue<Runnable> snapshots) {
+        Runnable task = snapshots.poll();
+        if (task != null)
+            task.run();
+    }
+
+    static final class WorkBudget {
+        private final Runnable nextTick;
+        private int queries;
+
+        WorkBudget(Runnable nextTick) {
+            this.nextTick = nextTick;
+        }
+
+        void query() {
+            if (++queries >= QUERIES_PER_BATCH) {
+                queries = 0;
+                nextTick.run();
+            }
+        }
     }
 
     /** Must be called on the server thread, before unloading a level. Does not stop other dimensions. */
@@ -164,6 +237,43 @@ public final class IslandScanManager {
         });
     }
 
+    public static void renameDiscoveriesAsync(ServerLevel level, Consumer<Component> feedback) {
+        submit(level, feedback, null, job -> {
+            Path file = job.directory.resolve("findings.json");
+            if (!Files.exists(file)) {
+                job.feedback(Component.literal("No saved discoveries to rename in this dimension."));
+                return;
+            }
+            JsonArray findings = read(file).getAsJsonArray();
+            JsonArray renamed = renameFindings(findings);
+            NamedScanAreas.parse(renamed);
+            Path backup = Files.createTempFile(job.directory, "findings-before-rename-", ".json");
+            Files.copy(file, backup, StandardCopyOption.REPLACE_EXISTING);
+            job.write("findings.json", renamed);
+            job.deliver(() -> {
+                NamedScanAreas.publish(level, renamed);
+                feedback.accept(Component.literal("Renamed saved lakes and islands in this dimension. Backup: "
+                        + backup.getFileName()));
+            });
+        });
+    }
+
+    static JsonArray renameFindings(JsonArray findings) {
+        JsonArray renamed = findings.deepCopy();
+        for (JsonElement element : renamed) {
+            JsonObject entry = element.getAsJsonObject();
+            String type = entry.get("type").getAsString();
+            if (!type.equals("lake") && !type.equals("island")) continue;
+            String oldName = entry.has("name") ? ScanFeatureRules.displayName(entry.get("name").getAsString()) : "";
+            String name;
+            do {
+                name = randomName(entry.get("block_count").getAsInt());
+            } while (ScanFeatureRules.displayName(name).equals(oldName));
+            entry.addProperty("name", name);
+        }
+        return renamed;
+    }
+
     /** Cancel scans before queueing deletion, so an older job cannot recreate the cleared cache. */
     public static void clearCacheAsync(ServerLevel level, ServerPlayer player, Consumer<Component> feedback) {
         requireServerThread(level);
@@ -201,7 +311,8 @@ public final class IslandScanManager {
         var dimension = level.dimension().identifier();
         Path directory = server.getWorldPath(LevelResource.ROOT).resolve("farmupcraft").resolve("scans")
                 .resolve(dimension.getNamespace()).resolve(dimension.getPath());
-        Job job = new Job(level, directory, work, id, feedback, player == null ? null : player.getUUID());
+        Job job = new Job(level, directory, work, service.snapshots, id, feedback,
+                player == null ? null : player.getUUID());
         try {
             synchronized (IslandScanManager.class) {
                 work.tasks.add(service.executor.submit(() -> {
@@ -254,6 +365,8 @@ public final class IslandScanManager {
         final MinecraftServer server;
         final Path directory;
         final WorldWork work;
+        final Queue<Runnable> snapshotTasks;
+        final WorkBudget budget;
         final int id;
         final Consumer<Component> feedback;
         final UUID playerId;
@@ -262,19 +375,19 @@ public final class IslandScanManager {
         final Set<Long> newVisited = new HashSet<>();
         final Set<Long> cacheable = new HashSet<>();
         final Map<Long, String> largeNames = new LinkedHashMap<>();
-        int samples;
-        int queries;
         int scanX;
         int scanZ;
         int scanRadius;
         private static final Surface[] MISSING = new Surface[0];
 
-        Job(ServerLevel level, Path directory, WorldWork work, int id,
+        Job(ServerLevel level, Path directory, WorldWork work, Queue<Runnable> snapshotTasks, int id,
             Consumer<Component> feedback, UUID playerId) {
             this.level = level;
             this.server = level.getServer();
             this.directory = directory;
             this.work = work;
+            this.snapshotTasks = snapshotTasks;
+            this.budget = new WorkBudget(() -> onServer(() -> null));
             this.id = id;
             this.feedback = feedback;
             this.playerId = playerId;
@@ -313,7 +426,7 @@ public final class IslandScanManager {
         <T> T onServer(Supplier<T> action) {
             check();
             CompletableFuture<T> result = new CompletableFuture<>();
-            server.execute(() -> {
+            snapshotTasks.add(() -> {
                 if (work.cancelled || result.isDone()) {
                     result.cancel(false);
                     return;
@@ -325,14 +438,12 @@ public final class IslandScanManager {
                 }
             });
             try {
-                return result.get(30, TimeUnit.SECONDS);
+                // Paused servers have no snapshot ticks; unloading/stopping interrupts this wait.
+                return result.get();
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
                 result.cancel(false);
                 throw new CancellationException("Scan interrupted");
-            } catch (TimeoutException exception) {
-                result.cancel(false);
-                throw new IllegalStateException("Server did not supply a scan snapshot within 30 seconds", exception);
             } catch (ExecutionException exception) {
                 throw new IllegalStateException("Could not capture scan terrain", exception.getCause());
             }
@@ -347,9 +458,6 @@ public final class IslandScanManager {
                     return cached == MISSING ? null : cached;
                 }
                 snapshots.remove(key);
-            }
-            if (++samples > MAX_JOB_SAMPLES / 256) {
-                throw new IllegalStateException("Scan snapshot budget exhausted; use a smaller radius");
             }
             Surface[] snapshot = onServer(() -> {
                 if (!load && !level.hasChunk(chunkX, chunkZ)) {
@@ -382,9 +490,7 @@ public final class IslandScanManager {
         @Override
         public Surface at(int x, int z) {
             check();
-            if (++queries > MAX_TERRAIN_QUERIES) {
-                throw new IllegalStateException("Scan work budget exhausted; use a smaller radius");
-            }
+            budget.query();
             Surface[] columns = chunk(x >> 4, z >> 4, false);
             return columns == null ? null : columns[(x & 15) * 16 + (z & 15)];
         }
@@ -501,7 +607,28 @@ public final class IslandScanManager {
                         found(detection.result());
                     }
                 }
+                if (row % CHECKPOINT_ROWS == 0) {
+                    checkpoint(findings, processed);
+                }
             }
+            checkpoint(findings, processed);
+            long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start);
+            feedback(Component.literal("Scan:" + id + " done " + time() + " (took " + seconds + "s) — "
+                    + seeds + " scanned, " + cached + " cached, " + skipped + " body-skipped, "
+                    + loaded.size() + " chunks, " + findings.size() + " features found.").withStyle(ChatFormatting.GREEN));
+            if (incomplete > 0) {
+                feedback(Component.literal(incomplete + " incomplete bodies deferred at unloaded/no-surface boundaries."
+                        + " Their grid seeds were not cached; rerun after loading surrounding chunks.")
+                        .withStyle(ChatFormatting.YELLOW));
+            }
+            if (!cachedNames.isEmpty()) {
+                feedback(Component.literal("Scan:" + id + " cached bodies seen: " + String.join(", ", cachedNames)));
+            }
+            feedback(Component.literal("Scan:" + id + " Saved findings.json (" + findings.size()
+                    + " new) and scan_cache.json (" + visited.size() + " grid seeds)"));
+        }
+
+        void checkpoint(List<JsonObject> findings, Set<Long> processed) throws IOException {
             check();
             // Validate/merge existing findings before replacing any cache file.
             JsonArray merged = mergeFindings(Files.exists(directory.resolve("findings.json"))
@@ -524,20 +651,6 @@ public final class IslandScanManager {
                 names.add(entry);
             });
             write("large_body_names.json", names);
-            long seconds = TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - start);
-            feedback(Component.literal("Scan:" + id + " done " + time() + " (took " + seconds + "s) — "
-                    + seeds + " scanned, " + cached + " cached, " + skipped + " body-skipped, "
-                    + loaded.size() + " chunks, " + findings.size() + " features found.").withStyle(ChatFormatting.GREEN));
-            if (incomplete > 0) {
-                feedback(Component.literal(incomplete + " incomplete bodies deferred at unloaded/no-surface boundaries."
-                        + " Their grid seeds were not cached; rerun after loading surrounding chunks.")
-                        .withStyle(ChatFormatting.YELLOW));
-            }
-            if (!cachedNames.isEmpty()) {
-                feedback(Component.literal("Scan:" + id + " cached bodies seen: " + String.join(", ", cachedNames)));
-            }
-            feedback(Component.literal("Scan:" + id + " Saved findings.json (" + findings.size()
-                    + " new) and scan_cache.json (" + visited.size() + " grid seeds)"));
         }
 
         void point(int x, int z) throws IOException {

@@ -1,0 +1,16 @@
+{
+  "neoforge:conditions": [
+    { "type": "neoforge:mod_loaded", "modid": "pamhc2foodextended" }
+  ],
+  "type": "minecraft:crafting_shapeless",
+  "ingredients": [
+    "#c:tool_juicer",
+    "#c:crops/carrot",
+    "#c:crops/carrot",
+    "#c:crops/carrot"
+  ],
+  "result": {
+    "id": "pamhc2foodextended:carrotjuiceitem",
+    "count": 1
+  }
+}

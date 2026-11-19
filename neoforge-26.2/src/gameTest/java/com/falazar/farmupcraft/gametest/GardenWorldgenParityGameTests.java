@@ -26,6 +26,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 @EventBusSubscriber(modid = FarmUpCraftNeoForge.MOD_ID)
@@ -42,6 +43,12 @@ public final class GardenWorldgenParityGameTests {
             new Binding("tropical_garden_placed_ocean", "tropical", "minecraft:is_ocean"),
             new Binding("windy_garden_placed_plains", "windy", "c:is_plains"),
             new Binding("windy_garden_placed_savanna", "windy", "minecraft:is_savanna"));
+    private static final Map<String, String> BOP_ADDITIONS = Map.of(
+            "arid_garden_placed", "lush_desert",
+            "frost_garden_placed", "snowblossom_grove",
+            "shaded_garden_placed", "old_growth_woodland",
+            "tropical_garden_placed_jungle", "tropics",
+            "windy_garden_placed_plains", "origin_valley");
 
     private GardenWorldgenParityGameTests() {
     }
@@ -89,10 +96,16 @@ public final class GardenWorldgenParityGameTests {
                 int step = GenerationStep.Decoration.VEGETAL_DECORATION.ordinal();
                 long occurrences = steps.size() > step
                         ? steps.get(step).stream().filter(feature -> feature.is(key)).count() : 0;
-                helper.assertTrue(occurrences == (biome.is(tag) ? 1 : 0),
+                boolean added = biome.key().identifier().toString().equals(
+                        "biomesoplenty:" + BOP_ADDITIONS.get(binding.placed()));
+                helper.assertTrue(occurrences == (biome.is(tag) || added ? 1 : 0),
                         "Installed biome modifier is absent, duplicated or attached outside its tag: "
                                 + binding.placed() + " in " + biome.key().identifier());
             }
+        }
+        for (String biome : BOP_ADDITIONS.values()) {
+            biomes.getOrThrow(ResourceKey.create(Registries.BIOME,
+                    Identifier.fromNamespaceAndPath("biomesoplenty", biome)));
         }
         helper.succeed();
     }

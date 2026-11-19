@@ -61,7 +61,75 @@ public final class TreeWorldgenParityGameTests {
                     TreeWorldgenParityGameTests::generation);
             functions.register(FarmUpCraftNeoForge.prefix("tree_worldgen_sapling_clearance"),
                     TreeWorldgenParityGameTests::saplingClearance);
+            functions.register(FarmUpCraftNeoForge.prefix("tree_worldgen_bop_coverage"),
+                    TreeWorldgenParityGameTests::bopCoverage);
         });
+    }
+
+    private static void bopCoverage(GameTestHelper helper) {
+        Set<String> tropical = Set.of("""
+                almond apricot banana breadfruit cashew cinnamon coconut date dragonfruit durian fig
+                grapefruit guava jackfruit lime lychee mango olive papaya paperbark passionfruit pecan
+                peppercorn persimmon pistachio pomegranate rambutan starfruit tamarind vanillabean
+                """.strip().split("\\s+"));
+        Set<String> cool = Set.of("maple", "pinenut");
+        var temperate = new java.util.HashSet<>(TREES);
+        temperate.removeAll(tropical);
+        temperate.removeAll(cool);
+        var tropicalWithNutmeg = new java.util.HashSet<>(tropical);
+        tropicalWithNutmeg.add("nutmeg");
+        Map<List<String>, Set<String>> additions = Map.of(
+                List.of("rainforest", "rocky_rainforest", "fungal_jungle", "tropics"), tropicalWithNutmeg,
+                List.of("floodplain", "bayou", "subtropics"),
+                Set.of("avocado", "banana", "coconut", "guava", "lime", "mango", "nutmeg", "orange", "papaya", "pecan"),
+                List.of("lush_desert", "dryland", "scrubland", "lush_savanna"),
+                Set.of("almond", "date", "olive", "pistachio"),
+                List.of("old_growth_woodland", "origin_valley", "mystic_grove", "lavender_field", "prairie", "wetland"),
+                temperate,
+                List.of("coniferous_forest", "fir_clearing", "field", "forested_field", "jade_cliffs",
+                        "snowblossom_grove", "wintry_origin_valley"), cool);
+        var biomes = helper.getLevel().registryAccess().lookupOrThrow(Registries.BIOME);
+        for (var group : additions.entrySet()) {
+            for (String name : group.getKey()) {
+                var biome = biomes.getOrThrow(ResourceKey.create(Registries.BIOME,
+                        Identifier.fromNamespaceAndPath("biomesoplenty", name))).value();
+                var actual = new java.util.HashSet<String>();
+                for (var step : biome.getGenerationSettings().features()) {
+                    for (var feature : step) {
+                        String key = feature.unwrapKey().orElseThrow().identifier().toString();
+                        if (key.startsWith("pamhc2trees:")) {
+                            helper.assertTrue(actual.add(key.substring("pamhc2trees:".length())
+                                            .replace("_placed", "")),
+                                    "Tree feature must not be added twice: " + name + " / " + key);
+                        }
+                    }
+                }
+                helper.assertValueEqual(actual, group.getValue(),
+                        "Exact climate-specific HarvestCraft trees in " + name);
+            }
+        }
+        var represented = new java.util.HashSet<String>();
+        int covered = 0;
+        for (var biome : biomes.listElements().toList()) {
+            if (!biome.key().identifier().getNamespace().equals("biomesoplenty")) continue;
+            boolean hasTree = false;
+            for (var step : biome.value().getGenerationSettings().features()) {
+                for (var feature : step) {
+                    String key = feature.unwrapKey().orElseThrow().identifier().toString();
+                    if (key.startsWith("pamhc2trees:")) {
+                        represented.add(key.substring("pamhc2trees:".length()).replace("_placed", ""));
+                        hasTree = true;
+                    }
+                }
+            }
+            if (hasTree) covered++;
+        }
+        helper.assertValueEqual(covered, 40, "Tree coverage expands from 16 to 40 BOP biomes");
+        helper.assertValueEqual(represented, Set.copyOf(TREES), "Every HarvestCraft tree has a BOP home");
+        var overworldBiomes = biomes.getOrThrow(net.minecraft.tags.BiomeTags.IS_OVERWORLD).stream().toList();
+        net.minecraft.world.level.biome.FeatureSorter.buildFeaturesPerStep(overworldBiomes,
+                biome -> biome.value().getGenerationSettings().features(), true);
+        helper.succeed();
     }
 
     private static String configuredName(String tree) {

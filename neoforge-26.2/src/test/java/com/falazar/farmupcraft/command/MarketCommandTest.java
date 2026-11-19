@@ -41,7 +41,7 @@ class MarketCommandTest {
                 var click = assertInstanceOf(ClickEvent.RunCommand.class, style.getClickEvent());
                 assertEquals("/frecipe " + itemId, click.command());
                 var hover = assertInstanceOf(HoverEvent.ShowText.class, style.getHoverEvent());
-                assertEquals("Click to view recipe in JEI\n" + itemId, hover.value().getString());
+                assertEquals("Click to view item uses in JEI\n" + itemId, hover.value().getString());
                 assertTrue(style.isUnderlined());
                 assertEquals(TextColor.fromLegacyFormat(inInventory ? ChatFormatting.GREEN : ChatFormatting.AQUA),
                         style.getColor());
@@ -60,6 +60,17 @@ class MarketCommandTest {
             assertEquals(TextColor.fromLegacyFormat(inInventory ? ChatFormatting.GREEN : ChatFormatting.WHITE),
                     style.getColor());
         }
+    }
+
+    @Test
+    void marketRecipeLinkAppearsForIngredientUses(MinecraftServer server) {
+        var source = source(server, PermissionSet.NO_PERMISSIONS, new Feedback());
+
+        var wheat = MarketCommand.buildItemLine(source, Items.WHEAT, "minecraft:wheat", 1, null);
+        assertInstanceOf(ClickEvent.RunCommand.class, wheat.getStyle().getClickEvent());
+
+        var bedrock = MarketCommand.buildItemLine(source, Items.BEDROCK, "minecraft:bedrock", 1, null);
+        assertNull(bedrock.getStyle().getClickEvent());
     }
 
     @Test

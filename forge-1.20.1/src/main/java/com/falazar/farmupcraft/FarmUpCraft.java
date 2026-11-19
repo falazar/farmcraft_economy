@@ -48,6 +48,7 @@ public class FarmUpCraft {
         }
         IEventBus modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         GemContent.register(modEventBus);
+        HarvestCraftFeatureOrder.register(modEventBus);
         MinecraftForge.EVENT_BUS.addListener(this::commands);
         modEventBus.addListener(this::commonSetup);
         Registration.init();

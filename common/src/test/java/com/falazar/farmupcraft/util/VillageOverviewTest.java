@@ -117,4 +117,20 @@ class VillageOverviewTest {
         assertThrows(IllegalArgumentException.class, () -> VillageOverview.quote(11));
         assertThrows(IllegalArgumentException.class, () -> VillageOverview.level(new VillageView("Empty", List.of())));
     }
+
+    @Test
+    void extraItemRequirementFitsAboveUpgradeButtonAndIsRemovedFromPublicViews() {
+        for (int width : List.of(240, 359, 360, 614)) {
+            var entries = new ArrayList<>(view(6).entries());
+            entries.add(new VillageView.Entry("Level-up items", "Feast: 12 / 64 (consumed)", VillageView.NEGATIVE));
+            var withItems = new VillageView("Mykos", entries);
+            var canvas = new Recording(width, VillageOverview.height(withItems, width));
+            VillageOverview.render(canvas, withItems, width);
+            assertTrue(canvas.text.contains("Feast: 12 / 64 (consumed)"));
+            assertEquals(VillageOverview.levelUpBounds(width).y() + 20,
+                    VillageOverview.levelUpBounds(withItems, width).y());
+            assertTrue(withItems.publicOverview().entries().stream()
+                    .noneMatch(entry -> entry.label().equals("Level-up items")));
+        }
+    }
 }

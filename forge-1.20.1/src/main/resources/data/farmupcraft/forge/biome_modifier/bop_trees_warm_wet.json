@@ -1,0 +1,19 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2trees" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": [
+      ["biomesoplenty:floodplain", "biomesoplenty:bayou"],
+      { "type": "forge:not", "value": "#forge:is_wet" }
+    ]
+  },
+  "features": [
+    "pamhc2trees:banana_placed", "pamhc2trees:coconut_placed", "pamhc2trees:guava_placed",
+    "pamhc2trees:lime_placed", "pamhc2trees:mango_placed", "pamhc2trees:papaya_placed", "pamhc2trees:pecan_placed"
+  ],
+  "step": "vegetal_decoration"
+}

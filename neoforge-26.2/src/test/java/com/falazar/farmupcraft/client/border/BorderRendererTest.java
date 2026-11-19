@@ -92,30 +92,20 @@ class BorderRendererTest {
     }
 
     @Test
-    void buildPreviewRendererPopulatesAndClearsQuadsAndEmitsVertices() {
-        var vertexCount = new java.util.concurrent.atomic.AtomicInteger();
-        VertexConsumer buffer = (VertexConsumer) Proxy.newProxyInstance(
-                VertexConsumer.class.getClassLoader(), new Class<?>[]{VertexConsumer.class},
-                (proxy, method, args) -> {
-                    if (method.getName().equals("addVertex") && args.length == 4) {
-                        vertexCount.incrementAndGet();
-                    }
-                    return proxy;
-                });
+    void buildPreviewRendererRetainsBlockStatesAndClears() {
         try {
             com.falazar.farmupcraft.client.BuildPreviewRenderer.receive(
                     new com.falazar.farmupcraft.database.message.BuildPreviewPacket(
                             "minecraft:overworld",
                             java.util.List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(0, 64, 0, 0x888888)),
                             java.util.List.of(new com.falazar.farmupcraft.util.BuildPreviewGeometry.Entry(2, 64, 0, 0x888888)),
+                            java.util.List.of(net.minecraft.world.level.block.Blocks.OAK_SLAB.defaultBlockState()),
                             1000L));
-            var quads = com.falazar.farmupcraft.client.BuildPreviewRenderer.currentQuads();
-            assertEquals(12, quads.size());
-            com.falazar.farmupcraft.client.BuildPreviewRenderer.emit(quads, Vec3.ZERO, new PoseStack().last(), buffer);
-            assertEquals(48, vertexCount.get());
+            assertEquals(net.minecraft.world.level.block.Blocks.OAK_SLAB.defaultBlockState(),
+                    com.falazar.farmupcraft.client.BuildPreviewRenderer.currentPreview().states().getFirst());
             com.falazar.farmupcraft.client.BuildPreviewRenderer.receive(
                     com.falazar.farmupcraft.database.message.BuildPreviewPacket.clear());
-            assertTrue(com.falazar.farmupcraft.client.BuildPreviewRenderer.currentQuads().isEmpty());
+            assertTrue(com.falazar.farmupcraft.client.BuildPreviewRenderer.currentPreview().states().isEmpty());
         } finally {
             com.falazar.farmupcraft.client.BuildPreviewRenderer.clear();
         }

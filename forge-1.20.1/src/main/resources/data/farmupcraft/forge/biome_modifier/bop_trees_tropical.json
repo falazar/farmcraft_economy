@@ -1,0 +1,27 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2trees" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": [
+      ["biomesoplenty:rainforest", "biomesoplenty:rocky_rainforest", "biomesoplenty:fungal_jungle", "biomesoplenty:tropics"],
+      { "type": "forge:not", "value": "#forge:is_wet" }
+    ]
+  },
+  "features": [
+    "pamhc2trees:almond_placed", "pamhc2trees:apricot_placed", "pamhc2trees:banana_placed",
+    "pamhc2trees:breadfruit_placed", "pamhc2trees:cashew_placed", "pamhc2trees:cinnamon_placed",
+    "pamhc2trees:coconut_placed", "pamhc2trees:date_placed", "pamhc2trees:dragonfruit_placed",
+    "pamhc2trees:durian_placed", "pamhc2trees:fig_placed", "pamhc2trees:grapefruit_placed",
+    "pamhc2trees:guava_placed", "pamhc2trees:jackfruit_placed", "pamhc2trees:lime_placed",
+    "pamhc2trees:lychee_placed", "pamhc2trees:mango_placed", "pamhc2trees:olive_placed",
+    "pamhc2trees:papaya_placed", "pamhc2trees:paperbark_placed", "pamhc2trees:passionfruit_placed",
+    "pamhc2trees:pecan_placed", "pamhc2trees:peppercorn_placed", "pamhc2trees:persimmon_placed",
+    "pamhc2trees:pistachio_placed", "pamhc2trees:pomegranate_placed", "pamhc2trees:rambutan_placed",
+    "pamhc2trees:starfruit_placed", "pamhc2trees:tamarind_placed", "pamhc2trees:vanillabean_placed"
+  ],
+  "step": "vegetal_decoration"
+}

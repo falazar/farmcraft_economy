@@ -1,0 +1,13 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2crops" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": ["biomesoplenty:lush_desert", { "type": "forge:not", "value": "#forge:is_dry/overworld" }]
+  },
+  "features": "pamhc2crops:arid_garden_placed",
+  "step": "vegetal_decoration"
+}

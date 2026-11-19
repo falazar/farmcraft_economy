@@ -1,0 +1,13 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2crops" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": ["biomesoplenty:tropics", { "type": "forge:not", "value": "#minecraft:is_jungle" }]
+  },
+  "features": "pamhc2crops:tropical_garden_placed_jungle",
+  "step": "vegetal_decoration"
+}

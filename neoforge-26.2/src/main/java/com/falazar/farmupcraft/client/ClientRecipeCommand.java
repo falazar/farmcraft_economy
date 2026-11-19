@@ -25,13 +25,25 @@ public final class ClientRecipeCommand {
                             context.getSource()::sendSystemMessage);
                     return 1;
                 })));
+        event.getDispatcher().register(Commands.literal("fuses")
+                .then(Commands.argument("itemId", StringArgumentType.greedyString()).executes(context -> {
+                    openForItem(StringArgumentType.getString(context, "itemId"),
+                            context.getSource()::sendSystemMessage, true);
+                    return 1;
+                })));
     }
 
     static void openRecipeForItem(String itemId, Consumer<Component> feedback) {
+        openForItem(itemId, feedback, false);
+    }
+
+    private static void openForItem(String itemId, Consumer<Component> feedback, boolean uses) {
         if (Identifier.tryParse(itemId) == null) {
             feedback.accept(Component.literal("Cannot open recipe: invalid item identifier " + itemId));
         } else if (!ModList.get().isLoaded("jei")) {
             feedback.accept(Component.literal("Cannot open recipe: JEI is not installed."));
+        } else if (uses) {
+            JeiIntegration.openUses(itemId, feedback);
         } else {
             JeiIntegration.openRecipe(itemId, feedback);
         }

@@ -1,0 +1,16 @@
+{
+  "forge:conditions": [
+    { "type": "forge:mod_loaded", "modid": "biomesoplenty" },
+    { "type": "forge:mod_loaded", "modid": "pamhc2trees" }
+  ],
+  "type": "forge:add_features",
+  "biomes": {
+    "type": "forge:and",
+    "values": [
+      ["biomesoplenty:rainforest", "biomesoplenty:rocky_rainforest", "biomesoplenty:fungal_jungle", "biomesoplenty:tropics"],
+      { "type": "forge:not", "value": "#minecraft:is_forest" }
+    ]
+  },
+  "features": "pamhc2trees:nutmeg_placed",
+  "step": "vegetal_decoration"
+}

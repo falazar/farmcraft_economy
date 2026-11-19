@@ -394,12 +394,10 @@ public class NpcDataLoader {
             String desc = json.has("description") ? json.get("description").getAsString() : "";
             String pers = json.has("personality") ? json.get("personality").getAsString() : "";
 
-            // Merge description + personality into the AI context string.
-            String fullDescription = pers.isEmpty() ? desc : desc + " Personality: " + pers;
-
             LOGGER.info("NpcDataLoader: loaded profile '{}' from {}", name, file.getFileName());
             // home village UUID not relevant for AI profiles — placeholder used.
-            return new NpcData(uuid, name, new UUID(0, 0), fullDescription);
+            return new NpcData(uuid, name, new UUID(0, 0), desc, pers,
+                    json.has("village_name") ? json.get("village_name").getAsString() : "");
 
         } catch (Exception e) {
             LOGGER.error("Failed to parse NPC profile {}: {}", file.getFileName(), e.getMessage());

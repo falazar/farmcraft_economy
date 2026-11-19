@@ -13,7 +13,8 @@ import java.util.ArrayList;
 
 @EventBusSubscriber(modid = FarmUpCraftNeoForge.MOD_ID)
 public final class BiomeCropsGameTests {
-    private BiomeCropsGameTests() {}
+    private BiomeCropsGameTests() {
+    }
 
     @SubscribeEvent
     public static void registerFunctions(RegisterEvent event) {
@@ -40,35 +41,46 @@ public final class BiomeCropsGameTests {
             try {
                 player.setGameMode(net.minecraft.world.level.GameType.SURVIVAL);
                 player.setPos(fixture.pos.getX(), fixture.pos.getY() + 1, fixture.pos.getZ());
-                fixture.level.setBlock(fixture.pos, net.minecraft.world.level.block.Blocks.FARMLAND.defaultBlockState(), 2);
+                fixture.level.setBlock(fixture.pos, net.minecraft.world.level.block.Blocks.FARMLAND.defaultBlockState(),
+                        2);
                 world.setUseBiomeCropRules(true);
                 manager.setBiomeRules(biome, new com.falazar.farmupcraft.saveddata.BiomeRulesInstance(
                         com.falazar.farmupcraft.data.BiomeRulesData.EMPTY,
                         java.util.List.of(net.minecraft.world.item.Items.WHEAT_SEEDS)));
-                player.getInventory().setItem(0, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT_SEEDS, 5));
+                player.getInventory().setItem(0,
+                        new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT_SEEDS, 5));
                 player.getInventory().setItem(net.minecraft.world.entity.player.Inventory.SLOT_OFFHAND,
                         new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.WHEAT_SEEDS, 3));
-                player.getInventory().setItem(1, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.CARROT, 4));
-                player.getInventory().setItem(2, new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.APPLE, 9));
+                player.getInventory().setItem(1,
+                        new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.CARROT, 4));
+                player.getInventory().setItem(2,
+                        new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.APPLE, 9));
                 var dispatcher = fixture.level.getServer().getCommands().getDispatcher();
                 var source = player.createCommandSourceStack();
-                String command = "show plantable " + fixture.pos.getX() + " " + fixture.pos.getY() + " " + fixture.pos.getZ();
+                String command = "show plantable " + fixture.pos.getX() + " " + fixture.pos.getY() + " "
+                        + fixture.pos.getZ();
                 helper.assertValueEqual(dispatcher.execute(command, source), 1, "Farmland listing succeeds");
-                helper.assertTrue(messages.stream().anyMatch(s -> s.contains("Wheat Seeds (8)")), "Inventory and offhand counts merge");
-                helper.assertTrue(messages.stream().noneMatch(s -> s.contains("Carrot") || s.contains("Apple")), "Biome-disallowed crops and nonplantable foods excluded");
-                helper.assertValueEqual(player.getInventory().getItem(0).getCount(), 5, "Listing never changes inventory");
+                helper.assertTrue(messages.stream().anyMatch(s -> s.contains("Wheat Seeds (8)")),
+                        "Inventory and offhand counts merge");
+                helper.assertTrue(messages.stream().noneMatch(s -> s.contains("Carrot") || s.contains("Apple")),
+                        "Biome-disallowed crops and nonplantable foods excluded");
+                helper.assertValueEqual(player.getInventory().getItem(0).getCount(), 5,
+                        "Listing never changes inventory");
                 world.setUseBiomeCropRules(false);
                 messages.clear();
                 dispatcher.execute(command, source);
-                helper.assertTrue(messages.stream().anyMatch(s -> s.contains("Carrot (4)")), "Disabled biome restrictions reflected");
+                helper.assertTrue(messages.stream().anyMatch(s -> s.contains("Carrot (4)")),
+                        "Disabled biome restrictions reflected");
                 world.setUseBiomeCropRules(true);
                 player.setGameMode(net.minecraft.world.level.GameType.CREATIVE);
                 messages.clear();
                 dispatcher.execute(command, source);
-                helper.assertTrue(messages.stream().anyMatch(s -> s.contains("Carrot (4)")), "Creative exemption reflected");
+                helper.assertTrue(messages.stream().anyMatch(s -> s.contains("Carrot (4)")),
+                        "Creative exemption reflected");
                 fixture.level.setBlock(fixture.pos, net.minecraft.world.level.block.Blocks.DIRT.defaultBlockState(), 2);
                 helper.assertValueEqual(dispatcher.execute(command, source), 0, "Nonfarmland target rejected");
-                helper.assertValueEqual(dispatcher.execute("show plantable 0 200 0", source), 0, "Distant target rejected");
+                helper.assertValueEqual(dispatcher.execute("show plantable 0 200 0", source), 0,
+                        "Distant target rejected");
             } finally {
                 manager.setBiomeRules(biome, previous);
                 world.setUseBiomeCropRules(previousEnabled);
@@ -103,12 +115,15 @@ public final class BiomeCropsGameTests {
                 dispatcher.execute("show biomecrops", source);
                 helper.assertValueEqual(messages, explicit,
                         "Default lookup must match the biome at the player's actual position");
-                var suggestions = dispatcher.getCompletionSuggestions(dispatcher.parse("show biomecrops ", source)).join();
+                var suggestions = dispatcher.getCompletionSuggestions(dispatcher.parse("show biomecrops ", source))
+                        .join();
                 var registered = fixture.level.registryAccess().lookupOrThrow(Registries.BIOME)
-                        .listElementIds().map(key -> key.identifier().toString()).collect(java.util.stream.Collectors.toSet());
+                        .listElementIds().map(key -> key.identifier().toString())
+                        .collect(java.util.stream.Collectors.toSet());
                 var suggested = suggestions.getList().stream().map(com.mojang.brigadier.suggestion.Suggestion::getText)
                         .collect(java.util.stream.Collectors.toSet());
-                helper.assertValueEqual(suggested, registered, "Autocomplete must include every registered biome");
+                helper.assertTrue(suggested.containsAll(registered),
+                        "Autocomplete must include every registered biome ID while retaining short aliases");
                 helper.assertTrue(suggested.stream().anyMatch(id -> id.startsWith("biomesoplenty:")),
                         "Installed Biomes O' Plenty biomes must be suggested");
                 for (String id : suggested) {
@@ -117,13 +132,16 @@ public final class BiomeCropsGameTests {
                             "Every suggested namespaced biome must parse without quotes");
                 }
                 var crops = dispatcher.getCompletionSuggestions(dispatcher.parse("show cropbiomes ", source)).join();
-                var expectedCrops = com.falazar.farmupcraft.saveddata.BiomeRulesManager.get(fixture.level).getItems()
+                var cropIds = com.falazar.farmupcraft.saveddata.BiomeRulesManager.get(fixture.level).getItems()
                         .stream().map(net.minecraft.core.registries.BuiltInRegistries.ITEM::getKey)
-                        .map(Object::toString).collect(java.util.stream.Collectors.toSet());
+                        .map(Object::toString).toList();
+                var expectedCrops = com.falazar.farmupcraft.util.ShowNameAliases.create(cropIds, true).keySet();
                 helper.assertTrue(!expectedCrops.isEmpty(), "Crop rules must be loaded");
-                helper.assertValueEqual(crops.getList().stream().map(com.mojang.brigadier.suggestion.Suggestion::getText)
-                                .collect(java.util.stream.Collectors.toSet()), expectedCrops,
-                        "Crop suggestions must match configured crop items");
+                helper.assertValueEqual(
+                        crops.getList().stream().map(com.mojang.brigadier.suggestion.Suggestion::getText)
+                                .collect(java.util.stream.Collectors.toSet()),
+                        expectedCrops,
+                        "Crop suggestions must match friendly aliases for configured crop items");
             } finally {
                 player.discard();
             }
